@@ -9,6 +9,11 @@ import IncidentsEventGroup from './IncidentsEventGroup'
 import IncidentImagesDialog from './IncidentImagesDialog'
 import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { groupIncidentsByDayAndEvent, type IncidentDaySort } from '@/lib/incidentsMeetingMinutes'
+import type {
+  IncidentMeetingComment,
+  IncidentMeetingComments,
+  IncidentMeetingSessionStatus,
+} from '@/lib/incidentMeetingSession'
 
 interface Props {
   incidents: Incident[]
@@ -23,6 +28,10 @@ interface Props {
   canDeleteIncident: (incident: Incident) => boolean
   canEditCategory: boolean
   categoryOptions: Array<{ id: string; label: string }>
+  meetingSessionId?: string | null
+  meetingSessionStatus?: IncidentMeetingSessionStatus | null
+  meetingComments?: IncidentMeetingComments
+  onMeetingCommentSaved?: (incidentId: string, comment: IncidentMeetingComment | null) => void
 }
 
 function formatDayLabel(day: string) {
@@ -52,6 +61,10 @@ export default function IncidentsTable({
   canDeleteIncident,
   canEditCategory,
   categoryOptions,
+  meetingSessionId,
+  meetingSessionStatus,
+  meetingComments = {},
+  onMeetingCommentSaved,
 }: Props) {
   const [imagesIncident, setImagesIncident] = useState<Incident | null>(null)
 
@@ -101,6 +114,10 @@ export default function IncidentsTable({
                   canDeleteIncident={canDeleteIncident}
                   canEditCategory={canEditCategory}
                   categoryOptions={categoryOptions}
+                  meetingSessionId={meetingSessionId}
+                  meetingSessionStatus={meetingSessionStatus}
+                  meetingComments={meetingComments}
+                  onMeetingCommentSaved={onMeetingCommentSaved}
                 />
               ))}
             </div>

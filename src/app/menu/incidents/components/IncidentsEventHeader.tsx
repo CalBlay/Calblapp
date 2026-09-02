@@ -2,9 +2,14 @@
 'use client'
 
 import React from 'react'
-import { ChevronDown, MapPin, Tag, UserRound, Users } from 'lucide-react'
+import { ChevronDown, MapPin, Tag, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { colorByLN } from '@/lib/colors'
+import {
+  INCIDENT_RESPONSIBLE_DEPARTMENTS,
+  type IncidentEventResponsible,
+} from '@/lib/incidentEventResponsibles'
+import OperationalAreaIcon from '@/components/shared/OperationalAreaIcon'
 
 interface Props {
   title: string
@@ -21,6 +26,7 @@ interface Props {
   allResolved: boolean
   expanded: boolean
   commercial?: string
+  responsibles?: IncidentEventResponsible[]
   className?: string
   headerClassName?: string
   onToggle?: () => void
@@ -51,6 +57,7 @@ export default function IncidentsEventHeader({
   allResolved,
   expanded,
   commercial,
+  responsibles = [],
   className,
   headerClassName,
   onToggle,
@@ -58,6 +65,17 @@ export default function IncidentsEventHeader({
 }: Props) {
   const displayTitle = formatEventTitle(title)
   const lnColor = colorByLN(ln || 'altres')
+  const responsibleGroups = INCIDENT_RESPONSIBLE_DEPARTMENTS.map((department) => ({
+    department,
+    names: Array.from(
+      new Set(
+        responsibles
+          .filter((responsible) => responsible.department === department)
+          .map((responsible) => responsible.name.trim())
+          .filter(Boolean)
+      )
+    ),
+  })).filter((group) => group.names.length > 0)
 
   return (
     <div
@@ -98,7 +116,7 @@ export default function IncidentsEventHeader({
         </span>
       </div>
 
-      {(code || location || commercial || service) ? (
+      {(code || location || commercial || service || responsibleGroups.length > 0) ? (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 sm:text-sm">
         {code ? (
           <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-slate-500">
@@ -130,12 +148,22 @@ export default function IncidentsEventHeader({
 
         {commercial ? (
           <span className="inline-flex max-w-[12rem] items-center gap-1.5 truncate">
-            <UserRound className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+            <OperationalAreaIcon area="commercial" className="text-slate-500" />
             <span className="truncate">{commercial}</span>
           </span>
         ) : null}
 
         {service ? <span className="text-slate-500">{service}</span> : null}
+
+        {responsibleGroups.map((group) => (
+          <span
+            key={group.department}
+            className="inline-flex max-w-full items-center gap-1.5 text-slate-700"
+          >
+            <OperationalAreaIcon area={group.department} className="text-slate-500" />
+            <span>{group.names.join(', ')}</span>
+          </span>
+        ))}
       </div>
       ) : null}
 

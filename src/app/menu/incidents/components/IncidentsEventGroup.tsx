@@ -11,9 +11,13 @@ import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import type {
+  IncidentMeetingComment,
+  IncidentMeetingComments,
+  IncidentMeetingSessionStatus,
+} from '@/lib/incidentMeetingSession'
 
 type IncidentEditValues = {
-  description?: string
   originDepartment?: string
   priority?: string
   status?: string
@@ -34,6 +38,10 @@ interface Props {
   canDeleteIncident: (inc: Incident) => boolean
   canEditCategory: boolean
   categoryOptions: Array<{ id: string; label: string }>
+  meetingSessionId?: string | null
+  meetingSessionStatus?: IncidentMeetingSessionStatus | null
+  meetingComments: IncidentMeetingComments
+  onMeetingCommentSaved?: (incidentId: string, comment: IncidentMeetingComment | null) => void
 }
 
 export default function IncidentsEventGroup({
@@ -48,6 +56,10 @@ export default function IncidentsEventGroup({
   canDeleteIncident,
   canEditCategory,
   categoryOptions,
+  meetingSessionId,
+  meetingSessionStatus,
+  meetingComments,
+  onMeetingCommentSaved,
 }: Props) {
   const [expandedOpsId, setExpandedOpsId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -100,7 +112,6 @@ export default function IncidentsEventGroup({
   const beginEdit = useCallback((row: Incident) => {
     setEditingId(row.id)
     setEditValues({
-      description: row.description,
       originDepartment: row.originDepartment || '',
       priority: row.priority || row.importance || '',
       status: row.status || '',
@@ -146,6 +157,7 @@ export default function IncidentsEventGroup({
         ln={event.ln ?? ''}
         location={event.location ?? ''}
         commercial={event.commercial}
+        responsibles={event.responsibles}
         service={event.serviceType ?? ''}
         pax={Number(event.pax ?? 0)}
         count={event.rows.length}
@@ -194,6 +206,10 @@ export default function IncidentsEventGroup({
                 categoryOptions={categoryOptions}
                 editValues={editValues}
                 setEditValues={setEditValues}
+                meetingSessionId={meetingSessionId}
+                meetingSessionStatus={meetingSessionStatus}
+                initialMeetingComment={meetingComments[inc.id]?.text || ''}
+                onMeetingCommentSaved={onMeetingCommentSaved}
               />
             ))}
           </div>
@@ -239,6 +255,10 @@ export default function IncidentsEventGroup({
                     categoryOptions={categoryOptions}
                     editValues={editValues}
                     setEditValues={setEditValues}
+                    meetingSessionId={meetingSessionId}
+                    meetingSessionStatus={meetingSessionStatus}
+                    initialMeetingComment={meetingComments[inc.id]?.text || ''}
+                    onMeetingCommentSaved={onMeetingCommentSaved}
                   />
                 ))}
               </tbody>

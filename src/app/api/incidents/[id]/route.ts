@@ -26,7 +26,6 @@ function normalizeImportance(raw: string): string {
 }
 
 const PATCHABLE = new Set([
-  'description',
   'originDepartment',
   'importance',
   'priority',
@@ -153,10 +152,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     for (const key of PATCHABLE) {
       if (!(key in payload)) continue
       const val = payload[key]
-      if (key === 'description' && typeof val === 'string') {
-        cleaned.description = val
-        hasPatch = true
-      }
       if (key === 'originDepartment' && typeof val === 'string') {
         cleaned.originDepartment = val.trim()
         hasPatch = true

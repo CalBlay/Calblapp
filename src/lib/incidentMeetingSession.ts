@@ -41,12 +41,45 @@ export function attendedFromMeetingAttendance(attendance: MeetingAttendance): bo
 
 export type IncidentMeetingSessionStatus = 'draft' | 'finalized'
 
+export type IncidentMeetingComment = {
+  incidentId: string
+  text: string
+  updatedAt: string
+  updatedById?: string | null
+  updatedByName?: string | null
+}
+
+export type IncidentMeetingComments = Record<string, IncidentMeetingComment>
+
+export const INCIDENT_MEETING_COMMENT_MAX_LENGTH = 5000
+
+export function serializeIncidentMeetingComments(raw: unknown): IncidentMeetingComments {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const result: IncidentMeetingComments = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const item = value as Record<string, unknown>
+    const incidentId = String(item.incidentId || key).trim()
+    const text = String(item.text || '').slice(0, INCIDENT_MEETING_COMMENT_MAX_LENGTH)
+    if (!incidentId || !text.trim()) continue
+    result[incidentId] = {
+      incidentId,
+      text,
+      updatedAt: String(item.updatedAt || ''),
+      updatedById: item.updatedById ? String(item.updatedById) : null,
+      updatedByName: item.updatedByName ? String(item.updatedByName) : null,
+    }
+  }
+  return result
+}
+
 export type IncidentMeetingSession = {
   id: string
   status: IncidentMeetingSessionStatus
   notes: string
   incidentFilters: MeetingMinutesFilters
   attendees: IncidentMeetingAttendee[]
+  incidentComments: IncidentMeetingComments
   createdAt: string
   updatedAt: string
   createdById?: string | null
@@ -151,6 +184,7 @@ export function serializeMeetingSession(
       status: (rawFilters.status as MeetingMinutesFilters['status']) || 'all',
     }),
     attendees: attendees as IncidentMeetingAttendee[],
+    incidentComments: serializeIncidentMeetingComments(data.incidentComments),
     createdAt: String(data.createdAt || ''),
     updatedAt: String(data.updatedAt || ''),
     createdById: data.createdById ? String(data.createdById) : null,

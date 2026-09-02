@@ -2,6 +2,7 @@ import type { Incident } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
 import { sortIncidentDayKeysByProximityToToday } from '@/lib/incidentListSort'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import type { IncidentEventResponsible } from '@/lib/incidentEventResponsibles'
 
 export type GroupedIncidentEvent = {
   eventId?: string
@@ -13,6 +14,7 @@ export type GroupedIncidentEvent = {
   pax?: number
   fincaId?: string
   commercial: string
+  responsibles: IncidentEventResponsible[]
   rows: Incident[]
 }
 
@@ -45,6 +47,7 @@ export function groupIncidentsByDayAndEvent(
         pax: inc.pax,
         fincaId: inc.fincaId,
         commercial: inc.eventCommercial || '',
+        responsibles: inc.eventResponsibles || [],
         rows: [],
       }
     }
@@ -135,7 +138,12 @@ function formatGeneratedStamp(iso: string): string {
   return d.toLocaleString('ca-ES', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function buildMeetingMinutesHeaderHtml(logoSrc: string, generatedAtIso: string): string {
+function buildMeetingMinutesHeaderHtml(
+  logoSrc: string,
+  generatedAtIso: string,
+  periodLabel: string,
+  total: number
+): string {
   const stamp = escapeHtml(formatGeneratedStamp(generatedAtIso))
   const logo = escapeHtml(logoSrc)
   return `<header class="calblay-print-brand">
@@ -146,8 +154,13 @@ function buildMeetingMinutesHeaderHtml(logoSrc: string, generatedAtIso: string):
       data-calblay-print-logo="true"
     />
     <div class="calblay-print-brand__meta">
-      <h1 class="calblay-print-brand__title">Acta — Reunió d’incidències</h1>
-      <p class="calblay-print-brand__stamp">${stamp}</p>
+      <div class="calblay-print-brand__heading">
+        <h1 class="calblay-print-brand__title">Acta — Reunió d’incidències</h1>
+        <strong class="calblay-print-brand__total">${total} incidències</strong>
+      </div>
+      <p class="calblay-print-brand__stamp">
+        ${stamp}<span aria-hidden="true"> · </span>Període: ${escapeHtml(periodLabel)}
+      </p>
     </div>
   </header>`
 }
@@ -156,15 +169,15 @@ function buildAttendanceHtml(rows: MeetingMinutesAttendanceRow[]) {
   if (!rows.length) return ''
 
   const list = (items: MeetingMinutesAttendanceRow[], withReason = false) =>
-    `<ul>${items
+    items
       .map((item) => {
         const reason =
           withReason && item.absenceReason
-            ? ` — <span class="muted">${escapeHtml(item.absenceReason)}</span>`
+            ? ` <span class="muted">(${escapeHtml(item.absenceReason)})</span>`
             : ''
-        return `<li>${escapeHtml(item.name)}${reason}</li>`
+        return `${escapeHtml(item.name)}${reason}`
       })
-      .join('')}</ul>`
+      .join(' · ')
 
   const columns: { label: string; items: MeetingMinutesAttendanceRow[]; withReason?: boolean }[] = []
   const present = rows.filter((r) => r.attendance === 'in_person')
@@ -179,14 +192,13 @@ function buildAttendanceHtml(rows: MeetingMinutesAttendanceRow[]) {
 
   if (!columns.length) return ''
 
-  const cols = columns.length
   return `<section class="attendance">
     <h2>Assistència</h2>
-    <div class="attendance-grid" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
+    <div class="attendance-lines">
       ${columns
         .map(
           (col) =>
-            `<div><strong>${escapeHtml(col.label)}</strong>${list(col.items, col.withReason)}</div>`
+            `<p class="attendance-row"><strong>${escapeHtml(col.label)}:</strong> ${list(col.items, col.withReason)}</p>`
         )
         .join('')}
     </div>
@@ -206,7 +218,12 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
   const periodLabel = buildMeetingPeriodLabel(filters)
   const dayEntries = groupIncidentsByDayAndEvent(incidents)
   const total = incidents.length
-  const headerHtml = buildMeetingMinutesHeaderHtml(logoSrc, generatedAtIso)
+  const headerHtml = buildMeetingMinutesHeaderHtml(
+    logoSrc,
+    generatedAtIso,
+    periodLabel,
+    total
+  )
 
   const notesBlock =
     meetingNotes.trim().length > 0
@@ -239,6 +256,12 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
               const desc = escapeHtml(inc.description || '—')
               const actionsText = inc.meetingMinutesActionsText?.trim() || inc.resolutionNote?.trim() || ''
               const res = actionsText ? escapeHtml(actionsText).replace(/\r\n|\n|\r/g, '<br/>') : '—'
+              const meetingComment = inc.meetingComment?.trim()
+              const commentRow = meetingComment
+                ? `<tr class="meeting-comment-row"><td colspan="7"><strong>Comentari de la reunió</strong><div>${escapeHtml(
+                    meetingComment
+                  ).replace(/\r\n|\n|\r/g, '<br/>')}</div></td></tr>`
+                : ''
               return `<tr>
                 <td>${escapeHtml(inc.incidentNumber || '—')}</td>
                 <td>${escapeHtml(inc.department || '—')}</td>
@@ -247,7 +270,7 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
                 <td>${escapeHtml(inc.category?.label || '—')}</td>
                 <td class="wrap">${desc}</td>
                 <td class="wrap muted">${res}</td>
-              </tr>`
+              </tr>${commentRow}`
             })
             .join('')
 
@@ -289,8 +312,8 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
         display: flex;
         align-items: center;
         gap: 18px;
-        margin: 0 0 14px;
-        padding-bottom: 12px;
+        margin: 0 0 10px;
+        padding-bottom: 9px;
         border-bottom: 1px solid #d7dfd8;
       }
       .calblay-print-brand__logo {
@@ -300,12 +323,23 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
         object-position: left center;
         flex: 0 0 auto;
       }
-      .calblay-print-brand__meta { min-width: 0; }
+      .calblay-print-brand__meta { min-width: 0; flex: 1; }
+      .calblay-print-brand__heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+      }
       .calblay-print-brand__title {
         font-size: 18px;
         font-weight: 700;
         margin: 0 0 4px;
         letter-spacing: -0.02em;
+        color: #111;
+      }
+      .calblay-print-brand__total {
+        flex: 0 0 auto;
+        font-size: 12px;
         color: #111;
       }
       .calblay-print-brand__stamp {
@@ -314,43 +348,44 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
         color: #4b5563;
         line-height: 1.45;
       }
-      .period { color: #3f3f46; font-size: 13px; margin: 0 0 10px; }
-      .summary { font-weight: 600; margin-bottom: 18px; font-size: 13px; }
       .notes { margin-bottom: 20px; padding: 12px 14px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fafafa; }
       .notes h2 { font-size: 14px; margin: 0 0 8px; }
       .notes-body { white-space: normal; }
-      .attendance { margin-bottom: 20px; padding: 12px 14px; border: 1px solid #d4d4d8; border-radius: 6px; background: #f8fafc; }
-      .attendance h2 { font-size: 14px; margin: 0 0 8px; }
-      .attendance-grid { display: grid; gap: 12px; font-size: 11px; }
-      .attendance ul { margin: 6px 0 0; padding-left: 18px; }
-      .day-block { margin-bottom: 28px; page-break-inside: avoid; }
+      .attendance { margin-bottom: 12px; padding: 8px 10px; border: 1px solid #d4d4d8; border-radius: 6px; background: #f8fafc; }
+      .attendance h2 { font-size: 13px; margin: 0 0 4px; }
+      .attendance-lines { display: grid; gap: 2px; font-size: 10.5px; }
+      .attendance-row { margin: 0; line-height: 1.35; }
+      .day-block { margin-bottom: 28px; page-break-inside: auto; break-inside: auto; }
       .day-block h2 { font-size: 15px; border-bottom: 2px solid #27272a; padding-bottom: 6px; margin: 0 0 12px; }
       .tag { font-size: 11px; font-weight: 600; color: #9f1239; background: #ffe4e6; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
-      .event-block { margin-bottom: 20px; page-break-inside: avoid; }
+      .event-block { margin-bottom: 20px; page-break-inside: auto; break-inside: auto; }
       .event-block h3 { font-size: 13px; margin: 0 0 4px; }
       .muted { color: #52525b; font-weight: normal; }
       .event-meta { margin: 0 0 8px; color: #52525b; font-size: 11px; }
       table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 4px; }
       th, td { border: 1px solid #d4d4d8; padding: 5px 6px; vertical-align: top; text-align: left; }
       th { background: #f4f4f5; font-weight: 600; }
+      thead { display: table-header-group; }
+      tr { page-break-inside: avoid; break-inside: avoid; }
       tr:nth-child(even) td { background: #fafafa; }
       td.wrap { max-width: 220px; word-break: break-word; }
+      .meeting-comment-row td { background: #f0f9ff !important; border-top: 0; padding: 8px 10px 10px; color: #1e293b; }
+      .meeting-comment-row strong { display: block; margin-bottom: 3px; color: #0369a1; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+      .meeting-comment-row div { white-space: normal; word-break: break-word; font-size: 10.5px; line-height: 1.45; }
       .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e4e4e7; font-size: 10px; color: #71717a; }
       .empty { padding: 16px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; color: #78350f; }
       @media print {
         body { margin: 12mm; }
-        .day-block, .event-block { page-break-inside: avoid; }
+        .attendance { page-break-inside: avoid; break-inside: avoid; }
       }
     </style>
   </head>
   <body>
     ${headerHtml}
-    <p class="period">Període: ${escapeHtml(periodLabel)}</p>
-    <p class="summary">Total incidències: ${total}</p>
-    ${notesBlock}
     ${attendance?.length ? buildAttendanceHtml(attendance) : ''}
     ${emptyMsg}
     ${eventsHtml}
+    ${notesBlock}
     ${generatedByLabel ? `<div class="footer">Elaborat per: ${escapeHtml(generatedByLabel)}</div>` : ''}
   </body>
 </html>`

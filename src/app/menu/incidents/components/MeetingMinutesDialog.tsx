@@ -23,6 +23,7 @@ import {
   activeMeetingAttendees,
   defaultMeetingIncidentFilters,
   type IncidentMeetingAttendee,
+  type IncidentMeetingComments,
   type IncidentMeetingSession,
 } from '@/lib/incidentMeetingSession'
 import {
@@ -125,7 +126,7 @@ export default function MeetingMinutesDialog({
   const [loadingIncidents, setLoadingIncidents] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
-  const [closureTab, setClosureTab] = useState('notes')
+  const [closureTab, setClosureTab] = useState('assistencia')
   const [phase, setPhase] = useState<'meeting' | 'closure'>('meeting')
   const historyMode = Boolean(sessionId)
 
@@ -168,7 +169,7 @@ export default function MeetingMinutesDialog({
     setFilters(next.incidentFilters)
     setPhase(next.status === 'finalized' ? 'closure' : 'meeting')
     if (next.status === 'finalized') {
-      setClosureTab('notes')
+      setClosureTab('assistencia')
     }
   }, [defaultFilters, onSessionStatusChange])
 
@@ -197,7 +198,10 @@ export default function MeetingMinutesDialog({
     }
   }, [applySession, defaultFilters, onSessionStatusChange, sessionId])
 
-  const loadIncidents = useCallback(async (nextFilters: MeetingMinutesFilters) => {
+  const loadIncidents = useCallback(async (
+    nextFilters: MeetingMinutesFilters,
+    meetingComments: IncidentMeetingComments = {}
+  ) => {
     const from = String(nextFilters.from || '').trim()
     const to = String(nextFilters.to || '').trim()
     if (!from || !to) {
@@ -213,7 +217,10 @@ export default function MeetingMinutesDialog({
       const rows = Array.isArray(json.incidents) ? (json.incidents as Incident[]) : []
       const incidentIds = rows.map((row) => String(row.id || '').trim()).filter(Boolean)
       if (incidentIds.length === 0) {
-        setIncidents(rows)
+        setIncidents(rows.map((row) => ({
+          ...row,
+          meetingComment: meetingComments[String(row.id || '').trim()]?.text || '',
+        })))
         return
       }
 
@@ -242,6 +249,7 @@ export default function MeetingMinutesDialog({
         rows.map((row) => ({
           ...row,
           meetingMinutesActionsText: (grouped.get(String(row.id || '').trim()) || []).join('\n'),
+          meetingComment: meetingComments[String(row.id || '').trim()]?.text || '',
         }))
       )
     } catch {
@@ -279,10 +287,10 @@ export default function MeetingMinutesDialog({
   useEffect(() => {
     if (!open || !showClosure) return
     const timer = window.setTimeout(() => {
-      void loadIncidents(filtersWithDefaults())
+      void loadIncidents(filtersWithDefaults(), session?.incidentComments || {})
     }, 300)
     return () => window.clearTimeout(timer)
-  }, [open, showClosure, filters, loadIncidents, filtersWithDefaults, closureTab])
+  }, [open, showClosure, filters, loadIncidents, filtersWithDefaults, closureTab, session?.incidentComments])
 
   const ensureSession = async (): Promise<IncidentMeetingSession | null> => {
     if (session?.id) return session
@@ -448,7 +456,7 @@ export default function MeetingMinutesDialog({
       if (!res.ok) throw new Error(String(json?.error || 'Error finalitzant'))
       const finalized = json.session as IncidentMeetingSession
       setPhase('closure')
-      setClosureTab('notes')
+      setClosureTab('assistencia')
       applySession(finalized)
       toast({
         title: 'Reunió finalitzada',
@@ -846,9 +854,9 @@ export default function MeetingMinutesDialog({
             <TabsList className="mx-5 mt-3 grid w-auto shrink-0 grid-cols-3 gap-1 bg-transparent p-0 sm:mx-6">
               {(
                 [
-                  { id: 'notes', label: 'Anotacions' },
-                  { id: 'recull', label: 'Recull' },
                   { id: 'assistencia', label: 'Assistència' },
+                  { id: 'recull', label: 'Recull' },
+                  { id: 'notes', label: 'Anotacions' },
                 ] as const
               ).map((tab) => (
                 <TabsTrigger

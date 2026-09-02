@@ -25,19 +25,10 @@ import {
   type ZohoDeal,
   type ZohoNamedValue,
 } from '@/services/zoho/sync-types'
-const LOCAL_CALENDAR_FIELDS = new Set([
-  'LN',
-  'code',
-  'NomEvent',
-  'DataInici',
-  'DataFi',
-  'HoraInici',
-  'HoraFi',
-  'NumPax',
-  'Ubicacio',
-  'Servei',
-  'Comercial',
-])
+import {
+  hasManualDateOverride,
+  preserveManualCalendarOverrides,
+} from '@/lib/calendar/manualOverrides'
 
 function preserveLocalCalendarChanges(
   incoming: Record<string, unknown>,
@@ -45,17 +36,7 @@ function preserveLocalCalendarChanges(
 ): Record<string, unknown> {
   if (!existing) return incoming
 
-  const out: Record<string, unknown> = { ...incoming }
-  const manualOverrides =
-    existing.manualOverrides && typeof existing.manualOverrides === 'object'
-      ? (existing.manualOverrides as Record<string, unknown>)
-      : {}
-
-  for (const field of LOCAL_CALENDAR_FIELDS) {
-    if (manualOverrides[field] === true && existing[field] !== undefined) {
-      out[field] = existing[field]
-    }
-  }
+  const out = preserveManualCalendarOverrides(incoming, existing)
 
   for (const [key, value] of Object.entries(existing)) {
     const lower = key.toLowerCase()
@@ -274,6 +255,7 @@ async function cleanupGrocTaronjaStageDocs(
   idsVerd: Set<string>,
   idsGroc: Set<string>,
   idsTaronja: Set<string>,
+  eligibleZohoIds: ReadonlySet<string>,
   existingDocs?: {
     groc?: StageSnapshotMap
     taronja?: StageSnapshotMap
@@ -306,12 +288,25 @@ async function cleanupGrocTaronjaStageDocs(
 
     for (const doc of stageDocs) {
       const id = doc.id
+      const data = doc.data()
 
       if (idsVerd.has(id)) {
         batch.delete(doc.ref)
         pendingWrites += 1
         console.log(`ðŸ§¹ Eliminat de ${name} (ara Ã©s verd): ${id}`)
       } else if (!idsActuals.has(id)) {
+        const absentFromSyncedStages =
+          !idsVerd.has(id) && !idsGroc.has(id) && !idsTaronja.has(id)
+        if (
+          absentFromSyncedStages &&
+          eligibleZohoIds.has(id) &&
+          hasManualDateOverride(data)
+        ) {
+          console.info(
+            `[zoho-sync] Conservat ${name}/${id}: les dates manuals tenen prioritat`
+          )
+          continue
+        }
         batch.delete(doc.ref)
         pendingWrites += 1
         console.log(`ðŸ§¹ Eliminat de ${name} (ja no Ã©s ${name} a Zoho): ${id}`)
@@ -654,10 +649,21 @@ async function syncStageCollections({
   }
 
   if (fullSync) {
-    await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja, {
-      groc: existingGroc,
-      taronja: existingTaronja,
-    })
+    const eligibleZohoIds = new Set(
+      Array.from(zohoById.entries())
+        .filter(([, zohoDeal]) => classifyStage(zohoDeal.Stage || '') !== null)
+        .map(([id]) => id)
+    )
+    await cleanupGrocTaronjaStageDocs(
+      idsVerd,
+      idsGroc,
+      idsTaronja,
+      eligibleZohoIds,
+      {
+        groc: existingGroc,
+        taronja: existingTaronja,
+      }
+    )
 
     let verdCleanupBatch = firestore.batch()
     let verdCleanupCount = 0
@@ -678,6 +684,17 @@ async function syncStageCollections({
 
       const group = classifyStage(zoho.Stage || '')
       if (group !== 'verd') {
+        const movedToSyncedStage = idsGroc.has(id) || idsTaronja.has(id)
+        if (
+          group !== null &&
+          !movedToSyncedStage &&
+          hasManualDateOverride(doc.data())
+        ) {
+          console.info(
+            `[zoho-sync] Conservat stage_verd/${id}: les dates manuals tenen prioritat`
+          )
+          continue
+        }
         verdCleanupBatch.delete(doc.ref)
         verdCleanupCount += 1
         const reason =
@@ -955,7 +972,14 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     }
 
     for (const doc of snap.docs) {
-      if ((doc.data().DataInici || '') >= todayISO) continue
+      const data = doc.data()
+      if ((data.DataInici || '') >= todayISO) continue
+      if (hasManualDateOverride(data)) {
+        console.info(
+          `[zoho-sync] Conservat ${col}/${doc.id}: la data passada es una modificacio manual`
+        )
+        continue
+      }
       deleteBatch.delete(doc.ref)
       deleteBatchCount += 1
       deleted += 1

@@ -2,7 +2,6 @@
 'use client'
 
 import React from 'react'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
@@ -12,8 +11,9 @@ import { cn } from '@/lib/utils'
 import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
-import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, MessageSquareText, Trash2 } from 'lucide-react'
 import IncidentOperationsPanel from './IncidentOperationsPanel'
+import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
 
 declare global {
   interface Window {
@@ -37,9 +37,12 @@ interface Props {
   canDelete: boolean
   canEditCategory: boolean
   categoryOptions: Array<{ id: string; label: string }>
+  meetingSessionId?: string | null
+  meetingSessionStatus?: IncidentMeetingSessionStatus | null
+  initialMeetingComment?: string
+  onMeetingCommentSaved?: (incidentId: string, comment: IncidentMeetingComment | null) => void
   onDelete: (row: Incident) => void
   editValues: {
-    description?: string
     originDepartment?: string
     priority?: string
     status?: string
@@ -47,8 +50,8 @@ interface Props {
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+      prev: { originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -68,6 +71,10 @@ function IncidentsRow({
   canEditCategory,
   categoryOptions,
   onDelete,
+  meetingSessionId,
+  meetingSessionStatus,
+  initialMeetingComment,
+  onMeetingCommentSaved,
   editValues,
   setEditValues,
 }: Props) {
@@ -107,6 +114,8 @@ function IncidentsRow({
       : 'Obert'
 
   const colCount = 13
+  const hasMeetingComment = Boolean(initialMeetingComment?.trim())
+  const toggleLabel = opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'
 
   return (
     <>
@@ -119,19 +128,30 @@ function IncidentsRow({
         onClick={() => !isEditing && beginEdit(inc)}
       >
       <td className="p-1 align-middle">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleOps(inc)
-          }}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
-          title={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
-          aria-label={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
-          aria-expanded={opsExpanded}
-        >
-          {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
+        <div className="relative w-fit">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleOps(inc)
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+            title={hasMeetingComment ? `${toggleLabel}. Té comentari de reunió` : toggleLabel}
+            aria-label={hasMeetingComment ? `${toggleLabel}. Té comentari de reunió` : toggleLabel}
+            aria-expanded={opsExpanded}
+          >
+            {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {hasMeetingComment ? (
+            <span
+              className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm ring-2 ring-white"
+              title="Té comentari de reunió"
+              aria-hidden="true"
+            >
+              <MessageSquareText className="h-3 w-3" />
+            </span>
+          ) : null}
+        </div>
       </td>
       {/* Nº */}
       <td className="p-1 align-middle">
@@ -244,30 +264,15 @@ function IncidentsRow({
         )}
       </td>
 
-      {/* Incidència (editable) */}
+      {/* La descripció original de la incidència és immutable. */}
       <td className="p-2 align-top">
-        {isEditing ? (
-          <Textarea
-            value={editValues.description}
-            rows={3}
-            className="max-h-36 min-h-[2.75rem] resize-y text-base font-medium leading-relaxed text-slate-900"
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
-            onBlur={(e) => {
-              if (e.currentTarget.value !== inc.description) {
-                void applyPatch(inc.id, { description: e.currentTarget.value })
-              }
-            }}
-          />
-        ) : (
-          <div
-            className={incidentDescRead}
-            onClick={(e) => e.stopPropagation()}
-            title={inc.description || undefined}
-          >
-            {inc.description || '—'}
-          </div>
-        )}
+        <div
+          className={incidentDescRead}
+          onClick={(e) => e.stopPropagation()}
+          title={inc.description || undefined}
+        >
+          {inc.description || '—'}
+        </div>
       </td>
 
       <td
@@ -385,11 +390,16 @@ function IncidentsRow({
         <tr className="border-b last:border-0 bg-gradient-to-b from-amber-50/25 to-slate-50/40">
           <td colSpan={colCount} className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
             <IncidentOperationsPanel
+              key={`${meetingSessionId || 'sense-acta'}:${inc.id}`}
               incident={inc}
               onIncidentPatch={onIncidentPatch}
               onIncidentLocalPatch={onIncidentLocalPatch}
               initialActions={initialActions}
               onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+              meetingSessionId={meetingSessionId}
+              meetingSessionStatus={meetingSessionStatus}
+              initialMeetingComment={initialMeetingComment}
+              onMeetingCommentSaved={onMeetingCommentSaved}
             />
           </td>
         </tr>

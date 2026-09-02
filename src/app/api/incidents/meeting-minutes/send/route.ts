@@ -47,13 +47,13 @@ function buildEmailBody(input: {
     '',
     `Període del recull adjunt: ${period}`,
     '',
-    'Notes de la reunió:',
-    input.notes.trim() || '(sense notes)',
-    '',
     'Assistència:',
     input.attendanceSummary,
     '',
     'Trobaràs adjunt el recull d incidències en format HTML (obrir i imprimir com a PDF des del navegador).',
+    '',
+    'Notes de la reunió:',
+    input.notes.trim() || '(sense notes)',
   ].join('\n')
 }
 
@@ -105,8 +105,12 @@ export async function POST(req: Request) {
     const generatedByLabel = String(auth.user.name || auth.user.email || '').trim()
 
     const logoSrc = getCalBlayLogoDataUrl() || '/logo.png'
+    const incidentsWithComments = (incidents as Incident[]).map((incident) => ({
+      ...incident,
+      meetingComment: session.incidentComments[String(incident.id || '').trim()]?.text || '',
+    }))
     const html = buildIncidentsMeetingMinutesHtml({
-      incidents: incidents as Incident[],
+      incidents: incidentsWithComments,
       filters: session.incidentFilters,
       meetingNotes: session.notes,
       generatedAtIso: now,

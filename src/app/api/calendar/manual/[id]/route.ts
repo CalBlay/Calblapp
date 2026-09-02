@@ -10,6 +10,7 @@ import {
   isAllowedCalendarManualCollection,
   pickCalendarManualPutFields,
 } from '@/lib/calendar/calendarManualCollection'
+import { CALENDAR_MANUAL_OVERRIDE_FIELDS } from '@/lib/calendar/manualOverrides'
 
 function accessUserFromSession(user: {
   id: string
@@ -31,22 +32,6 @@ function accessUserFromSession(user: {
 
 
 export const runtime = 'nodejs'
-
-const MODAL_OVERRIDE_FIELDS = new Set([
-  'LN',
-  'code',
-  'NomEvent',
-  'DataInici',
-  'DataFi',
-  'HoraInici',
-  'HoraFi',
-  'NumPax',
-  'Ubicacio',
-  'Servei',
-  'Comercial',
-  'ComercialIntern',
-  'Responsable',
-])
 
 const comparable = (value: unknown) => {
   if (value === null || value === undefined) return ''
@@ -140,7 +125,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
     }
 
-    const safeData = pickCalendarManualPutFields(data, MODAL_OVERRIDE_FIELDS)
+    const safeData = pickCalendarManualPutFields(data, CALENDAR_MANUAL_OVERRIDE_FIELDS)
 
     const docRef = db.collection(collection).doc(id)
     const now = new Date().toISOString()
@@ -165,7 +150,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
 
     for (const [field, value] of Object.entries(safeData)) {
-      if (!MODAL_OVERRIDE_FIELDS.has(field)) continue
+      if (!CALENDAR_MANUAL_OVERRIDE_FIELDS.has(field)) continue
       if (comparable(previous[field]) !== comparable(value)) {
         manualOverrides[field] = true
       }

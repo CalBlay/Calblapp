@@ -48,6 +48,10 @@ import {
 import { normalizeDept } from '@/lib/accessControl'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import type {
+  IncidentMeetingComment,
+  IncidentMeetingComments,
+} from '@/lib/incidentMeetingSession'
 
 const INCIDENT_DATE_MODE_LABELS: Record<'all' | 'event', string> = {
   all: 'Sense filtre de data',
@@ -117,6 +121,7 @@ export default function IncidentsPage() {
   const [meetingMinutesHistoryOpen, setMeetingMinutesHistoryOpen] = useState(false)
   const [meetingActaStatus, setMeetingActaStatus] = useState<'draft' | 'finalized' | null>(null)
   const [activeMeetingSessionId, setActiveMeetingSessionId] = useState<string | null>(null)
+  const [activeMeetingComments, setActiveMeetingComments] = useState<IncidentMeetingComments>({})
   const [selectedMeetingSessionId, setSelectedMeetingSessionId] = useState<string | null>(null)
   const [selectedMeetingSession, setSelectedMeetingSession] = useState<import('@/lib/incidentMeetingSession').IncidentMeetingSession | null>(null)
   const [incidentCategoryOptions, setIncidentCategoryOptions] = useState<Array<{ id: string; label: string }>>([])
@@ -131,12 +136,26 @@ export default function IncidentsPage() {
         const sessionId = String(json?.session?.id || '').trim()
         setMeetingActaStatus(status === 'finalized' ? 'finalized' : status === 'draft' ? 'draft' : null)
         setActiveMeetingSessionId(sessionId || null)
+        setActiveMeetingComments(json?.session?.incidentComments || {})
       })
       .catch(() => {
         setMeetingActaStatus(null)
         setActiveMeetingSessionId(null)
+        setActiveMeetingComments({})
       })
   }, [canMeetingMinutes, meetingMinutesHistoryOpen, meetingMinutesOpen, selectedMeetingSessionId])
+
+  const handleMeetingCommentSaved = React.useCallback(
+    (incidentId: string, comment: IncidentMeetingComment | null) => {
+      setActiveMeetingComments((current) => {
+        const next = { ...current }
+        if (comment) next[incidentId] = comment
+        else delete next[incidentId]
+        return next
+      })
+    },
+    []
+  )
 
   useEffect(() => {
     if (!canEditIncidentCategory) {
@@ -737,6 +756,10 @@ export default function IncidentsPage() {
             canDeleteIncident={canDeleteRow}
             canEditCategory={canEditIncidentCategory}
             categoryOptions={incidentCategoryOptions}
+            meetingSessionId={activeMeetingSessionId}
+            meetingSessionStatus={meetingActaStatus}
+            meetingComments={activeMeetingComments}
+            onMeetingCommentSaved={handleMeetingCommentSaved}
           />
         </div>
       )}

@@ -1,11 +1,10 @@
 'use client'
 
 import React from 'react'
-import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, MessageSquareText, Trash2 } from 'lucide-react'
 import IncidentOperationsPanel from './IncidentOperationsPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -17,6 +16,7 @@ import type { Incident, IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
 
 interface Props {
   inc: Incident
@@ -33,9 +33,12 @@ interface Props {
   canDelete: boolean
   canEditCategory: boolean
   categoryOptions: Array<{ id: string; label: string }>
+  meetingSessionId?: string | null
+  meetingSessionStatus?: IncidentMeetingSessionStatus | null
+  initialMeetingComment?: string
+  onMeetingCommentSaved?: (incidentId: string, comment: IncidentMeetingComment | null) => void
   onDelete: (row: Incident) => void
   editValues: {
-    description?: string
     originDepartment?: string
     priority?: string
     status?: string
@@ -43,8 +46,8 @@ interface Props {
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+      prev: { originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -63,6 +66,10 @@ export default function IncidentsMobileCard({
   canDelete,
   canEditCategory,
   categoryOptions,
+  meetingSessionId,
+  meetingSessionStatus,
+  initialMeetingComment,
+  onMeetingCommentSaved,
   onDelete,
   editValues,
   setEditValues,
@@ -94,6 +101,8 @@ export default function IncidentsMobileCard({
       : workflow === 'tancat'
       ? 'Tancat'
       : 'Obert'
+  const hasMeetingComment = Boolean(initialMeetingComment?.trim())
+  const toggleLabel = opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'
 
   return (
     <article
@@ -115,19 +124,30 @@ export default function IncidentsMobileCard({
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleOps(inc)
-            }}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
-            title={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
-            aria-label={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
-            aria-expanded={opsExpanded}
-          >
-            {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleOps(inc)
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+              title={hasMeetingComment ? `${toggleLabel}. Té comentari de reunió` : toggleLabel}
+              aria-label={hasMeetingComment ? `${toggleLabel}. Té comentari de reunió` : toggleLabel}
+              aria-expanded={opsExpanded}
+            >
+              {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {hasMeetingComment ? (
+              <span
+                className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm ring-2 ring-white"
+                title="Té comentari de reunió"
+                aria-hidden="true"
+              >
+                <MessageSquareText className="h-3 w-3" />
+              </span>
+            ) : null}
+          </div>
           {inc.actionsCount ? (
             <span className={cn(typography('bodyXs'), 'rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700')}>
               {inc.actionsCount} acc.
@@ -200,27 +220,12 @@ export default function IncidentsMobileCard({
       <div className="mt-3 space-y-3">
         <div>
           <p className={cn(typography('label'), 'mb-1.5 text-slate-500')}>Incidència</p>
-          {isEditing ? (
-            <Textarea
-              value={editValues.description}
-              rows={4}
-              className="max-h-48 min-h-[3.5rem] resize-y text-base font-medium leading-relaxed text-slate-900"
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
-              onBlur={(e) => {
-                if (e.currentTarget.value !== inc.description) {
-                  void applyPatch(inc.id, { description: e.currentTarget.value })
-                }
-              }}
-            />
-          ) : (
-            <div
-              className="max-h-48 min-h-[3rem] overflow-y-auto overscroll-contain rounded-xl border border-slate-100/90 bg-slate-50/60 px-3.5 py-3 text-base font-medium leading-relaxed text-slate-900 whitespace-pre-wrap"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {inc.description || '—'}
-            </div>
-          )}
+          <div
+            className="max-h-48 min-h-[3rem] overflow-y-auto overscroll-contain rounded-xl border border-slate-100/90 bg-slate-50/60 px-3.5 py-3 text-base font-medium leading-relaxed text-slate-900 whitespace-pre-wrap"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {inc.description || '—'}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -340,11 +345,16 @@ export default function IncidentsMobileCard({
       {opsExpanded ? (
         <div className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
           <IncidentOperationsPanel
+            key={`${meetingSessionId || 'sense-acta'}:${inc.id}`}
             incident={inc}
             onIncidentPatch={onIncidentPatch}
             onIncidentLocalPatch={onIncidentLocalPatch}
             initialActions={initialActions}
             onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+            meetingSessionId={meetingSessionId}
+            meetingSessionStatus={meetingSessionStatus}
+            initialMeetingComment={initialMeetingComment}
+            onMeetingCommentSaved={onMeetingCommentSaved}
           />
         </div>
       ) : null}

@@ -156,6 +156,7 @@ export async function POST(req: Request) {
       notes: String(body.notes || ''),
       incidentFilters: meetingFiltersForFirestore(incidentFilters),
       attendees: meetingAttendeesForFirestore(parsedAttendees),
+      incidentComments: {},
       createdAt: now,
       updatedAt: now,
       createdById: user.id,

@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, MessageSquareText, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -21,6 +22,11 @@ import { INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import {
+  INCIDENT_MEETING_COMMENT_MAX_LENGTH,
+  type IncidentMeetingComment,
+  type IncidentMeetingSessionStatus,
+} from '@/lib/incidentMeetingSession'
 
 export type IncidentActionRow = IncidentAction & {
   status: IncidentActionStatus
@@ -157,6 +163,10 @@ interface Props {
   onIncidentLocalPatch?: (id: string, data: Partial<Incident>) => void
   initialActions?: IncidentActionRow[]
   onIncidentActionsLocalPatch?: (id: string, actions: IncidentActionRow[]) => void
+  meetingSessionId?: string | null
+  meetingSessionStatus?: IncidentMeetingSessionStatus | null
+  initialMeetingComment?: string
+  onMeetingCommentSaved?: (incidentId: string, comment: IncidentMeetingComment | null) => void
 }
 
 function ActionRowDeptAssignInline({
@@ -262,6 +272,10 @@ export default function IncidentOperationsPanel({
   onIncidentLocalPatch,
   initialActions,
   onIncidentActionsLocalPatch,
+  meetingSessionId,
+  meetingSessionStatus,
+  initialMeetingComment = '',
+  onMeetingCommentSaved,
 }: Props) {
   const { data: session } = useSession()
   const sessionUser = session?.user as { name?: string; email?: string; id?: string } | undefined
@@ -282,6 +296,13 @@ export default function IncidentOperationsPanel({
   const [editingDue, setEditingDue] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [deletingActionId, setDeletingActionId] = useState<string | null>(null)
+  const [meetingComment, setMeetingComment] = useState(initialMeetingComment)
+  const [meetingCommentSaveState, setMeetingCommentSaveState] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle')
+  const meetingCommentRef = useRef(initialMeetingComment)
+  const savedMeetingCommentRef = useRef(initialMeetingComment)
+  const meetingCommentSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   const { caps: newFormCaps, loading: newFormCapsLoading } = useCapsForDepartment(
     newDept.trim() || undefined
@@ -334,6 +355,53 @@ export default function IncidentOperationsPanel({
       void loadActions()
     }
   }, [incident, initialActions, loadActions])
+
+  const persistMeetingComment = useCallback(
+    (value: string) => {
+      if (!meetingSessionId || meetingSessionStatus !== 'draft') return Promise.resolve()
+      const nextValue = value.slice(0, INCIDENT_MEETING_COMMENT_MAX_LENGTH)
+      if (nextValue === savedMeetingCommentRef.current) return Promise.resolve()
+
+      setMeetingCommentSaveState('saving')
+      const operation = meetingCommentSaveQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (nextValue === savedMeetingCommentRef.current) return
+          const response = await fetch('/api/incidents/meeting-minutes/comments', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: meetingSessionId,
+              incidentId: incident.id,
+              text: nextValue,
+            }),
+          })
+          const json = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(String(json?.error || 'No s’ha pogut desar el comentari'))
+          savedMeetingCommentRef.current = nextValue
+          onMeetingCommentSaved?.(incident.id, json.comment || null)
+        })
+        .then(() => {
+          setMeetingCommentSaveState(
+            meetingCommentRef.current === savedMeetingCommentRef.current ? 'saved' : 'idle'
+          )
+        })
+        .catch(() => setMeetingCommentSaveState('error'))
+
+      meetingCommentSaveQueueRef.current = operation
+      return operation
+    },
+    [incident.id, meetingSessionId, meetingSessionStatus, onMeetingCommentSaved]
+  )
+
+  useEffect(() => {
+    if (!meetingSessionId || meetingSessionStatus !== 'draft') return
+    if (meetingComment === savedMeetingCommentRef.current) return
+    const timer = window.setTimeout(() => {
+      void persistMeetingComment(meetingComment)
+    }, 700)
+    return () => window.clearTimeout(timer)
+  }, [meetingComment, meetingSessionId, meetingSessionStatus, persistMeetingComment])
 
   useEffect(() => {
     setNewAssignee('')
@@ -519,6 +587,50 @@ export default function IncidentOperationsPanel({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>
+      ) : null}
+
+      {meetingSessionId ? (
+        <section className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 sm:p-4">
+          <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <MessageSquareText className="h-4 w-4 text-sky-700" aria-hidden />
+                Comentari de la reunió
+              </h4>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Aquest text queda vinculat a l’acta; la descripció original no es modifica.
+              </p>
+            </div>
+            <span className="flex min-h-5 items-center gap-1 text-xs text-slate-500" aria-live="polite">
+              {meetingSessionStatus === 'finalized' ? 'Acta finalitzada' : null}
+              {meetingSessionStatus === 'draft' && meetingCommentSaveState === 'saving' ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Desant…</>
+              ) : null}
+              {meetingSessionStatus === 'draft' && meetingCommentSaveState === 'saved' ? (
+                <><Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> Desat</>
+              ) : null}
+              {meetingSessionStatus === 'draft' && meetingCommentSaveState === 'error' ? (
+                <span className="text-red-700">Error en desar; torna-ho a provar</span>
+              ) : null}
+            </span>
+          </div>
+          <Textarea
+            value={meetingComment}
+            onChange={(event) => {
+              const value = event.target.value
+              meetingCommentRef.current = value
+              setMeetingComment(value)
+              setMeetingCommentSaveState('idle')
+            }}
+            onBlur={() => void persistMeetingComment(meetingCommentRef.current)}
+            maxLength={INCIDENT_MEETING_COMMENT_MAX_LENGTH}
+            rows={5}
+            readOnly={meetingSessionStatus !== 'draft'}
+            placeholder="Escriu aquí el que es comenta i s’acorda durant la reunió…"
+            aria-label="Comentari de la reunió per a aquesta incidència"
+            className="min-h-32 resize-y border-sky-200 bg-white text-sm leading-6 shadow-sm focus-visible:ring-sky-400/40 read-only:bg-slate-50"
+          />
+        </section>
       ) : null}
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">

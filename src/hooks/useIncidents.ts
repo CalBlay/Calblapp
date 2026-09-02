@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import type { IncidentActionStatus } from '@/lib/incidentPolicy'
+import type { IncidentEventResponsible } from '@/lib/incidentEventResponsibles'
 
 export interface Incident {
   id: string
@@ -16,6 +17,7 @@ export interface Incident {
   eventLocation?: string
   eventDate?: string
   eventCommercial?: string
+  eventResponsibles?: IncidentEventResponsible[]
   originDepartment?: string
   importance: string
   priority?: string
@@ -42,6 +44,7 @@ export interface Incident {
   actionsCount?: number
   openActionsCount?: number
   meetingMinutesActionsText?: string
+  meetingComment?: string
 }
 
 export interface IncidentAction {

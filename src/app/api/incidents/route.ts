@@ -15,6 +15,11 @@ import { canViewIncidentsModule } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
 import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
+import {
+  extractQuadrantResponsibleNames,
+  type IncidentEventResponsible,
+  type IncidentResponsibleDepartment,
+} from '@/lib/incidentEventResponsibles'
 
 interface IncidentDoc {
   id?: string;
@@ -60,6 +65,115 @@ type IncidentPayload = {
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
+}
+
+const INCIDENT_QUADRANT_COLLECTIONS: Array<{
+  collection: string
+  department: IncidentResponsibleDepartment
+}> = [
+  { collection: 'quadrantsLogistica', department: 'logistica' },
+  { collection: 'quadrantsCuina', department: 'cuina' },
+  { collection: 'quadrantsServeis', department: 'serveis' },
+]
+
+const chunkValues = (values: string[], size = 10): string[][] => {
+  const chunks: string[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
+}
+
+async function loadEventOperationalResponsibles(
+  eventIds: string[],
+  eventCodesById: ReadonlyMap<string, string>
+): Promise<Map<string, IncidentEventResponsible[]>> {
+  const namesByEvent = new Map<
+    string,
+    Map<IncidentResponsibleDepartment, Set<string>>
+  >()
+  const addDocument = (
+    department: IncidentResponsibleDepartment,
+    eventId: string,
+    data: Record<string, unknown>
+  ) => {
+    if (!eventId) return
+    const names = extractQuadrantResponsibleNames(data)
+    if (names.length === 0) return
+    const byDepartment = namesByEvent.get(eventId) || new Map()
+    const currentNames = byDepartment.get(department) || new Set<string>()
+    names.forEach((name) => currentNames.add(name))
+    byDepartment.set(department, currentNames)
+    namesByEvent.set(eventId, byDepartment)
+  }
+
+  await Promise.all(
+    INCIDENT_QUADRANT_COLLECTIONS.flatMap(({ collection, department }) =>
+      chunkValues(eventIds).map(async (chunk) => {
+        const snap = await firestoreAdmin
+          .collection(collection)
+          .where('eventId', 'in', chunk)
+          .get()
+          .catch((error) => {
+            console.warn(`[incidents] No s'han pogut llegir responsables de ${collection}`, error)
+            return null
+          })
+        snap?.docs.forEach((doc) => {
+          const data = doc.data() as Record<string, unknown>
+          addDocument(department, String(data.eventId || '').trim(), data)
+        })
+      })
+    )
+  )
+
+  const eventIdsByCode = new Map<string, string[]>()
+  for (const eventId of eventIds) {
+    const code = String(eventCodesById.get(eventId) || '').trim().toUpperCase()
+    if (!code) continue
+    eventIdsByCode.set(code, [...(eventIdsByCode.get(code) || []), eventId])
+  }
+
+  await Promise.all(
+    INCIDENT_QUADRANT_COLLECTIONS.flatMap(({ collection, department }) => {
+      const missingCodes = Array.from(eventIdsByCode.entries())
+        .filter(([eventCode, ids]) =>
+          Boolean(eventCode) &&
+          ids.some((eventId) => !namesByEvent.get(eventId)?.get(department)?.size)
+        )
+        .map(([eventCode]) => eventCode)
+
+      return chunkValues(missingCodes).map(async (chunk) => {
+        const snap = await firestoreAdmin
+          .collection(collection)
+          .where('code', 'in', chunk)
+          .get()
+          .catch((error) => {
+            console.warn(`[incidents] Fallback per codi fallit a ${collection}`, error)
+            return null
+          })
+        snap?.docs.forEach((doc) => {
+          const data = doc.data() as Record<string, unknown>
+          const code = String(data.code || '').trim().toUpperCase()
+          for (const eventId of eventIdsByCode.get(code) || []) {
+            addDocument(department, eventId, data)
+          }
+        })
+      })
+    })
+  )
+
+  return new Map(
+    eventIds.map((eventId) => {
+      const byDepartment = namesByEvent.get(eventId)
+      const responsibles = INCIDENT_QUADRANT_COLLECTIONS.flatMap(({ department }) =>
+        Array.from(byDepartment?.get(department) || []).map((name) => ({
+          department,
+          name,
+        }))
+      )
+      return [eventId, responsibles]
+    })
+  )
 }
 
 /* -------------------------------------------------------
@@ -667,6 +781,18 @@ export async function GET(req: Request) {
       })
     }
 
+    const eventCodesById = new Map(
+      eventIds.map((id) => {
+        const ev = eventsMap.get(id) || {}
+        const incidentCode = raw.find((incident) => incident.eventId === id)?.eventCode
+        return [id, getEventCode(ev) || String(incidentCode || '').trim()]
+      })
+    )
+    const eventResponsiblesMap = await loadEventOperationalResponsibles(
+      eventIds,
+      eventCodesById
+    )
+
     // 3️⃣ Enriquir incidències
     const incidents = raw.map((inc) => {
       const ev = eventsMap.get(inc.eventId || "") || {};
@@ -681,6 +807,7 @@ export async function GET(req: Request) {
         eventTitle: ev.NomEvent || "",
         eventLocation: ev.Ubicacio || "",
         eventCommercial: ev.Comercial || ev.comercial || "",
+        eventResponsibles: eventResponsiblesMap.get(String(inc.eventId || '')) || [],
         fincaId: ev.FincaId || ev.FincaCode || "",
       };
     });
