@@ -47,6 +47,11 @@ import {
   type MaintenanceWorkLogEntry,
 } from '@/lib/maintenanceWorkLogs'
 import {
+  normalizeAssignedIds,
+  rangesOverlap,
+  shouldCheckMaintenanceAssigneeConflict,
+} from '@/lib/maintenanceAssigneeConflict'
+import {
   syncMaintenanceTicketOutlookCalendar,
   type MaintenanceTicketOutlookEventRef,
 } from '@/lib/maintenanceTicketOutlook'
@@ -203,25 +208,10 @@ const normalizeWorkflowStage = (value?: string | null) => {
   return 'tickets_inbox'
 }
 
-const normalizeAssignedIds = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.map((entry) => String(entry || '').trim()).filter(Boolean)
-    : []
-
 const haveSameAssignedIds = (left: string[], right: string[]) => {
   if (left.length !== right.length) return false
   const rightSet = new Set(right)
   return left.every((entry) => rightSet.has(entry))
-}
-
-const rangesOverlap = (
-  startA: number | null,
-  endA: number | null,
-  startB: number | null,
-  endB: number | null
-) => {
-  if (startA === null || endA === null || startB === null || endB === null) return false
-  return startA < endB && endA > startB
 }
 
 async function findMaintenanceTicketAssigneeConflict(params: {
@@ -687,20 +677,33 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
-    const overlapConflict = await findMaintenanceTicketAssigneeConflict({
-      ticketId: id,
-      assignedToIds: nextAssignedIds,
-      plannedStart: nextPlannedStart,
-      plannedEnd: nextPlannedEnd,
-    })
-    if (overlapConflict) {
-      const who = overlapConflict.conflictingPersonName || overlapConflict.conflictingPersonId || 'Operari'
-      return NextResponse.json(
-        {
-          error: `${who} ja te un altre ticket assignat en aquesta mateixa franja (${overlapConflict.conflictingTicketCode}).`,
-        },
-        { status: 409 }
-      )
+    if (
+      shouldCheckMaintenanceAssigneeConflict({
+        planningTouched,
+        planningChanged,
+        assignedToIds: nextAssignedIds,
+        plannedStart: nextPlannedStart,
+        plannedEnd: nextPlannedEnd,
+      })
+    ) {
+      const overlapConflict = await findMaintenanceTicketAssigneeConflict({
+        ticketId: id,
+        assignedToIds: nextAssignedIds,
+        plannedStart: nextPlannedStart,
+        plannedEnd: nextPlannedEnd,
+      })
+      if (overlapConflict) {
+        const who =
+          overlapConflict.conflictingPersonName ||
+          overlapConflict.conflictingPersonId ||
+          'Operari'
+        return NextResponse.json(
+          {
+            error: `${who} ja te un altre ticket assignat en aquesta mateixa franja (${overlapConflict.conflictingTicketCode}).`,
+          },
+          { status: 409 }
+        )
+      }
     }
 
     let autoReturnToPlanner = false
