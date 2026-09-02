@@ -1,7 +1,6 @@
 // src/app/api/transports/assignacions/row/save/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { getToken } from 'next-auth/jwt'
 import crypto from 'crypto'
 import {
   parseConductorSlotIndex,
@@ -12,6 +11,7 @@ import {
   stripPriorConductorDuplicates,
 } from '@/lib/transportAssignacionsPriorIdentity'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { requireAssignacionsEdit } from '@/lib/server/assignacionsApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -70,11 +70,6 @@ type QuadrantRecord = Record<string, unknown> & {
   startTime?: string
   arrivalTime?: string
   endTime?: string
-}
-
-type TokenLike = {
-  name?: string
-  email?: string
 }
 
 function normName(s?: string | null) {
@@ -160,9 +155,8 @@ function syncLogisticsGroupsDrivers(
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const authToken = token as TokenLike
+    const auth = await requireAssignacionsEdit()
+    if (!auth.ok) return auth.res
 
     const body = (await req.json()) as SaveBody
     const {
@@ -222,7 +216,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const user = authToken.name || authToken.email || 'system'
+    const user = auth.user.name || auth.user.email || 'system'
 
     const conductors = Array.isArray(current.conductors) ? current.conductors : []
 

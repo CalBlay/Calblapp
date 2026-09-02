@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { getToken } from 'next-auth/jwt'
+import { requireAssignacionsEdit } from '@/lib/server/assignacionsApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -22,11 +22,6 @@ type AssignmentRow = {
   updatedAt: string
 }
 
-type TokenLike = {
-  name?: string
-  email?: string
-}
-
 function uuid() {
   // node runtime
   return crypto.randomUUID()
@@ -34,9 +29,8 @@ function uuid() {
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const authToken = token as TokenLike
+    const auth = await requireAssignacionsEdit()
+    if (!auth.ok) return auth.res
 
     const { eventCode, initial } = await req.json()
     if (!eventCode) return NextResponse.json({ error: 'Missing eventCode' }, { status: 400 })
@@ -64,7 +58,7 @@ export async function POST(req: NextRequest) {
       {
         rows: [...rows, newRow],
         updatedAt: new Date().toISOString(),
-        updatedBy: authToken.name || authToken.email || 'unknown',
+        updatedBy: auth.user.name || auth.user.email || 'unknown',
       },
       { merge: true }
     )

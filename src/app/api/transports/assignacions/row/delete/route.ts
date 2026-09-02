@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { getToken } from 'next-auth/jwt'
 import {
   parseConductorSlotIndex,
   parsePendingAssignacionsRowId,
 } from '@/lib/transportAssignacionsRowSlot'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { requireAssignacionsEdit } from '@/lib/server/assignacionsApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -17,18 +17,10 @@ type QuadrantRecord = Record<string, unknown> & {
   conductors?: QuadrantConductorRecord[]
 }
 
-type TokenLike = {
-  name?: string
-  email?: string
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const authToken = token as TokenLike
+    const auth = await requireAssignacionsEdit()
+    if (!auth.ok) return auth.res
 
     const body = await req.json()
     const {
@@ -111,7 +103,7 @@ export async function POST(req: NextRequest) {
     await ref.update({
       conductors: nextConductors,
       updatedAt: new Date().toISOString(),
-      updatedBy: authToken.name || authToken.email || 'system',
+      updatedBy: auth.user.name || auth.user.email || 'system',
     })
 
     revalidateQuadrantsListCache()
