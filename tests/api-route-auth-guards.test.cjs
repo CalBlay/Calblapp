@@ -85,6 +85,28 @@ test('each handler on critical data routes gates with requireAuth before work', 
   }
 })
 
+test('GET /api/modifications requires a session before listing or enriching stage_verd', () => {
+  const source = readRoute('src/app/api/modifications/route.ts')
+  assert.match(
+    source,
+    /import\s+\{\s*requireAuth\s*\}\s+from\s+['"]@\/lib\/server\/apiAuth['"]/,
+    'modifications list must import requireAuth'
+  )
+  const get = handlerBody(source, 'GET')
+  assert.match(get, /const\s+auth\s*=\s*await\s+requireAuth\s*\(\s*\)/)
+  assert.match(get, /if\s*\(\s*!auth\.ok\s*\)\s*return\s+auth\.res/)
+
+  const authIdx = get.indexOf('await requireAuth()')
+  for (const marker of ['firestoreAdmin', 'collection("modifications")', 'collection("stage_verd")']) {
+    const markerIdx = get.indexOf(marker)
+    if (markerIdx === -1) continue
+    assert.ok(
+      authIdx !== -1 && authIdx < markerIdx,
+      `GET /api/modifications: requireAuth must run before ${marker}`
+    )
+  }
+})
+
 test('sharepoint browse POST still creates anonymous Graph links only after auth', () => {
   const source = readRoute('src/app/api/sharepoint/browse/route.ts')
   const post = handlerBody(source, 'POST')

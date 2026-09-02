@@ -4,6 +4,7 @@ import { firestoreAdmin } from "@/lib/firebaseAdmin"
 import admin from "firebase-admin"
 import { getToken } from "next-auth/jwt"
 import type { JWT } from "next-auth/jwt"
+import { requireAuth } from "@/lib/server/apiAuth"
 
 interface ModificationDoc {
   id?: string
@@ -162,6 +163,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: Request) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { searchParams } = new URL(req.url)
   const from = searchParams.get("from")
   const to = searchParams.get("to")
