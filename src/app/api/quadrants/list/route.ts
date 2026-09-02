@@ -4,7 +4,10 @@ import { unstable_cache } from 'next/cache'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole as normalizeRoleCore } from '@/lib/roles'
-import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
+import {
+  expandLegacyExternalWorkers,
+  readLegacyExternalWorkersFromDoc,
+} from '@/lib/legacyExternalWorkers'
 import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
 
@@ -283,24 +286,6 @@ const mapPerson = (p: FirestorePerson, doc?: FirestoreDraftDoc): Person => ({
   plate: p?.plate ?? '',
   vehicleType: p?.vehicleType ?? p?.type ?? '',
 })
-
-const expandLegacyExternalWorkers = (entries: Array<Record<string, unknown>> = []): Person[] =>
-  entries.flatMap((entry) => {
-    const count = Math.max(1, Number(entry?.workers || 0))
-    const name = String(entry?.name || 'ETT').trim() || 'ETT'
-    return Array.from({ length: count }, () => ({
-      id: '',
-      name,
-      meetingPoint: String(entry?.meetingPoint || ''),
-      startDate: String(entry?.startDate || ''),
-      startTime: String(entry?.startTime || ''),
-      endDate: String(entry?.endDate || ''),
-      endTime: String(entry?.endTime || ''),
-      arrivalTime: String(entry?.arrivalTime || ''),
-      plate: '',
-      vehicleType: '',
-    }))
-  })
 
 const canonicalEventId = (draft: Pick<Draft, 'eventId' | 'id'>) =>
   String(draft.eventId || draft.id || '')

@@ -1,5 +1,8 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
+import {
+  expandLegacyExternalWorkers,
+  readLegacyExternalWorkersFromDoc,
+} from '@/lib/legacyExternalWorkers'
 import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 
@@ -24,36 +27,6 @@ const formatDayField = (primary: unknown, ...fallbacks: unknown[]): string => {
   }
   return ''
 }
-
-type LegacyExternalEntry = {
-  workers?: unknown
-  name?: unknown
-  meetingPoint?: unknown
-  startDate?: unknown
-  startTime?: unknown
-  endDate?: unknown
-  endTime?: unknown
-  arrivalTime?: unknown
-}
-
-const expandLegacyExternalWorkers = (entries: LegacyExternalEntry[] = []) =>
-  entries.flatMap((entry) => {
-    const count = Math.max(1, Number(entry?.workers || 0))
-    const baseName = String(entry?.name || 'ETT').trim() || 'ETT'
-    return Array.from({ length: count }, () => ({
-      id: '',
-      name: baseName,
-      meetingPoint: entry?.meetingPoint || '',
-      startDate: entry?.startDate || '',
-      startTime: entry?.startTime || '',
-      endDate: entry?.endDate || '',
-      endTime: entry?.endTime || '',
-      arrivalTime: entry?.arrivalTime || '',
-      plate: '',
-      vehicleType: '',
-      isExternal: true,
-    }))
-  })
 
 async function resolveReadCollectionForDepartment(department: string) {
   return resolveQuadrantCollection(department, { prefer: 'singular' })
