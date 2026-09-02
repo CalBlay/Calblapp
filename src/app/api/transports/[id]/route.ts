@@ -1,23 +1,24 @@
 // filename: src/app/api/transports/[id]/route.ts
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
-
+import { requireAuth } from '@/lib/server/apiAuth'
+import { requireTransportsFleetEdit } from '@/lib/server/transportsApiAuth'
 
 const COLLECTION = 'transports'
 
 // PUT → Actualitzar un transport
 export async function PUT(
   req: Request,
-  context: { params: Promise<{ id: string }> } // 👈 params ara és una Promise
+  context: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = await requireTransportsFleetEdit(auth)
+  if (denied) return denied
 
   try {
-    const { id } = await context.params // 👈 fem await abans d’usar id
+    const { id } = await context.params
     const body = await req.json()
     await db.collection(COLLECTION).doc(id).update(body)
     try {
@@ -38,11 +39,13 @@ export async function DELETE(
   _: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = await requireTransportsFleetEdit(auth)
+  if (denied) return denied
 
   try {
-    const { id } = await context.params // 👈 també aquí
+    const { id } = await context.params
     await db.collection(COLLECTION).doc(id).delete()
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
