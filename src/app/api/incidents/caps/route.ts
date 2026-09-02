@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { capDepartmentMatchesIncidentOrigin } from '@/lib/incidentOriginDepartments'
+import { canBeIncidentActionAssignee } from '@/lib/incidentActionAssignees'
 import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
-import { normalizeRole } from '@/lib/roles'
 
-/** Caps de departament (rol `cap`) per assignar accions derivades, filtrats per departament d’origen. */
+/** Usuaris habilitats per rebre accions, filtrats pel departament seleccionat. */
 export async function GET(req: Request) {
   try {
     const auth = await requireIncidentsModuleView()
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     const caps = snap.docs
       .map((doc) => {
         const data = doc.data() as Record<string, unknown>
-        if (normalizeRole(String(data.role || '')) !== 'cap') return null
+        if (!canBeIncidentActionAssignee(data)) return null
         if (!capDepartmentMatchesIncidentOrigin(deptRaw, String(data.department || ''))) return null
         const name = String(data.name || '').trim() || String(data.email || '').trim()
         if (!name) return null

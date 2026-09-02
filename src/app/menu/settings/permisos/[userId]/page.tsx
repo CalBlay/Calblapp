@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
@@ -33,6 +33,8 @@ type UserAccessAssignment = {
   base?: { role?: Role; department?: string | null }
   permissionSets?: string[]
   overrides?: AssignmentOverride[]
+  canBeIncidentActionAssignee?: boolean
+  isDepartmentHead?: boolean
 }
 
 type EffectiveRow = {
@@ -181,6 +183,7 @@ export default function PermisosUserPage() {
   const [baseRole, setBaseRole] = useState<Role>('treballador')
   const [baseDepartment, setBaseDepartment] = useState<string>('')
   const [overrides, setOverrides] = useState<AssignmentOverride[]>([])
+  const [canBeIncidentActionAssignee, setCanBeIncidentActionAssignee] = useState(false)
   const [actionGroupExpandedManual, setActionGroupExpandedManual] = useState<
     Record<string, boolean>
   >({})
@@ -188,8 +191,10 @@ export default function PermisosUserPage() {
     baseRole: Role
     baseDepartment: string
     overrides: AssignmentOverride[]
+    canBeIncidentActionAssignee: boolean
   } | null>(null)
   const rows = useMemo(() => buildRows(), [])
+  const isDepartmentHead = Boolean(data?.isDepartmentHead)
 
   const getOverrideEffect = (permission: string): 'allow' | 'deny' | null => {
     const found = overrides.find(
@@ -249,10 +254,12 @@ export default function PermisosUserPage() {
     const nextBaseRole = normalizeRole(data.base?.role || 'treballador')
     const nextBaseDepartment = String(data.base?.department || '')
     const nextOverrides = Array.isArray(data.overrides) ? data.overrides : []
+    const nextCanBeIncidentActionAssignee = Boolean(data.canBeIncidentActionAssignee)
 
     setBaseRole(nextBaseRole)
     setBaseDepartment(nextBaseDepartment)
     setOverrides(nextOverrides)
+    setCanBeIncidentActionAssignee(nextCanBeIncidentActionAssignee)
 
     // snapshot per "Desfer canvis"
     if (!initialRef.current) {
@@ -260,6 +267,7 @@ export default function PermisosUserPage() {
         baseRole: nextBaseRole,
         baseDepartment: nextBaseDepartment,
         overrides: nextOverrides,
+        canBeIncidentActionAssignee: nextCanBeIncidentActionAssignee,
       }
     }
   }, [data])
@@ -270,6 +278,7 @@ export default function PermisosUserPage() {
     setBaseRole(snap.baseRole)
     setBaseDepartment(snap.baseDepartment)
     setOverrides(snap.overrides)
+    setCanBeIncidentActionAssignee(snap.canBeIncidentActionAssignee)
     setActionGroupExpandedManual({})
     setMsg('Canvis desfets (tornat a l’últim estat desat)')
   }
@@ -283,6 +292,7 @@ export default function PermisosUserPage() {
         base: { role: baseRole, department: baseDepartment.trim() || null },
         permissionSets: [],
         overrides,
+        canBeIncidentActionAssignee,
       }
       const res = await fetch(`/api/admin/permissions/assignments/${userId}`, {
         method: 'PUT',
@@ -291,6 +301,12 @@ export default function PermisosUserPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(typeof json?.error === 'string' ? json.error : 'Error desant')
+      initialRef.current = {
+        baseRole,
+        baseDepartment,
+        overrides,
+        canBeIncidentActionAssignee,
+      }
       setMsg('Desat correctament')
       await mutate()
     } catch (e) {
@@ -408,7 +424,8 @@ export default function PermisosUserPage() {
                 )
 
               return (
-                <div key={r.key} className="grid grid-cols-12 px-3 py-2 text-sm items-center">
+                <Fragment key={r.key}>
+                <div className="grid grid-cols-12 px-3 py-2 text-sm items-center">
                   <div className="col-span-6 truncate">{label}</div>
 
                   <div className="col-span-3">
@@ -476,6 +493,23 @@ export default function PermisosUserPage() {
                     />
                   </div>
                 </div>
+                {r.level === 'module' && r.path === '/menu/incidents' ? (
+                  <label className="grid grid-cols-12 items-center bg-sky-50/60 px-3 py-2 text-sm">
+                    <span className="col-span-6 pl-4 font-medium text-slate-900">
+                      ↳ Rebre accions
+                    </span>
+                    <span className="col-span-6 flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={isDepartmentHead || canBeIncidentActionAssignee}
+                        disabled={isDepartmentHead}
+                        onChange={(event) => setCanBeIncidentActionAssignee(event.target.checked)}
+                        aria-label="Rebre accions"
+                      />
+                    </span>
+                  </label>
+                ) : null}
+                </Fragment>
               )
             })}
           </div>

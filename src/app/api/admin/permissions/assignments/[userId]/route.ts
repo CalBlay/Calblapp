@@ -12,6 +12,8 @@ type UserAccessAssignment = {
   base?: { role?: Role; department?: string | null }
   permissionSets?: string[]
   overrides?: AssignmentOverride[]
+  canBeIncidentActionAssignee?: boolean
+  isDepartmentHead?: boolean
   updatedAt?: string
   updatedBy?: string
 }
@@ -57,11 +59,19 @@ export async function GET(
       base: base ?? { role: 'treballador', department: null },
       permissionSets: [],
       overrides: [],
+      canBeIncidentActionAssignee: userData.canBeIncidentActionAssignee === true,
+      isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
     } satisfies UserAccessAssignment)
   }
 
   const assignment = snap.data() as UserAccessAssignment
-  return NextResponse.json({ ...assignment, userId: id, name } satisfies UserAccessAssignment)
+  return NextResponse.json({
+    ...assignment,
+    userId: id,
+    name,
+    canBeIncidentActionAssignee: userData.canBeIncidentActionAssignee === true,
+    isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
+  } satisfies UserAccessAssignment)
 }
 
 export async function PUT(
@@ -94,6 +104,7 @@ export async function PUT(
         .map(parseOverrideInput)
         .filter((o): o is AssignmentOverride => o != null)
     : []
+  const incidentActionAssigneeEnabled = Boolean(body.canBeIncidentActionAssignee)
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
   const next: UserAccessAssignment = {
@@ -105,8 +116,27 @@ export async function PUT(
     updatedBy: auth.user.id,
   }
 
-  await ref.set(next, { merge: true })
+  const userRef = firestoreAdmin.collection('users').doc(id)
+  try {
+    await firestoreAdmin.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef)
+      if (!userSnap.exists) throw new Error('USER_NOT_FOUND')
+      tx.set(ref, next, { merge: true })
+      tx.set(
+        userRef,
+        {
+          canBeIncidentActionAssignee: incidentActionAssigneeEnabled,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      )
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
+      return NextResponse.json({ error: 'Usuari no trobat' }, { status: 404 })
+    }
+    throw error
+  }
 
   return NextResponse.json({ ok: true })
 }
-

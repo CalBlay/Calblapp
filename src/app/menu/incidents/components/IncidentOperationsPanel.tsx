@@ -250,9 +250,9 @@ function ActionRowDeptAssignInline({
         >
           <SelectTrigger
             className={cn(ctrl, 'h-8 w-full px-2 text-xs font-medium')}
-            title="Cap assignat"
+            title="Responsable assignat"
           >
-            <SelectValue placeholder={loading ? '...' : 'Cap'} />
+            <SelectValue placeholder={loading ? '...' : 'Responsable'} />
           </SelectTrigger>
           <SelectContent className="rounded-xl border-slate-200 shadow-lg">
             {assigneeSelectItems.map((x) => (
@@ -819,7 +819,7 @@ export default function IncidentOperationsPanel({
                     disabled={!newDept.trim() || newFormCapsLoading}
                   >
                     <SelectTrigger className="bg-white text-slate-700">
-                      <SelectValue placeholder={newFormCapsLoading ? '...' : 'Cap'} />
+                      <SelectValue placeholder={newFormCapsLoading ? '...' : 'Responsable'} />
                     </SelectTrigger>
                     <SelectContent className="rounded-lg border-slate-200 shadow-lg">
                       {newAssigneeItems.map((x) => (

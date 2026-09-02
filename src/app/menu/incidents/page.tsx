@@ -704,34 +704,42 @@ export default function IncidentsPage() {
         ) : null}
       </div>
 
-      <CorporateFiltersShell variant="toolbar" className="mb-2">
-        <div className="flex min-w-[200px] flex-wrap items-center gap-2">
+      <CorporateFiltersShell
+        variant="toolbar"
+        className="mb-2"
+        bodyClassName="overflow-x-auto"
+      >
+        <div className="flex w-max min-w-full items-center gap-3">
           <span className={corporateFilterBadgeClass(true)}>
             {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
           </span>
-        </div>
 
-        <SmartFilters
-          modeDefault="week"
-          modeOptions={['week', 'month', 'year', 'range']}
-          role="Direcció"
-          onChange={handleFilterChange}
-          showDepartment={false}
-          showWorker={false}
-          showLocation={false}
-          showStatus={false}
-          showImportance={false}
-          categoryOptions={categoryOptions}
-          showAdvanced={false}
-          compact
-          resetSignal={dateResetSignal}
-        />
-        <IncidentsLnFilterBadges
-          value={filters.ln}
-          onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
-        />
-        <div className="min-w-[8px] flex-1" />
-        <FilterButton onClick={openFiltersPanel} />
+          <div className="shrink-0">
+            <SmartFilters
+              modeDefault="week"
+              modeOptions={['week', 'month', 'year', 'range']}
+              role="Direcció"
+              onChange={handleFilterChange}
+              showDepartment={false}
+              showWorker={false}
+              showLocation={false}
+              showStatus={false}
+              showImportance={false}
+              categoryOptions={categoryOptions}
+              showAdvanced={false}
+              compact
+              resetSignal={dateResetSignal}
+            />
+          </div>
+
+          <div className="min-w-2 flex-1" />
+
+          <IncidentsLnFilterBadges
+            value={filters.ln}
+            onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
+          />
+          <FilterButton onClick={openFiltersPanel} />
+        </div>
       </CorporateFiltersShell>
 
       {/* Contingut */}
