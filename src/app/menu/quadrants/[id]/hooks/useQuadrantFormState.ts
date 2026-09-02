@@ -64,8 +64,10 @@ export type ResponsableAvailabilityOption = {
 }
 
 export type ServiceGroupPayload = {
+  id?: string
   serviceDate: string
   dateLabel: string | null
+  phaseKey?: ServicePhaseKey
   meetingPoint: string
   startTime: string
   endTime: string

@@ -115,6 +115,9 @@ export type ServeisGroupInput = Record<string, unknown> & {
   id?: string | null
   serviceDate?: string | null
   dateLabel?: string | null
+  /** UI phase key (`event` | `muntatge`); required when dateLabel is empty. */
+  phaseKey?: string | null
+  phaseType?: string | null
   meetingPoint?: string
   startTime?: string
   endTime?: string
