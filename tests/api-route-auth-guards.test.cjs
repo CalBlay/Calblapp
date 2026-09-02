@@ -15,6 +15,7 @@ const AUTH_REQUIRED_ROUTES = [
   'src/app/api/transports/[id]/route.ts',
   'src/app/api/transports/available/route.ts',
   'src/app/api/transports/assignacions/route.ts',
+  'src/app/api/transports/assign/route.ts',
 ]
 
 function readRoute(relPath) {
@@ -112,4 +113,11 @@ test('sharepoint browse POST still creates anonymous Graph links only after auth
   const post = handlerBody(source, 'POST')
   assert.match(post, /createAnonymousViewLink\s*\(/)
   assert.ok(post.indexOf('await requireAuth()') < post.indexOf('createAnonymousViewLink('))
+})
+
+test('transports assign GET lists assignment docs only after auth', () => {
+  const source = readRoute('src/app/api/transports/assign/route.ts')
+  assert.match(source, /const COLLECTION = 'transportAssignmentsV2'/)
+  const get = handlerBody(source, 'GET')
+  assert.ok(get.indexOf('await requireAuth()') < get.indexOf('db.collection(COLLECTION)'))
 })

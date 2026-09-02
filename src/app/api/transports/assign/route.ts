@@ -1,11 +1,11 @@
 // src/app/api/transports/assign/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   orderedDayRangeFromLocalDates,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
@@ -58,12 +58,6 @@ type AssignmentRecord = Record<string, unknown> & {
   endTime?: string
   status?: string
   dayKeys?: string[]
-}
-
-type TokenLike = {
-  name?: string
-  email?: string
-  sub?: string
 }
 
 const quadrantCollections = [
@@ -226,9 +220,8 @@ function sanitizeInput(body: AssignmentInput) {
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const authToken = token as TokenLike
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
 
     const body = (await req.json()) as AssignmentInput
     const cleaned = sanitizeInput(body)
@@ -271,7 +264,7 @@ export async function POST(req: NextRequest) {
       status: 'pending',
       createdAt: now,
       updatedAt: now,
-      createdBy: authToken.name || authToken.email || authToken.sub || 'system',
+      createdBy: auth.user.name || auth.user.email || auth.user.id || 'system',
     }
 
     const ref = await db.collection(COLLECTION).add(doc)
@@ -288,6 +281,9 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { searchParams } = new URL(req.url)
     const date = searchParams.get('date') || undefined
     const plate = searchParams.get('plate') || undefined
