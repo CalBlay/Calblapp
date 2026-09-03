@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole, type Role } from '@/lib/roles'
+import { incidentActionAssigneeUserPatch } from '@/lib/incidentActionAssignees'
 import { buildBootstrapAssignmentUpdate } from '@/lib/permissions/bootstrapAssignments'
 import { parseOverrideInput } from '@/lib/permissions/parseOverrideInput'
 import type { AssignmentOverride } from '@/lib/permissions/types'
@@ -104,7 +105,7 @@ export async function PUT(
         .map(parseOverrideInput)
         .filter((o): o is AssignmentOverride => o != null)
     : []
-  const incidentActionAssigneeEnabled = Boolean(body.canBeIncidentActionAssignee)
+  const assigneeUserPatch = incidentActionAssigneeUserPatch(body as Record<string, unknown>)
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
   const next: UserAccessAssignment = {
@@ -122,14 +123,16 @@ export async function PUT(
       const userSnap = await tx.get(userRef)
       if (!userSnap.exists) throw new Error('USER_NOT_FOUND')
       tx.set(ref, next, { merge: true })
-      tx.set(
-        userRef,
-        {
-          canBeIncidentActionAssignee: incidentActionAssigneeEnabled,
-          updatedAt: Date.now(),
-        },
-        { merge: true }
-      )
+      if (assigneeUserPatch) {
+        tx.set(
+          userRef,
+          {
+            ...assigneeUserPatch,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        )
+      }
     })
   } catch (error) {
     if (error instanceof Error && error.message === 'USER_NOT_FOUND') {

@@ -7,6 +7,7 @@ const ROOT = path.resolve(__dirname, '..')
 
 const {
   canBeIncidentActionAssignee,
+  incidentActionAssigneeUserPatch,
 } = require('../src/lib/incidentActionAssignees')
 const {
   capDepartmentMatchesIncidentOrigin,
@@ -34,9 +35,33 @@ test('eligible assignees still have to match the selected action department', ()
   assert.equal(capDepartmentMatchesIncidentOrigin('Comercial', 'Casaments'), true)
 })
 
+test('omitting the flag from a permissions PUT must not clear it', () => {
+  assert.equal(incidentActionAssigneeUserPatch(null), null)
+  assert.equal(incidentActionAssigneeUserPatch({}), null)
+  assert.equal(
+    incidentActionAssigneeUserPatch({
+      base: { role: 'treballador' },
+      overrides: [],
+    }),
+    null
+  )
+  assert.deepEqual(
+    incidentActionAssigneeUserPatch({ canBeIncidentActionAssignee: true }),
+    { canBeIncidentActionAssignee: true }
+  )
+  assert.deepEqual(
+    incidentActionAssigneeUserPatch({ canBeIncidentActionAssignee: false }),
+    { canBeIncidentActionAssignee: false }
+  )
+})
+
 test('Settings persists the option and the incident selector consumes it', () => {
   const settingsSource = fs.readFileSync(
     path.join(ROOT, 'src/app/menu/settings/permisos/[userId]/page.tsx'),
+    'utf8'
+  )
+  const listSource = fs.readFileSync(
+    path.join(ROOT, 'src/app/menu/settings/permisos/page.tsx'),
     'utf8'
   )
   const settingsApiSource = fs.readFileSync(
@@ -51,7 +76,12 @@ test('Settings persists the option and the incident selector consumes it', () =>
   assert.match(settingsSource, /Rebre accions/)
   assert.match(settingsSource, /r\.path === '\/menu\/incidents'/)
   assert.match(settingsSource, /canBeIncidentActionAssignee,/)
-  assert.match(settingsApiSource, /canBeIncidentActionAssignee: incidentActionAssigneeEnabled/)
+  assert.match(settingsApiSource, /incidentActionAssigneeUserPatch/)
+  assert.match(listSource, /method:\s*'PUT'/)
+  assert.doesNotMatch(
+    listSource,
+    /canBeIncidentActionAssignee/
+  )
   assert.match(selectorApiSource, /canBeIncidentActionAssignee\(data\)/)
   assert.match(selectorApiSource, /capDepartmentMatchesIncidentOrigin/)
 })
