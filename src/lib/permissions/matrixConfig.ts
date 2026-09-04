@@ -33,6 +33,7 @@ import {
   DECO_TICKETS_REOPEN_PERM,
   DECO_TICKETS_VALIDATE_PERM,
 } from '@/lib/decoTicketsPermissions'
+import { SPACES_REQUESTS_MANAGE_PERM } from '@/lib/spacesPermissions'
 
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
@@ -322,6 +323,10 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       {
         key: PERM.action('/menu/spaces/info', 'bbdd:delete'),
         label: 'Eliminar espai',
+      },
+      {
+        key: SPACES_REQUESTS_MANAGE_PERM,
+        label: "Rebre i gestionar peticions d'espais (Ops)",
       },
     ],
   },

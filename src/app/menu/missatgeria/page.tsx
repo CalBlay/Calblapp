@@ -21,6 +21,8 @@ import Composer from './components/Composer'
 import type { Channel, Member, Message, PendingImage } from './types'
 import { eventDateLabel } from './utils'
 import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { SPACES_REQUESTS_MANAGE_PERM } from '@/lib/spacesPermissions'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -35,6 +37,7 @@ export default function MissatgeriaPage() {
   const sessionUser = (session?.user || {}) as SessionUser
   const userId = sessionUser.id
   const userRole = normalizeRole(sessionUser.role || '')
+  const { ready: uiPermissionsReady, hasAction } = useUiPermissions()
   const searchParams = useSearchParams()
   const eventMode = searchParams?.get('event') === '1'
 
@@ -43,7 +46,7 @@ export default function MissatgeriaPage() {
   const [loadingSend, setLoadingSend] = useState(false)
   const [messagesState, setMessagesState] = useState<Message[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
-  const [categoryFilter, setCategoryFilter] = useState<'finques' | 'restaurants' | 'events' | 'projects'>('finques')
+  const [categoryFilter, setCategoryFilter] = useState<'finques' | 'restaurants' | 'events' | 'projects' | 'spaces'>('finques')
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null)
@@ -66,6 +69,7 @@ export default function MissatgeriaPage() {
   const [creatingTicketId, setCreatingTicketId] = useState<string | null>(null)
   const [ticketTypePickerId, setTicketTypePickerId] = useState<string | null>(null)
   const [eventChannel, setEventChannel] = useState<Channel | null>(null)
+  const [savingSpaceRequestStatus, setSavingSpaceRequestStatus] = useState(false)
 
   const syncMessagesLocal = useCallback(
     (updater: (current: Message[]) => Message[]) => {
@@ -182,6 +186,7 @@ export default function MissatgeriaPage() {
       finques: 0,
       restaurants: 0,
       projects: 0,
+      spaces: 0,
       events: activeEventUnread,
     }
 
@@ -192,6 +197,7 @@ export default function MissatgeriaPage() {
       if (channel.source === 'finques') counts.finques += unread
       if (channel.source === 'restaurants') counts.restaurants += unread
       if (channel.source === 'projects') counts.projects += unread
+      if (channel.source === 'spaces') counts.spaces += unread
     })
 
     return counts
@@ -240,13 +246,22 @@ export default function MissatgeriaPage() {
               label: 'Events',
               badge: unreadByCategory.events > 0 ? unreadByCategory.events : undefined,
             },
+            {
+              key: 'spaces',
+              label: 'Espais',
+              badge: unreadByCategory.spaces > 0 ? unreadByCategory.spaces : undefined,
+            },
           ],
     [eventMode, unreadByCategory]
   )
 
   useEffect(() => {
     const queryChannel = searchParams?.get('channel')
-    if (queryChannel && allChannels.some((c) => c.id === queryChannel)) {
+    const queryChannelData = queryChannel
+      ? allChannels.find((channel) => channel.id === queryChannel)
+      : null
+    if (queryChannel && queryChannelData) {
+      if (queryChannelData.source === 'spaces') setCategoryFilter('spaces')
       setSelectedChannelId(queryChannel)
       setMobileView('chat')
       return
@@ -286,6 +301,11 @@ export default function MissatgeriaPage() {
     () => allChannels.find((c) => c.id === selectedChannelId) || null,
     [allChannels, selectedChannelId]
   )
+  const canManageSelectedSpaceRequest =
+    uiPermissionsReady &&
+    selectedChannel?.source === 'spaces' &&
+    Boolean(selectedChannel.spaceRequestId) &&
+    hasAction(SPACES_REQUESTS_MANAGE_PERM)
 
   const isReadOnlyChannel = useMemo(() => {
     if (!selectedChannel) return false
@@ -763,6 +783,30 @@ export default function MissatgeriaPage() {
     }
   }
 
+  const updateSpaceRequestStatus = async (status: NonNullable<Channel['requestStatus']>) => {
+    if (!selectedChannel?.spaceRequestId || !canManageSelectedSpaceRequest) return
+    setSavingSpaceRequestStatus(true)
+    try {
+      const response = await fetch(
+        `/api/spaces/requests/${encodeURIComponent(selectedChannel.spaceRequestId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        }
+      )
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || `HTTP ${response.status}`)
+      }
+      await Promise.all([refreshChannels(), refreshMessages()])
+    } catch (error) {
+      console.error('[missatgeria] update space request status failed', error)
+    } finally {
+      setSavingSpaceRequestStatus(false)
+    }
+  }
+
   const addParticipant = async (user: InviteUserOption) => {
     if (!selectedChannel?.id || !user.id) return
 
@@ -861,6 +905,21 @@ export default function MissatgeriaPage() {
     if (selectedChannel.source === 'projects') {
       return [selectedChannel.projectName, selectedChannel.location].filter(Boolean).join(' · ')
     }
+    if (selectedChannel.source === 'spaces') {
+      const labels: Record<string, string> = {
+        pending: 'Pendent',
+        in_review: 'En revisió',
+        accepted: 'Acceptada',
+        rejected: 'Rebutjada',
+        applied: 'Aplicada',
+      }
+      return [
+        labels[String(selectedChannel.requestStatus || '')] || 'Pendent',
+        selectedChannel.requesterUserName,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    }
     return selectedChannel.location || undefined
   }, [selectedChannel])
 
@@ -898,7 +957,7 @@ export default function MissatgeriaPage() {
               filters={sidebarFilters}
               activeFilter={categoryFilter}
               onFilterChange={(key) =>
-                setCategoryFilter(key as 'finques' | 'restaurants' | 'events' | 'projects')
+                setCategoryFilter(key as 'finques' | 'restaurants' | 'events' | 'projects' | 'spaces')
               }
               footer={
                 !eventMode && categoryFilter === 'events' && userRole === 'admin' ? (
@@ -954,6 +1013,28 @@ export default function MissatgeriaPage() {
                     inviteExcludeIds={inviteExcludeIds}
                     onInvite={(user) => void addParticipant(user)}
                     inviteAdding={addingMember}
+                    trailingActions={
+                      canManageSelectedSpaceRequest ? (
+                        <select
+                          aria-label="Estat de la petició d'espais"
+                          title="Estat de la petició"
+                          value={selectedChannel.requestStatus || 'pending'}
+                          disabled={savingSpaceRequestStatus}
+                          onChange={(event) =>
+                            void updateSpaceRequestStatus(
+                              event.target.value as NonNullable<Channel['requestStatus']>
+                            )
+                          }
+                          className="max-w-32 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-60 sm:max-w-none"
+                        >
+                          <option value="pending">Pendent</option>
+                          <option value="in_review">En revisió</option>
+                          <option value="accepted">Acceptada</option>
+                          <option value="rejected">Rebutjada</option>
+                          <option value="applied">Aplicada</option>
+                        </select>
+                      ) : undefined
+                    }
                   />
                 </div>
               ) : (

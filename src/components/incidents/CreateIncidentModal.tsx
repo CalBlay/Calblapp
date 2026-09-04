@@ -398,7 +398,7 @@ export default function CreateIncidentModal({
                     typography('bodySm')
                   )}
                 >
-                  Fitxer
+                  Fitxers
                   <input
                     type="file"
                     accept="image/*,video/*"
@@ -433,6 +433,9 @@ export default function CreateIncidentModal({
                 </span>
                 {imageError && <span className={cn(typography('bodySm'), 'text-red-600')}>{imageError}</span>}
               </div>
+              <p className={cn(typography('bodyXs'), 'text-slate-500')}>
+                Pots seleccionar diversos fitxers alhora des del dispositiu.
+              </p>
               {requiresAttachment && images.length === 0 ? (
                 <p className={cn(typography('bodyXs'), 'text-amber-700')}>
                   Obligatori per incidències de maquinària (2XX) i Deco (4XX).

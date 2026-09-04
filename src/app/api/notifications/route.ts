@@ -7,6 +7,8 @@ import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/d
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
 import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
+import { PROJECT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTypes'
+import { pruneDeletedProjectNotifications } from '@/lib/notifications/projectNotificationCount.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,6 +26,8 @@ type NotificationFirestoreDoc = Record<string, unknown> & {
 }
 
 type NotificationListItem = { id: string } & NotificationFirestoreDoc
+
+const PROJECT_NOTIFICATION_TYPE_SET = new Set<string>(PROJECT_NOTIFICATION_TYPES)
 
 function formatNotificationForClient(item: NotificationListItem): NotificationListItem {
   const type = String(item.type || '').trim()
@@ -111,7 +115,10 @@ export async function GET(req: Request) {
     let listDocs: NotificationListItem[] = []
     if (type) {
       const listSnap = await baseRef.limit(200).get()
-      listDocs = listSnap.docs.map((d) => {
+      const visibleDocs = PROJECT_NOTIFICATION_TYPE_SET.has(type)
+        ? await pruneDeletedProjectNotifications(userId, listSnap.docs)
+        : listSnap.docs
+      listDocs = visibleDocs.map((d) => {
         const data = d.data() as NotificationFirestoreDoc
         return { id: d.id, ...data }
       })

@@ -10,7 +10,7 @@ export function channelToSidebarItem(channel: Channel): OpsSidebarItem {
       ? channel.eventTitle || channel.location || channel.name
       : channel.source === 'projects'
         ? channel.roomName || channel.location || channel.name
-        : channel.location
+        : channel.location || channel.name
 
   const metaParts: Array<string | null | undefined> = []
   if (channel.source === 'events' || channel.source === 'event_comanda') {
@@ -24,6 +24,18 @@ export function channelToSidebarItem(channel: Channel): OpsSidebarItem {
     metaParts.push(
       channel.projectName,
       channel.roomKind === 'block' ? 'Sala automatica' : 'Sala manual'
+    )
+  } else if (channel.source === 'spaces') {
+    const statusLabels: Record<string, string> = {
+      pending: 'Pendent',
+      in_review: 'En revisió',
+      accepted: 'Acceptada',
+      rejected: 'Rebutjada',
+      applied: 'Aplicada',
+    }
+    metaParts.push(
+      statusLabels[String(channel.requestStatus || '')] || 'Pendent',
+      channel.requesterUserName
     )
   }
 

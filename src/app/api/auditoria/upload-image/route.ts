@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
+import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/server/authOptions'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     }
 
     const processed = await processUploadedImageFile(file)
-    const path = `auditoria/${eventId}/${department}/${itemId}/${Date.now()}_${userId}.${processed.extension}`
+    const path = `auditoria/${eventId}/${department}/${itemId}/${Date.now()}_${randomUUID()}_${userId}.${processed.extension}`
 
     const bucket = storageAdmin.bucket()
     const fileRef = bucket.file(path)

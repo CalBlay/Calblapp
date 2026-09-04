@@ -28,7 +28,8 @@ import {
   Factory,
   Settings,
 } from 'lucide-react'
-import type { LucideIcon, LucideProps } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import OpsiaIcon from '@/components/icons/OpsIcon'
 import { MODULES } from '@/lib/accessControl'
 import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import useSWR from 'swr'
@@ -62,66 +63,6 @@ interface SessionUser {
 /* ─────────────────────────────────────────────
    MAPA UI (només estètica, NO permisos)
 ───────────────────────────────────────────── */
-const OPSIA_ICON_VARIANT = 'b' as 'a' | 'b'
-
-const OpsiaIconA = (props: LucideProps) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    {...props}
-  >
-    <circle cx="7.6" cy="7" r="1.8" />
-    <circle cx="16.4" cy="7" r="1.8" />
-    <path d="M6.3 11.2h2.6" />
-    <path d="M15.1 11.2h2.6" />
-    <path d="M5.8 15.8c.4-1.6 1.6-2.7 2.6-2.7s2.2 1.1 2.6 2.7" />
-    <path d="M13 15.8c.4-1.6 1.6-2.7 2.6-2.7s2.2 1.1 2.6 2.7" />
-    <path d="M4.8 18.4h5.6" />
-    <path d="M13.6 18.4h5.6" />
-    <rect x="7.1" y="16.8" width="1" height="1" rx="0.2" />
-    <rect x="15.9" y="16.8" width="1" height="1" rx="0.2" />
-    <circle cx="12" cy="3.8" r="0.6" />
-    <path d="M11.4 4.3 9.8 5.6" />
-    <path d="M12.6 4.3 14.2 5.6" />
-  </svg>
-)
-
-const OpsiaIconB = (props: LucideProps) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    {...props}
-  >
-    <circle cx="7.5" cy="6.9" r="1.7" />
-    <circle cx="16.5" cy="6.9" r="1.7" />
-    <path d="M6.3 11.1h2.4" />
-    <path d="M15.3 11.1h2.4" />
-    <path d="M6 15.6c.4-1.5 1.5-2.5 2.4-2.5s2 1 2.4 2.5" />
-    <path d="M13.2 15.6c.4-1.5 1.5-2.5 2.4-2.5s2 1 2.4 2.5" />
-    <path d="M5.3 18.1h4.8" />
-    <path d="M14 18.1h4.8" />
-    <rect x="7.1" y="16.6" width="0.9" height="0.9" rx="0.2" />
-    <rect x="16" y="16.6" width="0.9" height="0.9" rx="0.2" />
-    <circle cx="12" cy="3.7" r="0.55" />
-    <path d="M11.5 4.1 10.2 5.3" />
-    <path d="M12.5 4.1 13.8 5.3" />
-  </svg>
-)
-
-const OpsiaIcon: LucideIcon = OPSIA_ICON_VARIANT === 'a'
-  ? (OpsiaIconA as LucideIcon)
-  : (OpsiaIconB as LucideIcon)
-
 const UI_MAP: Record<
   string,
   { icon: LucideIcon; color: string; iconColor: string; tileClass?: string }

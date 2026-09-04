@@ -34,8 +34,20 @@ type UserAccessAssignment = {
   permissionSets?: string[]
   overrides?: AssignmentOverride[]
   canBeIncidentActionAssignee?: boolean
+  opsChannelsConfigurable?: string[]
+  opsEventsConfigurable?: boolean
+  opsProjectsConfigurable?: boolean
   isDepartmentHead?: boolean
 }
+
+type MessagingChannel = {
+  id: string
+  source?: string
+  location?: string
+  name?: string
+}
+
+type MessagingChannelsResponse = { channels?: MessagingChannel[] }
 
 type EffectiveRow = {
   path: string
@@ -177,6 +189,11 @@ export default function PermisosUserPage() {
     fetcher
   )
 
+  const { data: channelsData, isLoading: channelsLoading } = useSWR<MessagingChannelsResponse>(
+    role === 'admin' && userId ? '/api/messaging/channels?scope=all' : null,
+    fetcher
+  )
+
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -184,6 +201,9 @@ export default function PermisosUserPage() {
   const [baseDepartment, setBaseDepartment] = useState<string>('')
   const [overrides, setOverrides] = useState<AssignmentOverride[]>([])
   const [canBeIncidentActionAssignee, setCanBeIncidentActionAssignee] = useState(false)
+  const [opsChannelsConfigurable, setOpsChannelsConfigurable] = useState<string[]>([])
+  const [opsEventsConfigurable, setOpsEventsConfigurable] = useState(false)
+  const [opsProjectsConfigurable, setOpsProjectsConfigurable] = useState(true)
   const [actionGroupExpandedManual, setActionGroupExpandedManual] = useState<
     Record<string, boolean>
   >({})
@@ -192,9 +212,22 @@ export default function PermisosUserPage() {
     baseDepartment: string
     overrides: AssignmentOverride[]
     canBeIncidentActionAssignee: boolean
+    opsChannelsConfigurable: string[]
+    opsEventsConfigurable: boolean
+    opsProjectsConfigurable: boolean
   } | null>(null)
   const rows = useMemo(() => buildRows(), [])
   const isDepartmentHead = Boolean(data?.isDepartmentHead)
+  const opsChannelGroups = useMemo(() => {
+    const channels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
+    const sorted = [...channels].sort((a, b) =>
+      compareLabels(a.location || a.name || a.id, b.location || b.name || b.id)
+    )
+    return {
+      finques: sorted.filter((channel) => channel.source === 'finques'),
+      restaurants: sorted.filter((channel) => channel.source === 'restaurants'),
+    }
+  }, [channelsData])
 
   const getOverrideEffect = (permission: string): 'allow' | 'deny' | null => {
     const found = overrides.find(
@@ -255,11 +288,20 @@ export default function PermisosUserPage() {
     const nextBaseDepartment = String(data.base?.department || '')
     const nextOverrides = Array.isArray(data.overrides) ? data.overrides : []
     const nextCanBeIncidentActionAssignee = Boolean(data.canBeIncidentActionAssignee)
+    const nextOpsChannelsConfigurable = Array.isArray(data.opsChannelsConfigurable)
+      ? data.opsChannelsConfigurable.map(String)
+      : []
+    const nextOpsEventsConfigurable = Boolean(data.opsEventsConfigurable)
+    const nextOpsProjectsConfigurable =
+      typeof data.opsProjectsConfigurable === 'boolean' ? data.opsProjectsConfigurable : true
 
     setBaseRole(nextBaseRole)
     setBaseDepartment(nextBaseDepartment)
     setOverrides(nextOverrides)
     setCanBeIncidentActionAssignee(nextCanBeIncidentActionAssignee)
+    setOpsChannelsConfigurable(nextOpsChannelsConfigurable)
+    setOpsEventsConfigurable(nextOpsEventsConfigurable)
+    setOpsProjectsConfigurable(nextOpsProjectsConfigurable)
 
     // snapshot per "Desfer canvis"
     if (!initialRef.current) {
@@ -268,6 +310,9 @@ export default function PermisosUserPage() {
         baseDepartment: nextBaseDepartment,
         overrides: nextOverrides,
         canBeIncidentActionAssignee: nextCanBeIncidentActionAssignee,
+        opsChannelsConfigurable: nextOpsChannelsConfigurable,
+        opsEventsConfigurable: nextOpsEventsConfigurable,
+        opsProjectsConfigurable: nextOpsProjectsConfigurable,
       }
     }
   }, [data])
@@ -279,6 +324,9 @@ export default function PermisosUserPage() {
     setBaseDepartment(snap.baseDepartment)
     setOverrides(snap.overrides)
     setCanBeIncidentActionAssignee(snap.canBeIncidentActionAssignee)
+    setOpsChannelsConfigurable(snap.opsChannelsConfigurable)
+    setOpsEventsConfigurable(snap.opsEventsConfigurable)
+    setOpsProjectsConfigurable(snap.opsProjectsConfigurable)
     setActionGroupExpandedManual({})
     setMsg('Canvis desfets (tornat a l’últim estat desat)')
   }
@@ -293,6 +341,9 @@ export default function PermisosUserPage() {
         permissionSets: [],
         overrides,
         canBeIncidentActionAssignee,
+        opsChannelsConfigurable,
+        opsEventsConfigurable,
+        opsProjectsConfigurable,
       }
       const res = await fetch(`/api/admin/permissions/assignments/${userId}`, {
         method: 'PUT',
@@ -306,6 +357,9 @@ export default function PermisosUserPage() {
         baseDepartment,
         overrides,
         canBeIncidentActionAssignee,
+        opsChannelsConfigurable,
+        opsEventsConfigurable,
+        opsProjectsConfigurable,
       }
       setMsg('Desat correctament')
       await mutate()
@@ -545,6 +599,85 @@ export default function PermisosUserPage() {
           })}
         </div>
       </div>
+
+      <PermissionActionGroupCard
+        title="Ops · Canals"
+        subtitle="Defineix quins canals podrà activar o ocultar aquest usuari des de la configuració d’Ops."
+        expanded={actionGroupExpandedManual.ops_channels ?? true}
+        onToggle={() =>
+          setActionGroupExpandedManual((prev) => ({
+            ...prev,
+            ops_channels: !(prev.ops_channels ?? true),
+          }))
+        }
+      >
+        <div className="space-y-3">
+          {(['finques', 'restaurants'] as const).map((groupId) => {
+            const label = groupId === 'finques' ? 'Finques' : 'Restaurants'
+            const channels = opsChannelGroups[groupId]
+            return (
+              <details key={groupId} className="rounded-lg border border-border px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium">{label}</summary>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {channels.map((channel) => {
+                    const channelId = String(channel.id)
+                    return (
+                      <label key={channelId} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={opsChannelsConfigurable.includes(channelId)}
+                          onChange={(event) =>
+                            setOpsChannelsConfigurable((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, channelId])]
+                                : current.filter((id) => id !== channelId)
+                            )
+                          }
+                        />
+                        <span>{channel.location || channel.name || channelId}</span>
+                      </label>
+                    )
+                  })}
+                  {!channelsLoading && channels.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No hi ha canals disponibles.</p>
+                  ) : null}
+                </div>
+              </details>
+            )
+          })}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <input
+                type="checkbox"
+                checked={opsProjectsConfigurable}
+                onChange={(event) => setOpsProjectsConfigurable(event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium">Projectes</span>
+                <span className="block text-xs text-muted-foreground">
+                  Permetre els xats de projectes.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <input
+                type="checkbox"
+                checked={opsEventsConfigurable}
+                onChange={(event) => setOpsEventsConfigurable(event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium">Esdeveniments</span>
+                <span className="block text-xs text-muted-foreground">
+                  Permetre els xats d’esdeveniments.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </PermissionActionGroupCard>
 
       {PERMISSION_ACTION_GROUPS.map((group) => {
         const p = group.visibleWhen.path

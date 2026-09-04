@@ -85,13 +85,6 @@ type Props = {
   onAfterAction?: () => void
 }
 
-type MessagingChannel = {
-  id: string
-  source?: string
-  location?: string
-  name?: string
-}
-
 type PermissionUserOption = {
   id: string
   name?: string
@@ -267,19 +260,6 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       setStep(1)
     }
   }, [showPermissionsStep, step])
-
-  const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
-    fetch(url).then((r) => r.json())
-  )
-
-  const allChannels: MessagingChannel[] = Array.isArray(channelsData?.channels) ? channelsData.channels : []
-  const opsChannels = allChannels.filter(
-    (ch) => ch?.source === 'finques' || ch?.source === 'restaurants' || ch?.source === 'events'
-  )
-  const opsByGroup = {
-    finques: opsChannels.filter((ch) => ch?.source === 'finques'),
-    restaurants: opsChannels.filter((ch) => ch?.source === 'restaurants'),
-  }
 
   const isWorker =
     role?.toLowerCase().trim() === 'treballador' ||
@@ -843,104 +823,15 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
             </div>
 
             <div className="rounded-xl border p-3">
-              <div className="mb-2 text-xs font-semibold text-gray-500">
-                Canals configurables (Ops)
-              </div>
-              <div className="space-y-3">
-                <details className="border rounded-lg px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">Finques</summary>
-                  <div className="mt-2 space-y-2">
-                    {opsByGroup.finques.map((ch) => {
-                      const id = String(ch.id)
-                      const text = ch.location || ch.name || id
-                      return (
-                        <label key={id} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={opsChannelsConfigurable.includes(id)}
-                            onChange={() =>
-                              setOpsChannelsConfigurable((prev) =>
-                                prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]
-                              )
-                            }
-                          />
-                          <span>{text}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </details>
-
-                <details className="border rounded-lg px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">Restaurants</summary>
-                  <div className="mt-2 space-y-2">
-                    {opsByGroup.restaurants.map((ch) => {
-                      const id = String(ch.id)
-                      const text = ch.location || ch.name || id
-                      return (
-                        <label key={id} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={opsChannelsConfigurable.includes(id)}
-                            onChange={() =>
-                              setOpsChannelsConfigurable((prev) =>
-                                prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]
-                              )
-                            }
-                          />
-                          <span>{text}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </details>
-
-                <details className="border rounded-lg px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">Projectes</summary>
-                  <div className="mt-2 space-y-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={opsProjectsConfigurable}
-                        onChange={(e) => setOpsProjectsConfigurable(e.target.checked)}
-                      />
-                      <span>Permetre xats de projectes</span>
-                    </label>
-                  </div>
-                </details>
-
-                <details className="border rounded-lg px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">Events</summary>
-                  <div className="mt-2 space-y-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={opsEventsConfigurable}
-                        onChange={(e) => setOpsEventsConfigurable(e.target.checked)}
-                      />
-                      <span>Permetre xats d'events</span>
-                    </label>
-                  </div>
-                </details>
-
-                <details className="border rounded-lg px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">Sondeigs</summary>
-                  <div className="mt-2 space-y-2">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={canRespondSurveys}
-                        onChange={(e) => setCanRespondSurveys(e.target.checked)}
-                      />
-                      <span>Permetre respondre sondeigs</span>
-                    </label>
-                  </div>
-                </details>
-
-                {opsChannels.length === 0 ? (
-                  <div className="text-xs text-gray-500">No hi ha canals disponibles.</div>
-                ) : null}
-              </div>
+              <div className="mb-2 text-xs font-semibold text-gray-500">Sondeigs</div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={canRespondSurveys}
+                  onChange={(e) => setCanRespondSurveys(e.target.checked)}
+                />
+                <span>Permetre respondre sondeigs</span>
+              </label>
             </div>
 
             {isSessionAdmin && user?.id ? (

@@ -25,6 +25,7 @@ import {
 } from '@/lib/messaging/maintenanceTicketOps.server'
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
 import { accessUserFromAuth } from '@/lib/server/spacesApiAuth'
+import { reconcileSpaceRequestChannelMembers } from '@/lib/spaces/spaceRequests.server'
 
 export const runtime = 'nodejs'
 
@@ -75,6 +76,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const channelSnap = await db.collection('channels').doc(id).get()
     const channel = channelSnap.exists ? (channelSnap.data() as ChannelRecord) : {}
     const channelSource = String(channel?.source || '')
+    if (channelSource === 'spaces') {
+      await reconcileSpaceRequestChannelMembers(id)
+    }
     const isEventChannel = channelSource === 'events' || channelSource === 'event_comanda'
 
     if (role !== 'admin' && role !== 'direccio') {

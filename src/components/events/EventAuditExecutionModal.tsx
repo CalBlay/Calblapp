@@ -435,34 +435,46 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     }))
   }
 
-  const uploadPhoto = async (itemId: string, blockId: string, file: File | null) => {
-    if (!file || !mountedRef.current) return
-    if (totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) {
+  const uploadPhotos = async (itemId: string, blockId: string, files: File[]) => {
+    if (files.length === 0 || !mountedRef.current) return
+    const remainingSlots = MAX_AUDIT_PHOTOS_TOTAL - totalAuditPhotos
+    if (remainingSlots <= 0) {
       if (mountedRef.current) setError(`L'auditoria admet com a maxim ${MAX_AUDIT_PHOTOS_TOTAL} fotos.`)
       return
     }
+    const selectedFiles = files.slice(0, remainingSlots)
+    const selectionWasTrimmed = selectedFiles.length < files.length
     if (mountedRef.current) {
       setUploadingItemId(itemId)
       setError('')
     }
     try {
-      const fileToUpload = await prepareAuditImageUpload(file)
+      const uploadedPhotos = await Promise.all(
+        selectedFiles.map(async (file) => {
+          const fileToUpload = await prepareAuditImageUpload(file)
+          const form = new FormData()
+          form.append('file', fileToUpload)
+          form.append('eventId', eventId)
+          form.append('department', department)
+          form.append('itemId', itemId)
+          const res = await fetch('/api/auditoria/upload-image', { method: 'POST', body: form })
+          const json = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut pujar una imatge'))
+          const url = String(json?.url || '')
+          const path = String(json?.path || '')
+          if (!url) throw new Error('No s ha retornat URL de la imatge')
 
-      const form = new FormData()
-      form.append('file', fileToUpload)
-      form.append('eventId', eventId)
-      form.append('department', department)
-      form.append('itemId', itemId)
-      const res = await fetch('/api/auditoria/upload-image', { method: 'POST', body: form })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut pujar la imatge'))
-      const url = String(json?.url || '')
-      const path = String(json?.path || '')
-      if (!url) throw new Error('No s ha retornat URL de la imatge')
-
-      const meta = json?.meta as { size?: number; type?: string } | undefined
-      const size = typeof meta?.size === 'number' && meta.size > 0 ? meta.size : undefined
-      const mime = String(meta?.type || '').trim()
+          const meta = json?.meta as { size?: number; type?: string } | undefined
+          const size = typeof meta?.size === 'number' && meta.size > 0 ? meta.size : undefined
+          const mime = String(meta?.type || '').trim()
+          return {
+            url,
+            path,
+            ...(size != null ? { size } : {}),
+            ...(mime ? { type: mime } : {}),
+          }
+        })
+      )
 
       if (!mountedRef.current) return
 
@@ -480,15 +492,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             ...current,
             blockId,
             type: 'photo',
-            photos: [
-              ...(current.photos || []),
-              {
-                url,
-                path,
-                ...(size != null ? { size } : {}),
-                ...(mime ? { type: mime } : {}),
-              },
-            ],
+            photos: [...(current.photos || []), ...uploadedPhotos],
           },
         }
         return nextAnswers
@@ -498,10 +502,20 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
         await persistExecution('save', {
           answersSnapshot: nextAnswers,
           quiet: true,
-          successMessage: 'Foto guardada a l’auditoria.',
+          successMessage:
+            uploadedPhotos.length === 1
+              ? 'Foto guardada a l’auditoria.'
+              : `${uploadedPhotos.length} fotos guardades a l’auditoria.`,
         })
       } else if (mountedRef.current) {
-        setSuccess('Foto pujada correctament.')
+        setSuccess(
+          uploadedPhotos.length === 1
+            ? 'Foto pujada correctament.'
+            : `${uploadedPhotos.length} fotos pujades correctament.`
+        )
+      }
+      if (selectionWasTrimmed && mountedRef.current) {
+        setError(`Només s'han afegit les primeres ${remainingSlots} fotos per respectar el límit total.`)
       }
     } catch (err) {
       if (mountedRef.current) {
@@ -512,15 +526,15 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     }
   }
 
-  const handlePickedFile = (
+  const handlePickedFiles = (
     itemId: string,
     blockId: string,
-    file: File | null,
+    files: File[],
     source: 'camera' | 'gallery'
   ) => {
-    if (!file) return
+    if (files.length === 0) return
     afterMobileFilePicker(() => {
-      void uploadPhoto(itemId, blockId, file)
+      void uploadPhotos(itemId, blockId, files)
     }, source)
   }
 
@@ -565,13 +579,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
 
   const handlePickerInputChange = (source: 'camera' | 'gallery', event: React.ChangeEvent<HTMLInputElement>) => {
     const target = pendingPhotoTargetRef.current
-    const file = event.currentTarget.files?.[0] || null
-    window.setTimeout(() => {
-      event.currentTarget.value = ''
-    }, 0)
+    const files = Array.from(event.currentTarget.files || [])
+    event.currentTarget.value = ''
     pendingPhotoTargetRef.current = null
     if (!target || target.source !== source) return
-    handlePickedFile(target.itemId, target.blockId, file, source)
+    handlePickedFiles(target.itemId, target.blockId, files, source)
   }
 
   const childModalOpen = showCreateIncident || showExtrasModal
@@ -597,7 +609,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             aria-live="polite"
           >
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-700" />
-            <p className="text-sm font-medium text-slate-800">Pujant i desant foto…</p>
+            <p className="text-sm font-medium text-slate-800">Pujant i desant fitxers…</p>
             <p className="text-xs text-slate-500">No tanquis aquesta pantalla</p>
           </div>
         ) : null}
@@ -839,10 +851,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                           }
                                         >
                                           <Paperclip className="w-4 h-4 shrink-0" />
-                                          Afegir fitxer
+                                          Afegir fitxers
                                         </button>
                                       </div>
                                       <div className="text-[11px] text-slate-600">
+                                        Pots seleccionar diverses fotos alhora.{' '}
                                         Fotos: {current?.photos?.length || 0}
                                         {uploadingItemId === itemId ? ' - Pujant...' : ''}
                                         {!isLocked && totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL ? ' - Limit total assolit' : ''}
@@ -982,6 +995,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
         ref={galleryInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         tabIndex={-1}
         aria-hidden="true"

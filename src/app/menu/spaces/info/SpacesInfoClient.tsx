@@ -10,6 +10,7 @@ import { Map } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import SpaceRequestDialog from '@/components/spaces/SpaceRequestDialog'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import {
@@ -46,6 +47,11 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
     canEdit &&
     (!ready ||
       hasAction(PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_CREATE)))
+  const canUpdate =
+    canEdit &&
+    (!ready ||
+      hasAction(PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_UPDATE)))
+  const canRequestChange = ready && canView && !canCreate && !canUpdate
 
   const [search, setSearch] = useState('')
   const [tipus, setTipus] = useState<'tots' | 'Propi' | 'Extern'>('tots')
@@ -156,7 +162,14 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
           icon={<Map className="h-7 w-7 text-emerald-600" />}
           title="Espais"
           subtitle="Consulta i filtra els espais disponibles"
-          actions={canExport ? <ExportMenu items={exportItems} /> : undefined}
+          actions={
+            canExport || canRequestChange ? (
+              <>
+                {canRequestChange ? <SpaceRequestDialog spaces={espais} /> : null}
+                {canExport ? <ExportMenu items={exportItems} /> : null}
+              </>
+            ) : undefined
+          }
         />
       </div>
       <style>{`

@@ -20,6 +20,25 @@ export type NotificationUnreadBuckets = {
 
 type BucketKey = keyof Omit<NotificationUnreadBuckets, 'version' | 'syncedAt'>
 
+export async function setUserUnreadBucketCount(
+  userId: string,
+  bucket: BucketKey,
+  count: number
+): Promise<void> {
+  if (!userId) return
+  const ref = await userDocRefByAuthId(userId)
+  await ref.set(
+    {
+      notificationUnread: {
+        [bucket]: Math.max(0, Math.floor(count)),
+        version: UNREAD_COUNTS_VERSION,
+        syncedAt: Date.now(),
+      },
+    },
+    { merge: true }
+  )
+}
+
 export function bucketForNotificationType(type: string): BucketKey | null {
   const normalized = String(type || '').trim()
   if (!normalized) return null

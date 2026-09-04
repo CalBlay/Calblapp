@@ -24,6 +24,7 @@ import {
   baseCanDeleteSpacesBbdd,
   baseCanEditSpacesPremisses,
   baseCanMutateSpacesBbdd,
+  SPACES_REQUESTS_MANAGE_PERM,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
@@ -157,6 +158,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_CREATE },
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_UPDATE },
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_DELETE },
+  { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.REQUESTS_MANAGE },
   // Legacy (consultes com a acció; es mapen als submòduls view)
   { path: SPACES_UI_PATH, action: SPACES_LEGACY_CONSULTA_ACTION.RESERVES },
   { path: SPACES_UI_PATH, action: SPACES_LEGACY_CONSULTA_ACTION.BBDD },
@@ -355,6 +357,17 @@ export async function GET() {
       actions[PERM.action(SPACES_BBDD_ACTION_PATH, action)] = true
       actions[PERM.action(SPACES_UI_PATH, action)] = true
     }
+  }
+
+  actions[SPACES_REQUESTS_MANAGE_PERM] = false
+  if (
+    map[SPACES_BBDD_PATH] === true &&
+    edit[SPACES_BBDD_PATH] === true &&
+    actions[PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_CREATE)] === true &&
+    actions[PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_UPDATE)] === true &&
+    effectFor(assignment, SPACES_REQUESTS_MANAGE_PERM) === 'allow'
+  ) {
+    actions[SPACES_REQUESTS_MANAGE_PERM] = true
   }
 
   if (

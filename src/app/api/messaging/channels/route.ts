@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { syncSpaceRequestManagerMembershipForUser } from '@/lib/spaces/spaceRequests.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -53,6 +54,7 @@ export async function GET(req: Request) {
     }
 
     // scope: mine
+    await syncSpaceRequestManagerMembershipForUser(userId)
     const memberSnap = await db
       .collection('channelMembers')
       .where('userId', '==', userId)

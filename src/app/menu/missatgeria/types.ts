@@ -9,6 +9,12 @@ export type Channel = {
   roomId?: string | null
   roomName?: string | null
   roomKind?: 'block' | 'manual' | 'general' | null
+  spaceRequestId?: string | null
+  spaceId?: string | null
+  requestType?: 'new' | 'update' | null
+  requestStatus?: 'pending' | 'in_review' | 'accepted' | 'rejected' | 'applied' | null
+  requesterUserId?: string | null
+  requesterUserName?: string | null
   eventCode?: string | null
   eventTitle?: string | null
   eventStart?: string | null

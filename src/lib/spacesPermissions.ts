@@ -12,9 +12,15 @@ export const SPACES_ACTION = {
   BBDD_CREATE: 'bbdd:create',
   BBDD_UPDATE: 'bbdd:update',
   BBDD_DELETE: 'bbdd:delete',
+  REQUESTS_MANAGE: 'requests:manage',
   PREMISSES_EDIT: 'premisses:edit',
   RESERVES_MANUAL_CREATE: 'reserves:manual:create',
 } as const
+
+export const SPACES_REQUESTS_MANAGE_PERM =
+  `ui:action:${SPACES_BBDD_PATH}:${SPACES_ACTION.REQUESTS_MANAGE}` as const
+
+export const SPACES_REQUESTS_COLLECTION = 'space_change_requests'
 
 /** Col·lecció Firestore per reserves manuals del mòdul Espais / Reserves. */
 export const SPACES_MANUAL_RESERVES_COLLECTION = 'spaces_manual_reserves'

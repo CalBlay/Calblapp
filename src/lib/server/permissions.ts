@@ -37,6 +37,7 @@ import {
   baseCanEditSpacesPremisses,
   baseCanMutateSpacesBbdd,
   isSpacesBbddActionPath,
+  SPACES_REQUESTS_MANAGE_PERM,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
 import {
@@ -189,7 +190,7 @@ export async function isUiPermissionGranted(params: {
     role: params.user.role,
     permission: params.permission,
   })
-  if (override === true) return true
+  if (override === true && params.permission !== SPACES_REQUESTS_MANAGE_PERM) return true
   if (override === false) return false
 
   if (isViewPerm(params.permission)) {
@@ -241,6 +242,27 @@ export async function isUiPermissionGranted(params: {
     if (!canViewBbdd) return false
 
     if (parsed.action === SPACES_ACTION.BBDD_EXPORT) return true
+
+    if (parsed.action === SPACES_ACTION.REQUESTS_MANAGE) {
+      const canEditBbdd = await canEditUiPath({ user: params.user, path: SPACES_BBDD_PATH })
+      if (!canEditBbdd) return false
+      const [canCreate, canUpdate] = await Promise.all([
+        isUiPermissionGranted({
+          user: params.user,
+          permission: PERM.action(SPACES_BBDD_PATH, SPACES_ACTION.BBDD_CREATE),
+        }),
+        isUiPermissionGranted({
+          user: params.user,
+          permission: PERM.action(SPACES_BBDD_PATH, SPACES_ACTION.BBDD_UPDATE),
+        }),
+      ])
+      if (!canCreate || !canUpdate) return false
+      const effect = await getClientOverrideEffectForPermission(
+        params.user.id,
+        SPACES_REQUESTS_MANAGE_PERM
+      )
+      return effect === 'allow'
+    }
 
     if (parsed.action === SPACES_ACTION.BBDD_CREATE || parsed.action === SPACES_ACTION.BBDD_UPDATE) {
       const canEditBbdd = await canEditUiPath({ user: params.user, path: SPACES_BBDD_PATH })

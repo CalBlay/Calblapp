@@ -9,6 +9,7 @@ import ModuleNotificationsBell, {
 } from '@/components/layout/ModuleNotificationsBell'
 import NotificationListItem from '@/components/layout/NotificationListItem'
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
+import { refreshNotificationSummary } from '@/hooks/useAdminNotifications'
 
 type ProjectNotification = {
   id: string
@@ -53,7 +54,7 @@ const fetchProjectNotifications = async (): Promise<ProjectNotification[]> => {
     deduped.set(id, notification)
   })
 
-  return [...deduped.values()].sort((a, b) => {
+  const sorted = [...deduped.values()].sort((a, b) => {
     const aCreatedAt = typeof (a as { createdAt?: unknown }).createdAt === 'number'
       ? Number((a as { createdAt?: unknown }).createdAt)
       : 0
@@ -62,6 +63,9 @@ const fetchProjectNotifications = async (): Promise<ProjectNotification[]> => {
       : 0
     return bCreatedAt - aCreatedAt
   })
+
+  await refreshNotificationSummary()
+  return sorted
 }
 
 function extractNotificationLabel(notification: ProjectNotification) {

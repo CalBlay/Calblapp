@@ -5,6 +5,7 @@ import { normalizeRole, type Role } from '@/lib/roles'
 import { buildBootstrapAssignmentUpdate } from '@/lib/permissions/bootstrapAssignments'
 import { parseOverrideInput } from '@/lib/permissions/parseOverrideInput'
 import type { AssignmentOverride } from '@/lib/permissions/types'
+import { syncSpaceRequestManagerMembershipForUser } from '@/lib/spaces/spaceRequests.server'
 
 type UserAccessAssignment = {
   userId: string
@@ -13,6 +14,9 @@ type UserAccessAssignment = {
   permissionSets?: string[]
   overrides?: AssignmentOverride[]
   canBeIncidentActionAssignee?: boolean
+  opsChannelsConfigurable?: string[]
+  opsEventsConfigurable?: boolean
+  opsProjectsConfigurable?: boolean
   isDepartmentHead?: boolean
   updatedAt?: string
   updatedBy?: string
@@ -60,6 +64,14 @@ export async function GET(
       permissionSets: [],
       overrides: [],
       canBeIncidentActionAssignee: userData.canBeIncidentActionAssignee === true,
+      opsChannelsConfigurable: Array.isArray(userData.opsChannelsConfigurable)
+        ? userData.opsChannelsConfigurable.map(String).filter(Boolean)
+        : [],
+      opsEventsConfigurable: userData.opsEventsConfigurable === true,
+      opsProjectsConfigurable:
+        typeof userData.opsProjectsConfigurable === 'boolean'
+          ? userData.opsProjectsConfigurable
+          : true,
       isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
     } satisfies UserAccessAssignment)
   }
@@ -70,6 +82,14 @@ export async function GET(
     userId: id,
     name,
     canBeIncidentActionAssignee: userData.canBeIncidentActionAssignee === true,
+    opsChannelsConfigurable: Array.isArray(userData.opsChannelsConfigurable)
+      ? userData.opsChannelsConfigurable.map(String).filter(Boolean)
+      : [],
+    opsEventsConfigurable: userData.opsEventsConfigurable === true,
+    opsProjectsConfigurable:
+      typeof userData.opsProjectsConfigurable === 'boolean'
+        ? userData.opsProjectsConfigurable
+        : true,
     isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
   } satisfies UserAccessAssignment)
 }
@@ -104,7 +124,17 @@ export async function PUT(
         .map(parseOverrideInput)
         .filter((o): o is AssignmentOverride => o != null)
     : []
-  const incidentActionAssigneeEnabled = Boolean(body.canBeIncidentActionAssignee)
+  const incidentActionAssigneeEnabled =
+    typeof body.canBeIncidentActionAssignee === 'boolean'
+      ? body.canBeIncidentActionAssignee
+      : undefined
+  const opsChannelsConfigurable = Array.isArray(body.opsChannelsConfigurable)
+    ? [...new Set(body.opsChannelsConfigurable.map(String).map((value) => value.trim()).filter(Boolean))]
+    : undefined
+  const opsEventsConfigurable =
+    typeof body.opsEventsConfigurable === 'boolean' ? body.opsEventsConfigurable : undefined
+  const opsProjectsConfigurable =
+    typeof body.opsProjectsConfigurable === 'boolean' ? body.opsProjectsConfigurable : undefined
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
   const next: UserAccessAssignment = {
@@ -125,7 +155,12 @@ export async function PUT(
       tx.set(
         userRef,
         {
-          canBeIncidentActionAssignee: incidentActionAssigneeEnabled,
+          ...(incidentActionAssigneeEnabled !== undefined
+            ? { canBeIncidentActionAssignee: incidentActionAssigneeEnabled }
+            : {}),
+          ...(opsChannelsConfigurable !== undefined ? { opsChannelsConfigurable } : {}),
+          ...(opsEventsConfigurable !== undefined ? { opsEventsConfigurable } : {}),
+          ...(opsProjectsConfigurable !== undefined ? { opsProjectsConfigurable } : {}),
           updatedAt: Date.now(),
         },
         { merge: true }
@@ -136,6 +171,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Usuari no trobat' }, { status: 404 })
     }
     throw error
+  }
+
+  try {
+    await syncSpaceRequestManagerMembershipForUser(id)
+  } catch (error) {
+    console.error('[permissions] space request membership sync failed:', error)
   }
 
   return NextResponse.json({ ok: true })

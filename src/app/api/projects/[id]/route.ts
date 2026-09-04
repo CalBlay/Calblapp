@@ -38,7 +38,10 @@ import {
   sendOutlookTextMail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
-import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import {
+  decrementUnreadFromNotificationDocs,
+  incrementUserUnreadCount,
+} from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { collectOutlookRefPatches } from '@/lib/projects/outlookRefPatches'
@@ -703,17 +706,26 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
       })
     })
 
-    let userNotificationsRefs: Array<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>> = []
-    try {
-      userNotificationsRefs = (
-        await db.collectionGroup('notifications').where('projectId', '==', id).get()
-      ).docs.map((doc) => doc.ref)
-    } catch (err) {
-      console.warn('[projects] notifications cleanup skipped while deleting project', {
-        projectId: id,
-        error: err instanceof Error ? err.message : String(err),
-      })
+    const usersSnap = await db.collection('users').select().get()
+    const notificationGroups: Array<{
+      userId: string
+      docs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[]
+    }> = []
+    for (let index = 0; index < usersSnap.docs.length; index += 25) {
+      const chunk = usersSnap.docs.slice(index, index + 25)
+      const matches = await Promise.all(
+        chunk.map(async (userDoc) => ({
+          userId: userDoc.id,
+          docs: (
+            await userDoc.ref.collection('notifications').where('projectId', '==', id).get()
+          ).docs,
+        }))
+      )
+      notificationGroups.push(...matches.filter((group) => group.docs.length > 0))
     }
+    const userNotificationsRefs = notificationGroups.flatMap((group) =>
+      group.docs.map((doc) => doc.ref)
+    )
 
     await deleteDocsInChunks([
       ...messageReadRefs,
@@ -723,6 +735,12 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
       ...userNotificationsRefs,
       docRef,
     ])
+
+    await Promise.allSettled(
+      notificationGroups.map((group) =>
+        decrementUnreadFromNotificationDocs(group.userId, group.docs)
+      )
+    )
 
     try {
       await bucket.deleteFiles({ prefix: `projects/${id}/` })
