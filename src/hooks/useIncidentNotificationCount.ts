@@ -1,22 +1,22 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import { useNotificationSummaryContext } from '@/context/NotificationSummaryContext'
 import { INCIDENT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTypes'
+import {
+  isIncidentActionNotificationVisible,
+  isPendingIncidentActionStatus,
+  type IncidentActionMineRow,
+} from '@/lib/incidentActionsMine'
+import { useSyntheticNotificationDismissals } from '@/hooks/useSyntheticNotificationDismissals'
 
 type IncidentNotification = {
   type?: string
   read?: boolean
   actionId?: string
 }
-
-type IncidentActionMineRow = {
-  id: string
-}
-
-const DISMISSED_SYNTHETIC_STORAGE_KEY = 'incident-dismissed-synthetic-notifications'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -49,26 +49,22 @@ export function useIncidentNotificationCount() {
   const { summary, loading, error } = useNotificationSummaryContext()
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string } | undefined)?.id || '').trim()
-  const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
+  const { dismissedIds: dismissedSyntheticIds } =
+    useSyntheticNotificationDismissals('incidents')
 
   const { data: notificationsData } = useSWR(userId ? 'incident-notifications' : null, fetchIncidentNotifications)
   const { data: mineData } = useSWR(
-    userId ? '/api/incidents/actions/mine?status=pending' : null,
+    userId ? '/api/incidents/actions/mine?status=all&scope=assigned' : null,
     fetcher
   )
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_SYNTHETIC_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      setDismissedSyntheticIds(Array.isArray(parsed) ? parsed.map((value) => String(value)) : [])
-    } catch {
-      setDismissedSyntheticIds([])
-    }
-  }, [])
-
   const count = useMemo(() => {
+    const assignedActions = Array.isArray(mineData?.actions)
+      ? (mineData.actions as IncidentActionMineRow[])
+      : []
+    const assignedActionIds = new Set(
+      assignedActions.map((action) => String(action.id || '').trim()).filter(Boolean)
+    )
     const unreadNotifications = (Array.isArray(notificationsData)
       ? notificationsData
       : []
@@ -76,7 +72,8 @@ export function useIncidentNotificationCount() {
 
     const incidentNotifications = unreadNotifications.filter((notification: IncidentNotification) => {
       const type = String(notification.type || '').trim()
-      return type === 'incident_marketing_9xx_new' || type === 'incident_action_assigned'
+      if (type !== 'incident_marketing_9xx_new' && type !== 'incident_action_assigned') return false
+      return isIncidentActionNotificationVisible(notification, assignedActionIds)
     })
 
     const notifiedActionIds = new Set(
@@ -86,7 +83,9 @@ export function useIncidentNotificationCount() {
         .filter(Boolean)
     )
 
-    const pendingActions = Array.isArray(mineData?.actions) ? (mineData.actions as IncidentActionMineRow[]) : []
+    const pendingActions = assignedActions.filter((action) =>
+      isPendingIncidentActionStatus(action.status)
+    )
     const syntheticPendingCount = pendingActions.filter((action) => {
       const actionId = String(action.id || '').trim()
       if (!actionId || notifiedActionIds.has(actionId)) return false
@@ -96,8 +95,10 @@ export function useIncidentNotificationCount() {
     return incidentNotifications.length + syntheticPendingCount
   }, [dismissedSyntheticIds, mineData, notificationsData])
 
+  const hasLiveCount = Array.isArray(notificationsData) && Array.isArray(mineData?.actions)
+
   return {
-    count: Math.max(summary.incidents, count),
+    count: hasLiveCount ? count : summary.incidents,
     loading,
     error,
   }

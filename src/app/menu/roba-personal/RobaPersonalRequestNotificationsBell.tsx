@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
@@ -14,6 +14,7 @@ import NotificationListItem from '@/components/layout/NotificationListItem'
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 import type { DeliveryRow, RequestRow, RobaPersonalRequestNotification } from './robaPersonalTypes'
 import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
+import { useSyntheticNotificationDismissals } from '@/hooks/useSyntheticNotificationDismissals'
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -29,8 +30,6 @@ const ROBA_NOTIFICATION_TYPES = [
 type RobaDisplayedNotification = RobaPersonalRequestNotification & {
   synthetic?: boolean
 }
-
-const DISMISSED_SYNTHETIC_STORAGE_KEY = 'roba-personal-dismissed-synthetic-notifications'
 
 const fetchRobaNotifications = async (): Promise<RobaDisplayedNotification[]> => {
   const responses = await Promise.all(
@@ -373,7 +372,8 @@ export function RobaPersonalRequestNotificationsBell() {
     canFetchRequests,
     canFetchDeliveries,
   } = useRobaPersonalApiAccess()
-  const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
+  const { dismissedIds: dismissedSyntheticIds, dismiss: dismissSynthetic } =
+    useSyntheticNotificationDismissals('roba_personal')
 
   const { data, mutate } = useSWR(userId ? 'roba-personal-notifications' : null, fetchRobaNotifications)
   const { data: requestsData } = useSWR<RequestRow[]>(
@@ -396,17 +396,6 @@ export function RobaPersonalRequestNotificationsBell() {
       handler,
     })
   }, [userId, mutate])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_SYNTHETIC_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      setDismissedSyntheticIds(Array.isArray(parsed) ? parsed.map((value) => String(value)) : [])
-    } catch {
-      setDismissedSyntheticIds([])
-    }
-  }, [])
 
   const notifications = useMemo(
     () =>
@@ -447,11 +436,7 @@ export function RobaPersonalRequestNotificationsBell() {
   const dismiss = async (notificationId: string) => {
     const target = visibleNotifications.find((notification) => notification.id === notificationId)
     if (target?.synthetic) {
-      const nextIds = [...new Set([...dismissedSyntheticIds, notificationId])]
-      setDismissedSyntheticIds(nextIds)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
-      }
+      await dismissSynthetic([notificationId])
       return
     }
 
@@ -467,11 +452,7 @@ export function RobaPersonalRequestNotificationsBell() {
       .filter((notification) => notification.synthetic)
       .map((notification) => notification.id)
     if (syntheticIds.length > 0) {
-      const nextIds = [...new Set([...dismissedSyntheticIds, ...syntheticIds])]
-      setDismissedSyntheticIds(nextIds)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
-      }
+      await dismissSynthetic(syntheticIds)
     }
     await mutate()
   }

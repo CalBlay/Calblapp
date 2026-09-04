@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { mutate } from 'swr'
 import useSWR from 'swr'
 import { useNotificationSummaryContext } from '@/context/NotificationSummaryContext'
 import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
 import type { DeliveryRow, RequestRow, RobaPersonalRequestNotification } from '@/app/menu/roba-personal/robaPersonalTypes'
+import { useSyntheticNotificationDismissals } from '@/hooks/useSyntheticNotificationDismissals'
 
 const SUMMARY_KEY = '/api/notifications/summary'
-const DISMISSED_SYNTHETIC_STORAGE_KEY = 'roba-personal-dismissed-synthetic-notifications'
 const ROBA_NOTIFICATION_TYPES = [
   'roba_personal_request',
   'roba_personal_sent_to_rrhh',
@@ -233,7 +233,8 @@ export function useRobaPersonalRequestNotificationCount() {
     canFetchDeliveries,
     userId,
   } = useRobaPersonalApiAccess()
-  const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
+  const { dismissedIds: dismissedSyntheticIds } =
+    useSyntheticNotificationDismissals('roba_personal')
 
   const { data: notificationsData } = useSWR(
     userId ? 'roba-personal-notifications' : null,
@@ -247,17 +248,6 @@ export function useRobaPersonalRequestNotificationCount() {
     canFetchDeliveries ? '/api/roba-personal/deliveries' : null,
     swrFetcher
   )
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_SYNTHETIC_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      setDismissedSyntheticIds(Array.isArray(parsed) ? parsed.map((value) => String(value)) : [])
-    } catch {
-      setDismissedSyntheticIds([])
-    }
-  }, [])
 
   const count = useMemo(() => {
     const notifications = (Array.isArray(notificationsData) ? notificationsData : []).filter(

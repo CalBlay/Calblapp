@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
@@ -19,6 +19,7 @@ import {
   isPendingIncidentActionStatus,
   type IncidentActionMineRow,
 } from '@/lib/incidentActionsMine'
+import { useSyntheticNotificationDismissals } from '@/hooks/useSyntheticNotificationDismissals'
 
 type IncidentNotification = {
   id: string
@@ -35,8 +36,6 @@ type IncidentNotification = {
   categoryLabel?: string | null
   synthetic?: boolean
 }
-
-const DISMISSED_SYNTHETIC_STORAGE_KEY = 'incident-dismissed-synthetic-notifications'
 
 const INCIDENT_TYPES = new Set<string>(INCIDENT_NOTIFICATION_TYPES)
 
@@ -172,7 +171,8 @@ function IncidentNotificationItems({
 export default function IncidentNotificationsBell() {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
-  const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
+  const { dismissedIds: dismissedSyntheticIds, dismiss: dismissSynthetic } =
+    useSyntheticNotificationDismissals('incidents')
   const { data, mutate } = useSWR(userId ? 'incident-notifications' : null, fetchIncidentNotifications)
   const { data: mineData, mutate: mutateMine } = useSWR(
     userId ? '/api/incidents/actions/mine?status=all&scope=assigned' : null,
@@ -195,17 +195,6 @@ export default function IncidentNotificationsBell() {
       channel.unsubscribe('created', handler)
     }
   }, [userId, mutate, mutateMine])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_SYNTHETIC_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      setDismissedSyntheticIds(Array.isArray(parsed) ? parsed.map((value) => String(value)) : [])
-    } catch {
-      setDismissedSyntheticIds([])
-    }
-  }, [])
 
   const notifications = useMemo(() => {
     const assignedActions = Array.isArray(mineData?.actions)
@@ -256,11 +245,7 @@ export default function IncidentNotificationsBell() {
   const dismiss = async (notificationId: string) => {
     const target = notifications.find((notification) => notification.id === notificationId)
     if (target?.synthetic) {
-      const nextIds = [...new Set([...dismissedSyntheticIds, notificationId])]
-      setDismissedSyntheticIds(nextIds)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
-      }
+      await dismissSynthetic([notificationId])
       return
     }
 
@@ -276,11 +261,7 @@ export default function IncidentNotificationsBell() {
       .filter((notification) => notification.synthetic)
       .map((notification) => notification.id)
     if (syntheticIds.length > 0) {
-      const nextIds = [...new Set([...dismissedSyntheticIds, ...syntheticIds])]
-      setDismissedSyntheticIds(nextIds)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
-      }
+      await dismissSynthetic(syntheticIds)
     }
     await mutate()
   }
