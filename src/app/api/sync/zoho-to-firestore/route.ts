@@ -15,6 +15,7 @@ export async function GET(req: Request) {
     const includeAttachments =
       url.searchParams.get('includeAttachments') === '1' ||
       url.searchParams.get('includeAttachments') === 'true'
+    const forceFullSync = url.searchParams.get('full') === '1'
 
     if (mode === 'cron') {
       const cronDenied = requireCronAuth(req)
@@ -41,12 +42,13 @@ export async function GET(req: Request) {
 
     const result = await syncZohoDealsToFirestore({
       includeAttachments,
-      forceFullSync: true,
+      forceFullSync,
     })
 
     return NextResponse.json({
       ok: true,
       mode: 'manual',
+      syncMode: forceFullSync ? 'full' : 'incremental',
       includeAttachments,
       ...result,
       timestamp: new Date().toISOString(),

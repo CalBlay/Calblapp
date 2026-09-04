@@ -350,6 +350,7 @@ type AttachmentSyncTotals = {
 }
 
 const MAX_BATCH_WRITES = 450
+const ZOHO_SYNC_CONCURRENCY = 4
 const ZOHO_SYNC_STATE_COLLECTION = 'internal_sync_state'
 const ZOHO_SYNC_STATE_DOC_ID = 'zoho_deals'
 const ZOHO_SYNC_OVERLAP_MS = 15 * 60 * 1000
@@ -555,14 +556,33 @@ async function syncStageCollections({
     else if (deal.collection === 'taronja') idsTaronja.add(deal.idZoho)
   }
 
-  const existingVerd = await readStageDocs('stage_verd')
-  const existingGroc = await readStageDocs('stage_groc')
-  const existingTaronja = await readStageDocs('stage_taronja')
+  const [existingVerd, existingGroc, existingTaronja] = await Promise.all([
+    readStageDocs('stage_verd'),
+    readStageDocs('stage_groc'),
+    readStageDocs('stage_taronja'),
+  ])
 
   const getExistingStageDoc = (id: string) =>
     existingVerd.get(id)?.data() ||
     existingGroc.get(id)?.data() ||
     existingTaronja.get(id)?.data()
+
+  const buildDealsData = (deals: NormalizedDeal[]) =>
+    Promise.all(
+      deals.map(async (deal) => ({
+        deal,
+        dataToSave: await buildStageDataToSave({
+          deal,
+          existingDoc: getExistingStageDoc(deal.idZoho),
+          includeAttachments,
+          moduleName,
+          zohoById,
+          manualReplacements,
+          manuals,
+          totals,
+        }),
+      }))
+    )
 
   let batchVerd = firestore.batch()
   let batchVerdCount = 0
@@ -574,24 +594,18 @@ async function syncStageCollections({
     batchVerdCount = 0
   }
 
-  for (const deal of normalized) {
-    if (deal.collection !== 'verd') continue
-    const ref = firestore.collection('stage_verd').doc(deal.idZoho)
-    const existingDoc = getExistingStageDoc(deal.idZoho)
-    const dataToSave = await buildStageDataToSave({
-      deal,
-      existingDoc,
-      includeAttachments,
-      moduleName,
-      zohoById,
-      manualReplacements,
-      manuals,
-      totals,
-    })
-    batchVerd.set(ref, dataToSave, { merge: true })
-    batchVerdCount += 1
-    if (batchVerdCount >= MAX_BATCH_WRITES) {
-      await flushVerd()
+  const verdDeals = normalized.filter((deal) => deal.collection === 'verd')
+  for (let offset = 0; offset < verdDeals.length; offset += ZOHO_SYNC_CONCURRENCY) {
+    const builtDeals = await buildDealsData(
+      verdDeals.slice(offset, offset + ZOHO_SYNC_CONCURRENCY)
+    )
+    for (const { deal, dataToSave } of builtDeals) {
+      const ref = firestore.collection('stage_verd').doc(deal.idZoho)
+      batchVerd.set(ref, dataToSave, { merge: true })
+      batchVerdCount += 1
+      if (batchVerdCount >= MAX_BATCH_WRITES) {
+        await flushVerd()
+      }
     }
   }
 
@@ -608,36 +622,24 @@ async function syncStageCollections({
     batchOthersCount = 0
   }
 
-  for (const deal of normalized) {
-    const id = deal.idZoho
-    if (idsVerd.has(id)) continue
-
-    const existingDoc = getExistingStageDoc(id)
-    const dataToSave = await buildStageDataToSave({
-      deal,
-      existingDoc,
-      includeAttachments,
-      moduleName,
-      zohoById,
-      manualReplacements,
-      manuals,
-      totals,
-    })
-
-    if (deal.collection === 'groc') {
-      const ref = firestore.collection('stage_groc').doc(id)
+  const otherDeals = normalized.filter(
+    (deal) =>
+      !idsVerd.has(deal.idZoho) &&
+      (deal.collection === 'groc' || deal.collection === 'taronja')
+  )
+  for (let offset = 0; offset < otherDeals.length; offset += ZOHO_SYNC_CONCURRENCY) {
+    const builtDeals = await buildDealsData(
+      otherDeals.slice(offset, offset + ZOHO_SYNC_CONCURRENCY)
+    )
+    for (const { deal, dataToSave } of builtDeals) {
+      const collection = deal.collection === 'groc' ? 'stage_groc' : 'stage_taronja'
+      const ref = firestore.collection(collection).doc(deal.idZoho)
       batchOthers.set(ref, dataToSave, { merge: true })
       batchOthersCount += 1
-    }
 
-    if (deal.collection === 'taronja') {
-      const ref = firestore.collection('stage_taronja').doc(id)
-      batchOthers.set(ref, dataToSave, { merge: true })
-      batchOthersCount += 1
-    }
-
-    if (batchOthersCount >= MAX_BATCH_WRITES) {
-      await flushOthers()
+      if (batchOthersCount >= MAX_BATCH_WRITES) {
+        await flushOthers()
+      }
     }
   }
 

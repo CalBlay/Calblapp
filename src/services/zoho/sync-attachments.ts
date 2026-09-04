@@ -6,6 +6,7 @@ import {
   listExistingZohoAttachmentBaseKeys,
   mergeZohoFieldAttachments,
   shouldImportZohoAttachment,
+  shouldRefetchZohoAttachmentField,
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
   zohoAttachmentSlotKeys,
   type ZohoAttachment,
@@ -94,17 +95,14 @@ async function resolveZohoDealAttachments(
   dealId: string,
   deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>
 ): Promise<ZohoAttachment[]> {
-  const fieldValues: unknown[] = []
+  const fieldValues = await Promise.all(
+    ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.map(async (field) => {
+      const value = deal?.[field]
+      if (!shouldRefetchZohoAttachmentField(value)) return value
 
-  for (const field of ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES) {
-    let value = deal?.[field]
-    // Alguns payloads de llistat de Zoho inclouen el camp de fitxer però sense ids útils.
-    // Si no podem extreure cap adjunt del valor rebut, rellegim el camp del registre.
-    if (mergeZohoFieldAttachments([value]).length === 0) {
-      value = await getZohoFieldAttachmentValue(moduleName, dealId, field)
-    }
-    fieldValues.push(value)
-  }
+      return getZohoFieldAttachmentValue(moduleName, dealId, field)
+    })
+  )
 
   return mergeZohoFieldAttachments(fieldValues)
 }

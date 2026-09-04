@@ -24,6 +24,13 @@ export function shouldImportZohoAttachment(fileName?: string | null): boolean {
   })
 }
 
+export function shouldRefetchZohoAttachmentField(value: unknown): boolean {
+  if (mergeZohoFieldAttachments([value]).length > 0) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'string') return Boolean(value.trim())
+  return value !== null && value !== undefined
+}
+
 export function zohoAttachmentSlotKeys(baseKey: string) {
   return {
     url: baseKey,

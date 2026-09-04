@@ -461,7 +461,11 @@ export default function CalendarPage() {
       const res = await fetch('/api/sync/zoho-to-firestore?mode=manual&includeAttachments=1')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error')
-      alert(`Sincronització: ${json.updated} actualitzats, ${json.created} nous`)
+      alert(
+        `Sincronització completada: ${json.totalCount || 0} revisats, ` +
+          `${json.createdCount || 0} sincronitzats, ` +
+          `${json.attachmentsDownloaded || 0} adjunts nous`
+      )
       reload()
     } catch {
       alert('Error sincronitzant amb Zoho.')

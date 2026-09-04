@@ -10,6 +10,7 @@ const {
   listExistingZohoAttachmentBaseKeys,
   mergeZohoFieldAttachments,
   shouldImportZohoAttachment,
+  shouldRefetchZohoAttachmentField,
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
   zohoAttachmentSlotKeys,
 } = require('../src/services/zoho/attachments')
@@ -58,6 +59,18 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
     'Fulla_d_enc_rrec',
     'Full_de_Tast',
   ])
+})
+
+test('empty Zoho file fields do not trigger per-record refetches', () => {
+  assert.equal(shouldRefetchZohoAttachmentField(undefined), false)
+  assert.equal(shouldRefetchZohoAttachmentField(null), false)
+  assert.equal(shouldRefetchZohoAttachmentField(''), false)
+  assert.equal(shouldRefetchZohoAttachmentField([]), false)
+  assert.equal(
+    shouldRefetchZohoAttachmentField([{ attachment_Id: 'att-1' }]),
+    false
+  )
+  assert.equal(shouldRefetchZohoAttachmentField({ pending: true }), true)
 })
 
 test('attachment slot helpers protect against destructive empty-sync cleanup', () => {
@@ -110,4 +123,20 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Fulla_d_enc_rrec',
     'Full_de_Tast',
   ])
+})
+
+test('manual Zoho sync is incremental and uses bounded deal concurrency', () => {
+  const routeSource = fs.readFileSync(
+    path.join(__dirname, '../src/app/api/sync/zoho-to-firestore/route.ts'),
+    'utf8'
+  )
+  const syncSource = fs.readFileSync(
+    path.join(__dirname, '../src/services/zoho/sync.ts'),
+    'utf8'
+  )
+
+  assert.match(routeSource, /const forceFullSync = url\.searchParams\.get\('full'\) === '1'/)
+  assert.doesNotMatch(routeSource, /forceFullSync:\s*true/)
+  assert.match(syncSource, /const ZOHO_SYNC_CONCURRENCY = 4/)
+  assert.match(syncSource, /slice\(offset, offset \+ ZOHO_SYNC_CONCURRENCY\)/)
 })
