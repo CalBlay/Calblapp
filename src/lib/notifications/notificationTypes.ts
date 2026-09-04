@@ -18,8 +18,18 @@ export const MAINTENANCE_NOTIFICATION_TYPES = [
   'maintenance_ticket_resolved',
   'maintenance_ticket_pending_cap_validation',
   'maintenance_ticket_validated',
+  'maintenance_ticket_reopened',
   'maintenance_ticket_stale',
   'maintenance_ticket_external_stale',
+] as const
+
+export const DECO_NOTIFICATION_TYPES = [
+  'deco_ticket_new',
+  'deco_ticket_assigned',
+  'deco_ticket_resolved',
+  'deco_ticket_pending_cap_validation',
+  'deco_ticket_validated',
+  'deco_ticket_reopened',
 ] as const
 
 export const INCIDENT_NOTIFICATION_TYPES = [

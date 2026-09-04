@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   canManageAllMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canUseDecoTicketPermission,
   canViewQualitatCuinaCentralMaintenanceTickets,
 } from '@/lib/server/maintenanceTicketsAccess'
 import {
@@ -13,6 +14,7 @@ import {
 import {
   buildTicketBody,
   notifyForNewMaintenanceTicket,
+  notifyForNewDecoTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
@@ -23,6 +25,7 @@ import {
   isQualitatVisibleCuinaCentralTicket,
 } from '@/lib/server/qualitatCuinaCentralTickets'
 import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
+import { DECO_TICKETS_UI_PATH } from '@/lib/decoTicketsPermissions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -282,7 +285,10 @@ export async function GET(req: Request) {
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
 
   const canViewAllTickets =
-    (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+    ticketType === 'deco'
+      ? (await canUseDecoTicketPermission(user, 'manage')) ||
+        (await canUseDecoTicketPermission(user, 'inbox'))
+      : (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
   const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
   const cuinaCentralUserIds = canViewQualitatCuinaCentral
     ? new Set(await getCuinaCentralUserIds())
@@ -458,13 +464,24 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)
+  let body: TicketPayload
+  try {
+    body = (await req.json()) as TicketPayload
+  } catch {
+    return NextResponse.json({ error: 'Cos de la petició no vàlid' }, { status: 400 })
+  }
+
+  let auth = await requireMaintenanceTicketApiCreate(
+    body.ticketType === 'deco' ? DECO_TICKETS_UI_PATH : MAINTENANCE_TICKETS_PATH
+  )
+  if (!auth.ok && body.ticketType === 'deco') {
+    auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)
+  }
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
 
   try {
-    const body = (await req.json()) as TicketPayload
     const center = String(body.center || '').trim() || null
     const location = (body.location || '').trim()
     const workLocation = String(body.workLocation || '').trim() || null
@@ -594,11 +611,9 @@ export async function POST(req: Request) {
       workLogs: [],
     })
 
-    await notifyForNewMaintenanceTicket({
-      workflowStage,
-      payload: {
-        type: 'maintenance_ticket_new',
-        title: 'Nou ticket de manteniment',
+    const notificationPayload = {
+        type: ticketType === 'deco' ? 'deco_ticket_new' : 'maintenance_ticket_new',
+        title: ticketType === 'deco' ? 'Nou ticket d’Imatge-Deco' : 'Nou ticket de manteniment',
         body: [
           buildTicketBody({ machine, location, description }),
           workerName ? `Treballador: ${workerName}` : '',
@@ -612,9 +627,16 @@ export async function POST(req: Request) {
         location,
         machine,
         source,
-      },
-      excludeIds: [user.id],
-    })
+      } as const
+    if (ticketType === 'deco') {
+      await notifyForNewDecoTicket({ payload: notificationPayload, excludeIds: [user.id] })
+    } else {
+      await notifyForNewMaintenanceTicket({
+        workflowStage,
+        payload: notificationPayload,
+        excludeIds: [user.id],
+      })
+    }
 
     for (const image of images) {
       const mediaPath = String(image.path || '').trim()

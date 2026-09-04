@@ -12,7 +12,7 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-export function useMaintenanceTicketCatalog() {
+export function useMaintenanceTicketCatalog(assigneeDepartment = 'manteniment') {
   const [locations, setLocations] = useState<string[]>([])
   const [centers, setCenters] = useState<CenterRow[]>([])
   const [machines, setMachines] = useState<MachineItem[]>([])
@@ -27,7 +27,12 @@ export function useMaintenanceTicketCatalog() {
         const [locationsRes, centersRes, usersRes, machinesRes] = await Promise.all([
           fetch('/api/spaces/internal', { cache: 'no-store' }),
           fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
-          fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
+          fetch(
+            assigneeDepartment === 'deco'
+              ? '/api/personnel'
+              : `/api/personnel?department=${encodeURIComponent(assigneeDepartment)}`,
+            { cache: 'no-store' }
+          ),
           fetch('/api/maintenance/machines', { cache: 'no-store' }),
         ])
 
@@ -57,16 +62,21 @@ export function useMaintenanceTicketCatalog() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [assigneeDepartment])
 
   const maintenanceUsers = useMemo(
     () =>
       users.filter((user) => {
         const dept = normalizeDept(user.departmentLower || user.department)
         const role = normalizeRole(user.role || '')
-        return dept === 'manteniment' && (role === 'treballador' || role === 'cap')
+        const requestedDepartment = normalizeDept(assigneeDepartment)
+        const matchesDepartment =
+          requestedDepartment === 'deco'
+            ? ['deco', 'decoracio', 'decoracions'].includes(dept)
+            : dept === requestedDepartment
+        return matchesDepartment && (role === 'treballador' || role === 'cap')
       }),
-    [users]
+    [assigneeDepartment, users]
   )
 
   const furgonetes = useMemo(

@@ -30,6 +30,7 @@ type ChannelRecord = Record<string, unknown> & {
   location?: string
   status?: string
   name?: string
+  ticketType?: string
 }
 
 type ChannelMemberRecord = Record<string, unknown> & {

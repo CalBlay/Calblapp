@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useSession } from 'next-auth/react'
 import type {
   LogisticsEventPrepRow,
   LogisticsWarehousePrepRow,
@@ -15,8 +14,6 @@ export function useLogisticsData(
   dateRange?: { start: string; end: string } | null,
   options?: { preparerMode?: boolean }
 ) {
-  const { data: session } = useSession()
-  const role = (session?.user?.role || '').toLowerCase()
   const preparerMode = Boolean(options?.preparerMode)
   const isSingleDayFilter = Boolean(
     dateRange?.start &&

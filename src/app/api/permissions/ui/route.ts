@@ -71,6 +71,16 @@ import {
   isEditPerm,
   isViewPerm,
 } from '@/lib/permissionKeys'
+import {
+  DECO_TICKETS_ACTION,
+  DECO_TICKETS_DELETE_PERM,
+  DECO_TICKETS_EXTERNALIZE_PERM,
+  DECO_TICKETS_INBOX_PERM,
+  DECO_TICKETS_MANAGE_PERM,
+  DECO_TICKETS_REOPEN_PERM,
+  DECO_TICKETS_UI_PATH,
+  DECO_TICKETS_VALIDATE_PERM,
+} from '@/lib/decoTicketsPermissions'
 
 type UiPermissionMap = Record<string, boolean>
 type UiEditMap = Record<string, boolean>
@@ -126,6 +136,10 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.REOPEN },
   { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.EXTERNALIZE },
   { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.INBOX },
+  ...Object.values(DECO_TICKETS_ACTION).map((action) => ({
+    path: DECO_TICKETS_UI_PATH,
+    action,
+  })),
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
   { path: '/menu/quadrants', action: 'draft:save' },
@@ -477,6 +491,22 @@ export async function GET() {
       actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = false
     } else if (externalizeEff === 'allow') {
       actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = true
+    }
+  }
+
+  if (map[DECO_TICKETS_UI_PATH] === true) {
+    for (const key of [
+      DECO_TICKETS_INBOX_PERM,
+      DECO_TICKETS_DELETE_PERM,
+      DECO_TICKETS_MANAGE_PERM,
+      DECO_TICKETS_VALIDATE_PERM,
+      DECO_TICKETS_REOPEN_PERM,
+      DECO_TICKETS_EXTERNALIZE_PERM,
+    ]) {
+      const effect = effectFor(assignment, key)
+      if (effect === 'allow') actions[key] = true
+      if (effect === 'deny') actions[key] = false
+      if (!effect && edit[DECO_TICKETS_UI_PATH] === true) actions[key] = true
     }
   }
 

@@ -30,10 +30,11 @@ export function isGestorResolvedMaintenanceTicket(ticket: {
 }
 
 export function maintenanceTicketRequiresCreatorValidation(
-  ticket: MaintenanceTicketValidationSnapshot
+  _ticket: MaintenanceTicketValidationSnapshot
 ): boolean {
-  if (ticket.requiresCreatorValidation === true) return true
-  return isGestorResolvedMaintenanceTicket(ticket)
+  // El ticket ja queda com a fet. La resposta posterior del creador és
+  // una confirmació opcional o una petició de reobertura.
+  return false
 }
 
 export function isMaintenanceTicketPendingValidation(ticket: MaintenanceTicketValidationSnapshot): boolean {
@@ -48,7 +49,6 @@ export function canCreatorValidateMaintenanceTicket(
   const actorId = String(userId || '').trim()
   const creatorId = String(ticket.createdById || '').trim()
   if (!actorId || !creatorId || actorId !== creatorId) return false
-  if (!maintenanceTicketRequiresCreatorValidation(ticket)) return false
   if (normalizeStatus(ticket.status) === 'validat') return false
   if (!isMaintenanceTicketPendingValidation(ticket)) return false
   return !ticket.creatorValidatedAt
@@ -62,16 +62,14 @@ export function canCapValidateMaintenanceTicket(
   if (normalizeStatus(ticket.status) === 'validat') return false
   if (!isMaintenanceTicketPendingValidation(ticket)) return false
 
-  if (maintenanceTicketRequiresCreatorValidation(ticket)) {
-    return !ticket.capValidatedAt
-  }
+  if (maintenanceTicketRequiresCreatorValidation(ticket)) return false
 
   return true
 }
 
 export function isMaintenanceTicketDualValidationComplete(ticket: MaintenanceTicketValidationSnapshot): boolean {
   if (!maintenanceTicketRequiresCreatorValidation(ticket)) return false
-  return Boolean(ticket.creatorValidatedAt) && Boolean(ticket.capValidatedAt)
+  return Boolean(ticket.creatorValidatedAt)
 }
 
 export function getMaintenanceTicketValidationSummary(ticket: MaintenanceTicketValidationSnapshot) {
@@ -94,6 +92,6 @@ export function getMaintenanceTicketValidationSummary(ticket: MaintenanceTicketV
     creatorDone,
     capDone,
     pendingCreator: !creatorDone && isMaintenanceTicketPendingValidation(ticket),
-    pendingCap: !capDone && isMaintenanceTicketPendingValidation(ticket),
+    pendingCap: false,
   }
 }

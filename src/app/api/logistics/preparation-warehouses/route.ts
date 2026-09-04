@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { listPreparationWarehousesForUser } from '@/lib/logistics/preparationAccess.server'
 import { PREPARATION_WAREHOUSE_LABELS } from '@/lib/logistics/preparationWarehouses'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
@@ -13,7 +14,8 @@ export async function GET() {
   if (denied) return denied.res
 
   try {
-    const warehouses = await listPreparationWarehousesForUser(auth.user.id, auth.role)
+    const scope = new URL(request.url).searchParams.get('scope') === 'deco' ? 'deco' : undefined
+    const warehouses = await listPreparationWarehousesForUser(auth.user.id, auth.role, { scope })
     return NextResponse.json({
       ok: true,
       warehouses: warehouses.map((code) => ({

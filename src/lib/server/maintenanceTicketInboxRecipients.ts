@@ -4,6 +4,7 @@ import {
   MAINTENANCE_TICKETS_INBOX_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import { DECO_TICKETS_INBOX_PERM } from '@/lib/decoTicketsPermissions'
 
 function userDocToAccessUser(id: string, data: Record<string, unknown>): AccessUser & { id: string } {
   return {
@@ -55,4 +56,20 @@ export async function listMaintenanceTicketInboxRecipientIds(): Promise<string[]
   )
 
   return Array.from(new Set(recipients))
+}
+
+/** Usuaris amb permís efectiu de safata Deco (inclou defaults i overrides). */
+export async function listDecoTicketInboxRecipientIds(): Promise<string[]> {
+  const usersSnap = await db.collection('users').get()
+  const recipients = await Promise.all(
+    usersSnap.docs.map(async (doc) => {
+      const accessUser = userDocToAccessUser(doc.id, doc.data() as Record<string, unknown>)
+      const granted = await isUiPermissionGranted({
+        user: accessUser,
+        permission: DECO_TICKETS_INBOX_PERM,
+      })
+      return granted ? doc.id : ''
+    })
+  )
+  return Array.from(new Set(recipients.filter(Boolean)))
 }

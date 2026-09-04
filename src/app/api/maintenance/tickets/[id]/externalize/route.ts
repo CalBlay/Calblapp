@@ -3,6 +3,7 @@ import admin from 'firebase-admin'
 import {
   canExternalizeMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canUseDecoTicketPermission,
 } from '@/lib/server/maintenanceTicketsAccess'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
@@ -93,10 +94,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const logisticsTicketsManager = await canManageMaintenanceTicketInbox(user)
   const canExternalize = await canExternalizeMaintenanceTickets(user)
 
-  if (!canExternalize && !logisticsTicketsManager) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { id } = await ctx.params
   const body = (await req.json()) as ExternalizePayload
   const supplierName = String(body.supplierName || '').trim()
@@ -130,6 +127,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const current = snap.data() as MaintenanceTicketExternalizeRecord
+    const isDecoTicket = String(current.ticketType || 'maquinaria').toLowerCase() === 'deco'
+    const canExternalizeCurrent = isDecoTicket
+      ? (await canUseDecoTicketPermission(user, 'externalize')) ||
+        (await canUseDecoTicketPermission(user, 'inbox'))
+      : canExternalize || logisticsTicketsManager
+    if (!canExternalizeCurrent) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     const currentStatus = normalizeStatus(String(current.status || ''))
     if (currentStatus === 'validat') {
       return NextResponse.json(

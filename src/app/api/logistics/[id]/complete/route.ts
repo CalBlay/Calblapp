@@ -3,7 +3,10 @@ import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { listPreparationWarehousesForUser } from '@/lib/logistics/preparationAccess.server'
 import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMagatzem'
-import { isPreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
+import {
+  isPreparationWarehouseCode,
+  PREPARATION_WAREHOUSE_CODES,
+} from '@/lib/logistics/preparationWarehouses'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
@@ -40,7 +43,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const body = (await req.json().catch(() => null)) as
-      | { warehouse?: string; done?: boolean }
+      | { warehouse?: string; done?: boolean; scope?: string }
       | null
     const warehouseRaw = String(body?.warehouse || '').trim().toUpperCase()
     if (!isPreparationWarehouseCode(warehouseRaw)) {
@@ -48,7 +51,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
     const done = Boolean(body?.done)
 
-    const allowedWarehouses = await listPreparationWarehousesForUser(auth.userId, auth.role)
+    const scope = body?.scope === 'deco' ? 'deco' : undefined
+    const allowedWarehouses = await listPreparationWarehousesForUser(auth.userId, auth.role, {
+      scope,
+    })
     if (!allowedWarehouses.includes(warehouseRaw)) {
       return NextResponse.json(
         { ok: false, error: 'No tens permis per aquest magatzem' },
@@ -87,7 +93,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const completedCount = Object.keys(nextMap).length
-    const legacyDone = completedCount >= 3
+    const legacyDone = completedCount >= PREPARATION_WAREHOUSE_CODES.length
 
     await docRef.update({
       PreparacioMagatzems: nextMap,

@@ -11,6 +11,7 @@ import {
 import { useIncidents } from '@/hooks/useIncidents'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 
 interface Props {
   open: boolean
@@ -86,6 +87,15 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                   <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {incident.images.map((image, index) =>
                       image?.url ? (
+                        String(image.meta?.type || '').startsWith('video/') || isTicketVideoUrl(image.url) ? (
+                          <video
+                            key={`${incident.id}-video-${index}`}
+                            src={image.url}
+                            className="h-32 w-full rounded-xl border border-slate-200 object-cover"
+                            controls
+                            preload="metadata"
+                          />
+                        ) : (
                         <a
                           key={`${incident.id}-image-${index}`}
                           href={image.url}
@@ -102,6 +112,7 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                             unoptimized
                           />
                         </a>
+                        )
                       ) : null
                     )}
                   </div>

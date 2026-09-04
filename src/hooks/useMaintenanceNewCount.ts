@@ -12,7 +12,7 @@ type MaintenanceTicket = { id?: string }
 export function useMaintenanceNewCount(options: Options = {}) {
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const ticketType = options.ticketType
+  const ticketType = options.ticketType || 'maquinaria'
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {

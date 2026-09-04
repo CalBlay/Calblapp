@@ -1,12 +1,23 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import type { AccessUser } from '@/lib/accessControl'
+import {
+  canManageMaintenanceTickets,
+  isMaintenanceCapDepartment,
+  normalizeDept,
+  type AccessUser,
+} from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import {
   canManageAllMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canUseDecoTicketPermission,
 } from '@/lib/server/maintenanceTicketsAccess'
-import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
+import {
+  listDecoTicketInboxRecipientIds,
+  listMaintenanceTicketInboxRecipientIds,
+} from '@/lib/server/maintenanceTicketInboxRecipients'
 import { buildMaintenanceTicketChannelId } from '@/lib/messaging/maintenanceTicketChatIds'
+import { isDecoDepartmentHead } from '@/lib/decoTicketsPermissions'
+import { isTicketOpsActive } from '@/lib/messaging/ticketOpsStatus'
 
 export type MaintenanceTicketOpsRecord = {
   id: string
@@ -21,6 +32,7 @@ export type MaintenanceTicketOpsRecord = {
   status?: string | null
   workflowStage?: string | null
   externalized?: boolean | null
+  ticketType?: 'maquinaria' | 'deco' | null
 }
 
 export type MaintenanceTicketOpsRoom = {
@@ -38,6 +50,58 @@ export type MaintenanceTicketOpsRoom = {
 }
 
 type ChatMember = { userId: string; userName: string }
+
+function isDecoTicket(ticket: MaintenanceTicketOpsRecord) {
+  return String(ticket.ticketType || 'maquinaria').trim().toLowerCase() === 'deco'
+}
+
+async function canManageTicketOpsScope(
+  ticket: MaintenanceTicketOpsRecord,
+  user: AccessUser & { id: string }
+) {
+  if (isDecoTicket(ticket)) {
+    return (
+      (await canUseDecoTicketPermission(user, 'manage')) ||
+      (await canUseDecoTicketPermission(user, 'inbox'))
+    )
+  }
+  return (
+    canManageMaintenanceTickets(user) ||
+    (await canManageAllMaintenanceTickets(user)) ||
+    (await canManageMaintenanceTicketInbox(user))
+  )
+}
+
+async function listMaintenanceTicketOpsManagerIds() {
+  const [inboxIds, usersSnap] = await Promise.all([
+    listMaintenanceTicketInboxRecipientIds(),
+    db.collection('users').get(),
+  ])
+  const managerIds = await Promise.all(
+    usersSnap.docs.map(async (doc) => {
+      const data = doc.data() as Record<string, unknown>
+      const user: AccessUser & { id: string } = {
+        id: doc.id,
+        role: String(data.role || ''),
+        department: String(data.department || data.departmentLower || ''),
+      }
+      const role = normalizeRole(user.role)
+      const isMaintenanceHead =
+        role === 'cap' && isMaintenanceCapDepartment(user.department)
+      if (isMaintenanceHead) return doc.id
+      if (role === 'admin' || role === 'direccio') return ''
+      return (await canManageAllMaintenanceTickets(user)) ? doc.id : ''
+    })
+  )
+
+  return [...new Set([...inboxIds, ...managerIds.filter(Boolean)])]
+}
+
+async function listTicketOpsRecipientIds(ticket: MaintenanceTicketOpsRecord) {
+  return isDecoTicket(ticket)
+    ? listDecoTicketInboxRecipientIds()
+    : listMaintenanceTicketOpsManagerIds()
+}
 
 async function fetchUserDisplayNames(uids: string[]) {
   const map = new Map<string, string>()
@@ -74,9 +138,9 @@ export async function canAccessMaintenanceTicketOps(params: {
 }): Promise<boolean> {
   const role = normalizeRole(params.user.role)
   if (role === 'admin' || role === 'direccio') return true
-  if (await canManageAllMaintenanceTickets(params.user)) return true
+  if (await canManageTicketOpsScope(params.ticket, params.user)) return true
   if (String(params.ticket.createdById || '').trim() === params.user.id) return true
-  return await canManageMaintenanceTicketInbox(params.user)
+  return false
 }
 
 export async function canManageMaintenanceTicketChatMembers(params: {
@@ -89,16 +153,14 @@ export async function canManageMaintenanceTicketChatMembers(params: {
   const role = normalizeRole(params.role)
   if (role === 'admin' || role === 'direccio') return true
 
-  if (params.user && (await canManageAllMaintenanceTickets(params.user))) return true
+  if (params.user && (await canManageTicketOpsScope(params.ticket, params.user))) return true
 
   const managerId = String(
     params.channel.responsibleUserId || params.ticket.opsManagerUserId || ''
   ).trim()
   if (managerId && managerId === params.userId) return true
 
-  if (params.user && (await canManageMaintenanceTicketInbox(params.user))) return true
-
-  const gestorIds = await listMaintenanceTicketInboxRecipientIds()
+  const gestorIds = await listTicketOpsRecipientIds(params.ticket)
   if (gestorIds.includes(params.userId)) return true
 
   return false
@@ -111,8 +173,48 @@ async function resolveManagerUserId(params: {
   const stored = String(params.ticket.opsManagerUserId || '').trim()
   if (stored) return stored
 
-  if (await canManageAllMaintenanceTickets(params.actor)) return params.actor.id
-  if (await canManageMaintenanceTicketInbox(params.actor)) return params.actor.id
+  if (isDecoTicket(params.ticket)) {
+    const recipientIds = await listDecoTicketInboxRecipientIds()
+    if (recipientIds.length > 0) {
+      const userSnaps = await db.getAll(
+        ...recipientIds.map((userId) => db.collection('users').doc(userId))
+      )
+      const departmentHead = userSnaps.find((snap) => {
+        if (!snap.exists) return false
+        const data = snap.data() as Record<string, unknown>
+        return isDecoDepartmentHead({
+          role: String(data.role || ''),
+          department: String(data.department || data.departmentLower || ''),
+        })
+      })
+      if (departmentHead) return departmentHead.id
+    }
+  } else {
+    const recipientIds = await listMaintenanceTicketOpsManagerIds()
+    if (recipientIds.length > 0) {
+      const userSnaps = await db.getAll(
+        ...recipientIds.map((userId) => db.collection('users').doc(userId))
+      )
+      const departmentHeads = userSnaps.filter((snap) => {
+        if (!snap.exists) return false
+        const data = snap.data() as Record<string, unknown>
+        return (
+          normalizeRole(String(data.role || '')) === 'cap' &&
+          isMaintenanceCapDepartment(
+            String(data.department || data.departmentLower || '')
+          )
+        )
+      })
+      const departmentHead =
+        departmentHeads.find((snap) => {
+          const data = snap.data() as Record<string, unknown>
+          return normalizeDept(String(data.department || data.departmentLower || '')) === 'manteniment'
+        }) || departmentHeads[0]
+      if (departmentHead) return departmentHead.id
+    }
+  }
+
+  if (await canManageTicketOpsScope(params.ticket, params.actor)) return params.actor.id
   return ''
 }
 
@@ -124,7 +226,7 @@ async function collectDefaultMemberIds(params: {
   const creatorId = String(params.ticket.createdById || '').trim()
   if (creatorId) memberIds.add(creatorId)
 
-  const gestorIds = await listMaintenanceTicketInboxRecipientIds()
+  const gestorIds = await listTicketOpsRecipientIds(params.ticket)
   for (const gestorId of gestorIds) {
     if (gestorId) memberIds.add(gestorId)
   }
@@ -145,21 +247,9 @@ function creatorSidebarLabel(ticket: MaintenanceTicketOpsRecord) {
   return String(ticket.createdByName || ticket.location || 'Creador').trim() || 'Creador'
 }
 
-const CLOSED_TICKET_STATUSES = new Set(['validat', 'fet'])
-
-/** Tickets Ops actius: nous a safata, sense planificar ni resoldre. */
+/** El xat continua actiu durant la planificació i execució, fins al tancament. */
 export function isOpsActiveMaintenanceTicket(ticket: MaintenanceTicketOpsRecord): boolean {
-  if (ticket.externalized) return false
-
-  const workflowStage = String(ticket.workflowStage || 'tickets_inbox').trim()
-  if (workflowStage !== 'tickets_inbox') return false
-
-  const status = String(ticket.status || 'nou')
-    .trim()
-    .toLowerCase()
-  if (CLOSED_TICKET_STATUSES.has(status)) return false
-
-  return status === 'nou' || status === 'no_fet' || status === 'reassignat' || status === 'assignat'
+  return isTicketOpsActive(ticket)
 }
 
 async function buildMaintenanceTicketOpsRoom(params: {
@@ -241,6 +331,7 @@ export async function syncMaintenanceTicketOpsChannel(params: {
     location: String(params.ticket.location || '').trim() || null,
     ticketId,
     ticketCode: String(params.ticket.ticketCode || '').trim() || null,
+    ticketType: isDecoTicket(params.ticket) ? 'deco' : 'maquinaria',
     responsibleUserId: managerUserId || null,
     responsibleUserName: managerName,
     requesterUserId: String(params.ticket.createdById || '').trim() || null,
@@ -356,10 +447,11 @@ export async function listMaintenanceTicketOpsRooms(params: {
 
 export async function listAllMaintenanceTicketOpsRooms(params: {
   user: AccessUser & { id: string }
+  ticketType?: 'maquinaria' | 'deco'
 }): Promise<MaintenanceTicketOpsRoom[]> {
-  const canViewAll =
-    (await canManageAllMaintenanceTickets(params.user)) ||
-    (await canManageMaintenanceTicketInbox(params.user))
+  const requestedType = params.ticketType === 'deco' ? 'deco' : 'maquinaria'
+  const scopeTicket: MaintenanceTicketOpsRecord = { id: '', ticketType: requestedType }
+  const canViewAll = await canManageTicketOpsScope(scopeTicket, params.user)
 
   let snap: FirebaseFirestore.QuerySnapshot
   if (canViewAll) {
@@ -377,6 +469,7 @@ export async function listAllMaintenanceTicketOpsRooms(params: {
 
   for (const doc of snap.docs) {
     const ticket = { ...(doc.data() as MaintenanceTicketOpsRecord), id: doc.id }
+    if (isDecoTicket(ticket) !== (requestedType === 'deco')) continue
     if (!isOpsActiveMaintenanceTicket(ticket)) continue
 
     const canAccess = await canAccessMaintenanceTicketOps({ ticket, user: params.user })

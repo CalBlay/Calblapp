@@ -6,6 +6,7 @@ const {
   mergeFamilyLabels,
   familyLabelForCategoryId,
   isIncidentCategoryGroup2xx,
+  incidentCategoryRequiresMedia,
   DEFAULT_INCIDENT_FAMILY_LABELS,
 } = require('../src/lib/incidentTypology')
 
@@ -27,6 +28,13 @@ test('isIncidentCategoryGroup2xx gates attachment requirement for Maquinària', 
   assert.equal(isIncidentCategoryGroup2xx('101'), false)
   assert.equal(isIncidentCategoryGroup2xx(''), false)
   assert.equal(isIncidentCategoryGroup2xx('abc'), false)
+})
+
+test('incidentCategoryRequiresMedia requires media for Maquinaria and Deco', () => {
+  assert.equal(incidentCategoryRequiresMedia('201'), true)
+  assert.equal(incidentCategoryRequiresMedia('499-extra'), true)
+  assert.equal(incidentCategoryRequiresMedia('301'), false)
+  assert.equal(incidentCategoryRequiresMedia(''), false)
 })
 
 test('mergeFamilyLabels overlays Firestore labels onto defaults by digit prefix', () => {

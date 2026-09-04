@@ -13,6 +13,7 @@ const PERSONNEL_UI_PATH = '/menu/personnel'
 
 
 import { canRequestMaintenancePersonnelByQuery, normalizeDept } from '@/lib/accessControl'
+import { isDecoDepartment, isDecoDepartmentHead } from '@/lib/decoTicketsPermissions'
 import { normalizeRole } from '@/lib/roles'
 
 interface FirestorePersonnelDoc {
@@ -91,6 +92,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const debugMode = ['1', 'true', 'yes'].includes((searchParams.get('debug') || '').toLowerCase())
+  const includeDepartmentHeads = ['1', 'true', 'yes'].includes(
+    (searchParams.get('includeDepartmentHeads') || '').toLowerCase()
+  )
   const deptParam = (searchParams.get('department') || '').trim()
   const roleRaw = (session.user as { role?: string })?.role
   const roleNorm = normalizeRole(roleRaw)
@@ -131,14 +135,23 @@ export async function GET(request: NextRequest) {
     const stepUsed: string[] = []
 
     if (deptLower) {
-      const s1 = await firestoreAdmin
-        .collection('personnel')
-        .where('departmentLower', '==', deptLower)
-        .get()
-      s1.docs.forEach(d => byId.set(d.id, d))
-      stepUsed.push(`lower:${s1.size}`)
+      const departmentAliases = isDecoDepartment(rawDept)
+        ? ['deco', 'decoracio', 'decoracions']
+        : [deptLower]
+      const lowerSnapshots = await Promise.all(
+        departmentAliases.map((department) =>
+          firestoreAdmin
+            .collection('personnel')
+            .where('departmentLower', '==', department)
+            .get()
+        )
+      )
+      lowerSnapshots.forEach((snapshot, index) => {
+        snapshot.docs.forEach(d => byId.set(d.id, d))
+        stepUsed.push(`lower:${departmentAliases[index]}:${snapshot.size}`)
+      })
 
-      if (s1.empty) {
+      if (byId.size === 0) {
         const rawTrim = rawDept.trim()
         if (rawTrim) {
           const s2 = await firestoreAdmin
@@ -213,6 +226,39 @@ export async function GET(request: NextRequest) {
         requestStatus: reqStatus.get(doc.id) || 'none',
       }
     })
+
+    if (includeDepartmentHeads) {
+      const existingIds = new Set(list.map((person) => person.id))
+      const headsSnap = await firestoreAdmin.collection('users').get()
+      headsSnap.docs.forEach((doc) => {
+        if (existingIds.has(doc.id)) return
+        const data = doc.data() as FirestorePersonnelDoc
+        const department = String(data.department || data.departmentLower || '')
+        if (!isDecoDepartmentHead({ role: data.role, department })) return
+        if (deptLower && !isDecoDepartment(rawDept)) return
+
+        list.push({
+          id: doc.id,
+          name: data.name || doc.id,
+          role: String(data.role || 'cap'),
+          driver: { isDriver: false, camioGran: false, camioPetit: false },
+          department,
+          departmentLower: data.departmentLower || normLower(department),
+          email: data.email ?? null,
+          phone: data.phone ?? null,
+          maxHoursWeek: data.maxHoursWeek ?? 40,
+          available: data.available ?? true,
+          unavailableFrom: data.unavailableFrom ?? null,
+          unavailableUntil: data.unavailableUntil ?? null,
+          unavailableIndefinite: data.unavailableIndefinite ?? false,
+          unavailableNotifiedFor: data.unavailableNotifiedFor ?? null,
+          unavailableNotifiedAt: data.unavailableNotifiedAt ?? undefined,
+          hasUser: true,
+          requestStatus: 'approved',
+        })
+        existingIds.add(doc.id)
+      })
+    }
 
     list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 

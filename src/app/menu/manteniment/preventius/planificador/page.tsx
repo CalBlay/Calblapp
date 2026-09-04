@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   addDays,
   differenceInCalendarDays,
@@ -42,6 +43,11 @@ import PlannerSidebar from './components/PlannerSidebar'
 import PlannerEditModal from './components/PlannerEditModal'
 import PlannerTicketModal from './components/PlannerTicketModal'
 import usePlannerData from './usePlannerData'
+import {
+  DECO_PLANNER_UI_PATH,
+  DECO_TICKETS_MANAGE_PERM,
+  DECO_TICKETS_UI_PATH,
+} from '@/lib/decoTicketsPermissions'
 
 const ROW_HEIGHT = 40
 const GRID_GAP = 1
@@ -190,9 +196,14 @@ function getExternalizedPlannerStatusMeta(status?: string | null) {
 const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
 export default function PreventiusPlanificadorPage() {
+  const pathname = usePathname() || ''
+  const isDecoPlanner = pathname.startsWith(DECO_PLANNER_UI_PATH)
   const { isPathAllowed, hasAction } = useUiPermissions()
-  const canViewTickets = isPathAllowed(MAINTENANCE_TICKETS_PATH)
-  const canManagePlannerTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
+  const ticketsPath = isDecoPlanner ? DECO_TICKETS_UI_PATH : MAINTENANCE_TICKETS_PATH
+  const canViewTickets = isPathAllowed(ticketsPath)
+  const canManagePlannerTickets = hasAction(
+    isDecoPlanner ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM
+  )
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -202,8 +213,12 @@ export default function PreventiusPlanificadorPage() {
       mode: 'week',
     }
   })
-  const [tab, setTab] = useState<'preventius' | 'tickets' | 'externalized'>('preventius')
-  const [plannerViewFilters, setPlannerViewFilters] = useState<PlannerTypeFilter[]>([])
+  const [tab, setTab] = useState<'preventius' | 'tickets' | 'externalized'>(() =>
+    isDecoPlanner ? 'tickets' : 'preventius'
+  )
+  const [plannerViewFilters, setPlannerViewFilters] = useState<PlannerTypeFilter[]>(() =>
+    isDecoPlanner ? ['tickets'] : []
+  )
   const [preventiusFilter, setPreventiusFilter] = useState<'due' | 'overdue' | null>(null)
   const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
     'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
@@ -225,6 +240,7 @@ export default function PreventiusPlanificadorPage() {
   }
 
   const handleTabChange = (nextTab: 'preventius' | 'tickets' | 'externalized') => {
+    if (isDecoPlanner && nextTab === 'preventius') return
     setTab(nextTab)
     setShowScheduledInSidebar(false)
     if (!isMonthMode) {
@@ -282,6 +298,7 @@ export default function PreventiusPlanificadorPage() {
     persistTicketPlanning,
   } = usePlannerData({
     canViewTickets,
+    ticketType: isDecoPlanner ? 'deco' : 'maquinaria',
     weekStart: plannerStart,
     dayCount: plannerDayCount,
     tab,
@@ -847,7 +864,7 @@ export default function PreventiusPlanificadorPage() {
   }
 
   const handleCreateEmpty = (dayIndex: number, startTime: string) => {
-    if (tab !== 'preventius') return
+    if (isDecoPlanner || tab !== 'preventius') return
     openModal({
       kind: 'preventiu',
       templateId: null,
@@ -1037,13 +1054,13 @@ export default function PreventiusPlanificadorPage() {
   return (
       <div className="w-full max-w-none mx-auto p-4 space-y-4">
         <ModuleHeader
-          title="Manteniment"
+          title={isDecoPlanner ? 'Imatge-Deco' : 'Manteniment'}
           subtitle="Planificador"
-          mainHref="/menu/manteniment"
+          mainHref={isDecoPlanner ? '/menu/deco' : '/menu/manteniment'}
           actions={
             canViewTickets ? (
               <Link
-                href={MAINTENANCE_TICKETS_PATH}
+                href={ticketsPath}
                 className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50"
               >
                 <Ticket className="h-4 w-4" />
@@ -1072,7 +1089,11 @@ export default function PreventiusPlanificadorPage() {
               <input
                 value={plannerSearch}
                 onChange={(e) => setPlannerSearch(e.target.value)}
-                placeholder="Buscar codi, ticket, preventiu, ubicacio o maquina..."
+                placeholder={
+                  isDecoPlanner
+                    ? 'Buscar codi, ticket o ubicació...'
+                    : 'Buscar codi, ticket, preventiu, ubicacio o maquina...'
+                }
                 className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 text-sm text-slate-800 outline-none transition focus:border-slate-400"
               />
               {plannerSearch.trim() ? (
@@ -1141,18 +1162,20 @@ export default function PreventiusPlanificadorPage() {
             <MaintenanceToolbar
               leftSlot={
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange('preventius')}
-                    className={[
-                      'rounded-full px-4 py-2 text-xs font-semibold border',
-                      tab === 'preventius'
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-gray-700 border-gray-200',
-                    ].join(' ')}
-                  >
-                    Preventius
-                  </button>
+                  {!isDecoPlanner ? (
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('preventius')}
+                      className={[
+                        'rounded-full px-4 py-2 text-xs font-semibold border',
+                        tab === 'preventius'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white text-gray-700 border-gray-200',
+                      ].join(' ')}
+                    >
+                      Preventius
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => handleTabChange('tickets')}
@@ -1424,18 +1447,20 @@ export default function PreventiusPlanificadorPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => handleTabChange('preventius')}
-              className={[
-                'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
-                tab === 'preventius'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-gray-700 border-gray-200',
-              ].join(' ')}
-            >
-              Preventius
-            </button>
+            {!isDecoPlanner ? (
+              <button
+                type="button"
+                onClick={() => handleTabChange('preventius')}
+                className={[
+                  'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
+                  tab === 'preventius'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Preventius
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => handleTabChange('tickets')}
@@ -1562,18 +1587,20 @@ export default function PreventiusPlanificadorPage() {
 
         <div className="hidden lg:block space-y-3">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleTabChange('preventius')}
-              className={[
-                'rounded-full px-4 py-2 text-xs font-semibold border',
-                tab === 'preventius'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-gray-700 border-gray-200',
-              ].join(' ')}
-            >
-              Preventius
-            </button>
+            {!isDecoPlanner ? (
+              <button
+                type="button"
+                onClick={() => handleTabChange('preventius')}
+                className={[
+                  'rounded-full px-4 py-2 text-xs font-semibold border',
+                  tab === 'preventius'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Preventius
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => handleTabChange('tickets')}
@@ -1704,18 +1731,20 @@ export default function PreventiusPlanificadorPage() {
                 </>
               )}
               <div className="text-xs font-semibold text-gray-500">Calendari</div>
-              <button
-                type="button"
-                onClick={() => togglePlannerViewFilter('preventius')}
-                className={[
-                  'rounded-full px-3 py-2 text-xs font-semibold border',
-                  plannerViewFilters.includes('preventius')
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                    : 'bg-white text-gray-700 border-gray-200',
-                ].join(' ')}
-              >
-                Preventius
-              </button>
+              {!isDecoPlanner ? (
+                <button
+                  type="button"
+                  onClick={() => togglePlannerViewFilter('preventius')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    plannerViewFilters.includes('preventius')
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  Preventius
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => togglePlannerViewFilter('tickets')}
@@ -1762,10 +1791,12 @@ export default function PreventiusPlanificadorPage() {
             <div className="rounded-xl border bg-white p-3 text-xs text-gray-700">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="font-semibold text-gray-900">Tipus</div>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  Preventiu
-                </span>
+                {!isDecoPlanner ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    Preventiu
+                  </span>
+                ) : null}
                 <span className="inline-flex items-center gap-1">
                   <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
                   Ticket

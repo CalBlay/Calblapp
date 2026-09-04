@@ -12,10 +12,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import {
+  compressVideoForUpload,
+  DEFAULT_MAX_VIDEO_UPLOAD_BYTES,
+  MAX_VIDEO_INPUT_BYTES,
+} from '@/lib/media/compressVideoForUpload'
+import { MAX_UPLOAD_VIDEO_BYTES } from '@/lib/media/ticketAttachments'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
-import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
+import { incidentCategoryRequiresMedia } from '@/lib/incidentTypology'
 
 interface CreateIncidentModalProps {
   open: boolean
@@ -148,7 +154,7 @@ export default function CreateIncidentModal({
     return list
   }, [normalizedUserDepartment])
 
-  const requiresAttachment = category ? isIncidentCategoryGroup2xx(category.id) : false
+  const requiresAttachment = category ? incidentCategoryRequiresMedia(category.id) : false
 
   const handleImageChange = async (fileList: FileList | null) => {
     const selected = fileList ? Array.from(fileList) : []
@@ -156,7 +162,7 @@ export default function CreateIncidentModal({
 
     const remainingSlots = MAX_IMAGES - images.length
     if (remainingSlots <= 0) {
-      setImageError('Nomes pots adjuntar fins a 3 fotos.')
+      setImageError('Nomes pots adjuntar fins a 3 imatges o videos.')
       return
     }
 
@@ -165,8 +171,24 @@ export default function CreateIncidentModal({
     try {
       const compressed = await Promise.all(
         nextFiles.map(async (file) => {
+          if (file.type.startsWith('video/')) {
+            if (file.size > MAX_VIDEO_INPUT_BYTES) {
+              throw new Error('El video supera el limit de 80 MB abans de comprimir.')
+            }
+            const optimizedVideo = await compressVideoForUpload(
+              file,
+              DEFAULT_MAX_VIDEO_UPLOAD_BYTES
+            )
+            if (optimizedVideo.size > MAX_UPLOAD_VIDEO_BYTES) {
+              throw new Error('El video comprimit encara supera el limit de 25 MB.')
+            }
+            return {
+              file: optimizedVideo,
+              preview: URL.createObjectURL(optimizedVideo),
+            }
+          }
           if (!file.type.startsWith('image/')) {
-            throw new Error('Nomes es permeten imatges.')
+            throw new Error('Nomes es permeten imatges o videos.')
           }
           const optimized = await compressRasterImageForUpload(file, MAX_SIZE)
           if (optimized.size > MAX_SIZE) {
@@ -180,7 +202,7 @@ export default function CreateIncidentModal({
       )
 
       setImageError(
-        selected.length > remainingSlots ? 'Nomes s han afegit les primeres 3 fotos.' : ''
+        selected.length > remainingSlots ? 'Nomes s han afegit els primers 3 adjunts.' : ''
       )
       setImages((current) => [...current, ...compressed].slice(0, MAX_IMAGES))
     } catch (err) {
@@ -210,7 +232,7 @@ export default function CreateIncidentModal({
         })
         if (!res.ok) {
           const json = await res.json().catch(() => ({}))
-          throw new Error(json?.error || 'No s ha pogut pujar una de les imatges')
+          throw new Error(json?.error || 'No s ha pogut pujar un dels adjunts')
         }
         const json = await res.json()
         return {
@@ -231,7 +253,7 @@ export default function CreateIncidentModal({
       return
     }
     if (requiresAttachment && images.length === 0) {
-      setError('Les incidències del grup 2XX (Maquinària) requereixen adjuntar com a mínim una foto o fitxer.')
+      setError('Les incidències de Maquinària (2XX) i Deco (4XX) requereixen adjuntar com a mínim una imatge o un vídeo.')
       return
     }
     setLoading(true)
@@ -368,7 +390,7 @@ export default function CreateIncidentModal({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <label className={typography('bodyXs')}>
-                  {requiresAttachment ? 'Adjuntar foto o fitxer *' : 'Adjuntar fins a 3 fotos'}
+                  {requiresAttachment ? 'Adjuntar imatge o vídeo *' : 'Adjuntar fins a 3 imatges o vídeos'}
                 </label>
                 <label
                   className={cn(
@@ -379,7 +401,7 @@ export default function CreateIncidentModal({
                   Fitxer
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
                     multiple
                     className="hidden"
                     onChange={(e) => {
@@ -413,7 +435,7 @@ export default function CreateIncidentModal({
               </div>
               {requiresAttachment && images.length === 0 ? (
                 <p className={cn(typography('bodyXs'), 'text-amber-700')}>
-                  Obligatori per incidències de maquinària (grup 2XX).
+                  Obligatori per incidències de maquinària (2XX) i Deco (4XX).
                 </p>
               ) : null}
 
@@ -421,14 +443,23 @@ export default function CreateIncidentModal({
                 <div className="grid grid-cols-3 gap-2">
                   {images.map((image, index) => (
                     <div key={`${image.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
-                      <Image
-                        src={image.preview}
-                        alt={`Previsualitzacio ${index + 1}`}
-                        width={448}
-                        height={112}
-                        className="h-28 w-full object-cover"
-                        unoptimized
-                      />
+                      {image.file.type.startsWith('video/') ? (
+                        <video
+                          src={image.preview}
+                          className="h-28 w-full object-cover"
+                          controls
+                          preload="metadata"
+                        />
+                      ) : (
+                        <Image
+                          src={image.preview}
+                          alt={`Previsualitzacio ${index + 1}`}
+                          width={448}
+                          height={112}
+                          className="h-28 w-full object-cover"
+                          unoptimized
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={() => removeImage(index)}

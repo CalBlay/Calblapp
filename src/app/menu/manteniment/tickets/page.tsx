@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { CalendarCheck2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -33,7 +33,10 @@ import {
   isMaintenanceTicketCreatorOnlyUser,
   type MaintenanceTicketScope,
 } from '@/lib/maintenanceTicketCreators'
-import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
+import {
+  canManageMaintenanceTickets,
+  isQualitatCuinaCentralTicketViewer,
+} from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
@@ -44,21 +47,25 @@ import {
   MAINTENANCE_STATUS_LABELS,
 } from '@/lib/maintenanceStatus'
 import {
-  getMaintenanceCenterOptions,
-  getMaintenanceLocationsForCenter,
-  getMaintenanceZones,
   resolveMaintenanceSite,
 } from '@/lib/maintenanceLocationCatalog'
 import { matchesMaintenanceTicketDateFilter } from '@/lib/maintenanceDateFilter'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
-import type { Ticket, TicketPriority, TicketStatus } from './types'
+import type { Ticket, TicketPriority, TicketStatus, TicketType } from './types'
 import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
 import ResolveTicketModal from './components/ResolveTicketModal'
 import OpsWorkspacePanel from '@/components/messaging/OpsWorkspacePanel'
 import { createMaintenanceOpsWorkspaceConfig } from '@/lib/messaging/maintenanceOpsWorkspace'
+import { isTicketOpsActive } from '@/lib/messaging/ticketOpsStatus'
 import MaintenanceNotificationsBell from '../components/MaintenanceNotificationsBell'
+import {
+  DECO_PLANNER_UI_PATH,
+  DECO_TICKETS_DELETE_PERM,
+  DECO_TICKETS_INBOX_PERM,
+  DECO_TICKETS_MANAGE_PERM,
+} from '@/lib/decoTicketsPermissions'
 
 const opsRoomsFetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -121,23 +128,33 @@ const TICKET_SCOPE_LABELS: Record<MaintenanceTicketScope, string> = {
 
 const MAINTENANCE_PLANNER_PATH = '/menu/manteniment/preventius/planificador'
 
-export default function MaintenanceTicketsPage() {
+function TicketWorkspace() {
   const { data: session } = useSession()
   const router = useRouter()
+  const pathname = usePathname() || ''
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
-  const { isPathAllowed, hasAction } = useUiPermissions()
-  const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
+  const { isPathAllowed, hasAction, canEditPath } = useUiPermissions()
+  const isDeco = pathname.startsWith('/menu/deco/tickets')
+  const ticketType: TicketType = isDeco ? 'deco' : 'maquinaria'
+  const title = isDeco ? 'Imatge-Deco' : 'Manteniment'
+  const mainHref = isDeco ? '/menu/deco' : '/menu/manteniment'
+  const permissionPath = isDeco ? '/menu/deco/tickets' : '/menu/manteniment/tickets'
+  const canEditCurrentTickets = canEditPath(permissionPath)
+  const plannerPath = isDeco ? DECO_PLANNER_UI_PATH : MAINTENANCE_PLANNER_PATH
+  const canViewPlanner = isPathAllowed(plannerPath)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
-  const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
-  const isQualitatViewer = isQualitatCuinaCentralTicketViewer(sessionUser)
-  const canCreateNewTicket = canCreateMaintenanceTicketsAsReporter(sessionUser)
-  const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
-  const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
-  const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
+  const isOwnTicketsOnly = !isDeco && isMaintenanceTicketCreatorOnlyUser(sessionUser)
+  const isQualitatViewer = !isDeco && isQualitatCuinaCentralTicketViewer(sessionUser)
+  const canCreateNewTicket = isDeco ? canEditCurrentTickets : canCreateMaintenanceTicketsAsReporter(sessionUser)
+  const canManageInbox = hasAction(isDeco ? DECO_TICKETS_INBOX_PERM : MAINTENANCE_TICKETS_INBOX_PERM)
+  const canDeleteAnyTicket = hasAction(isDeco ? DECO_TICKETS_DELETE_PERM : MAINTENANCE_TICKETS_DELETE_PERM)
+  const canManageAllTickets = hasAction(isDeco ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM)
+  const canManageMaintenanceOpsByRole = !isDeco && canManageMaintenanceTickets(sessionUser)
   const canSeeMaintenanceBell =
-    canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets')
+    !isDeco && (canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets'))
+  const canSeeDecoBell = isDeco && isPathAllowed('/menu/deco/tickets')
   const canManageInboxTickets = canManageInbox
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
@@ -145,7 +162,10 @@ export default function MaintenanceTicketsPage() {
   const [resolveTicket, setResolveTicket] = useState<Ticket | null>(null)
   const [resolveBusy, setResolveBusy] = useState(false)
   const [opsTicket, setOpsTicket] = useState<Ticket | null>(null)
-  const maintenanceOpsConfig = useMemo(() => createMaintenanceOpsWorkspaceConfig(), [])
+  const maintenanceOpsConfig = useMemo(
+    () => createMaintenanceOpsWorkspaceConfig(ticketType),
+    [ticketType]
+  )
 
   const {
     userId,
@@ -199,6 +219,9 @@ export default function MaintenanceTicketsPage() {
     needsWorkerName,
     createPriority,
     setCreatePriority,
+    createTicketType,
+    setCreateTicketType,
+    allowTicketTypeSelection,
     createAttachmentPreviews,
     createAttachmentCount,
     maxTicketAttachments,
@@ -248,13 +271,14 @@ export default function MaintenanceTicketsPage() {
     handleSendToPlanner,
     handleDirectResolution,
     handleCreatorValidate,
+    handleCreatorReject,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
     ticketSummary,
     externalReporterSummary,
     ticketScopeSummary,
-  } = useMaintenanceTickets()
+  } = useMaintenanceTickets({ ticketType })
 
   const toggleExternalBucket = useCallback(
     (bucket: keyof typeof EXTERNAL_BUCKET_LABELS) => {
@@ -620,11 +644,12 @@ export default function MaintenanceTicketsPage() {
 
   const canShowTicketOps = useCallback(
     (ticket: Ticket) => {
-      if (canManageAllTickets) return true
+      if (!isTicketOpsActive(ticket)) return false
+      if (canManageAllTickets || canManageInboxTickets || canManageMaintenanceOpsByRole) return true
       if (userId && ticket.createdById === userId) return true
       return false
     },
-    [canManageAllTickets, userId]
+    [canManageAllTickets, canManageInboxTickets, canManageMaintenanceOpsByRole, userId]
   )
 
   const openTicketOps = useCallback((ticket: Ticket) => {
@@ -650,19 +675,20 @@ export default function MaintenanceTicketsPage() {
   const selectedOpsUnread = Number(selectedOpsData?.rooms?.[0]?.unreadCount || 0)
 
   return (
-      <MaintenancePermissionGate path="/menu/manteniment/tickets">
+      <MaintenancePermissionGate path={permissionPath}>
       <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
         <ModuleHeader
-          title="Manteniment"
+          title={title}
           subtitle="Tickets"
-          mainHref="/menu/manteniment"
+          mainHref={mainHref}
           actions={
-            canViewPlanner || (canManageAllTickets || canCreateNewTicket) || canSeeMaintenanceBell ? (
+            canViewPlanner || (canManageAllTickets || canCreateNewTicket) || canSeeMaintenanceBell || canSeeDecoBell ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
+                {canSeeDecoBell ? <MaintenanceNotificationsBell module="deco" /> : null}
                 {canViewPlanner ? (
                   <Link
-                    href={MAINTENANCE_PLANNER_PATH}
+                    href={plannerPath}
                     className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800 shadow-sm hover:bg-teal-50"
                   >
                     <CalendarCheck2 className="h-4 w-4" />
@@ -858,12 +884,12 @@ export default function MaintenanceTicketsPage() {
           externalReporterView={isExternalReporter}
           onResolve={(ticket) => {
             if (!canResolveDirectly(ticket)) return
-            markTicketSeen(ticket.id, 'maquinaria')
+            markTicketSeen(ticket.id, ticketType)
             setResolveTicket(ticket)
           }}
           onPlanify={(ticket) => {
             if (!canPlanifyDirectly(ticket)) return
-            markTicketSeen(ticket.id, 'maquinaria')
+            markTicketSeen(ticket.id, ticketType)
             void handleSendToPlanner(ticket)
           }}
           canResolveDirectly={canResolveDirectly}
@@ -872,6 +898,16 @@ export default function MaintenanceTicketsPage() {
           canDelete={canDeleteTicket}
           canCreatorValidate={canCreatorValidateTicket}
           onCreatorValidate={handleCreatorValidate}
+          onCreatorReject={(ticket) => {
+            const note = window.prompt('Indica què no és correcte perquè el responsable ho pugui corregir:')
+            if (note === null) return
+            const trimmedNote = note.trim()
+            if (!trimmedNote) {
+              window.alert('Cal indicar el motiu per reobrir el ticket.')
+              return
+            }
+            void handleCreatorReject(ticket, trimmedNote)
+          }}
           canShowOps={canShowTicketOps}
           onOpenOps={openTicketOps}
           formatDateTime={formatDateTime}
@@ -930,6 +966,9 @@ export default function MaintenanceTicketsPage() {
             showMachineList={showMachineList}
             setShowMachineList={setShowMachineList}
             priorityLabels={MAINTENANCE_PRIORITY_LABELS}
+            createTicketType={createTicketType}
+            setCreateTicketType={setCreateTicketType}
+            allowTicketTypeSelection={allowTicketTypeSelection}
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}
@@ -1045,3 +1084,6 @@ export default function MaintenanceTicketsPage() {
   )
 }
 
+export default function MaintenanceTicketsPage() {
+  return <TicketWorkspace />
+}

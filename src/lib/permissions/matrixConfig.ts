@@ -25,6 +25,14 @@ import {
 } from '@/lib/maintenanceTicketsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
+import {
+  DECO_TICKETS_DELETE_PERM,
+  DECO_TICKETS_EXTERNALIZE_PERM,
+  DECO_TICKETS_INBOX_PERM,
+  DECO_TICKETS_MANAGE_PERM,
+  DECO_TICKETS_REOPEN_PERM,
+  DECO_TICKETS_VALIDATE_PERM,
+} from '@/lib/decoTicketsPermissions'
 
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
@@ -248,6 +256,20 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         key: MAINTENANCE_TICKETS_DELETE_PERM,
         label: 'Eliminar tickets',
       },
+    ],
+  },
+  {
+    id: 'decoTicketsActions',
+    title: 'Imatge-Deco · Tickets',
+    subtitle: 'Mateixos permisos de safata, planificació i resolució que al mòdul de Manteniment.',
+    visibleWhen: { path: '/menu/deco/tickets' },
+    actions: [
+      { key: DECO_TICKETS_INBOX_PERM, label: 'Gestionar safata de tickets (avisos nous)' },
+      { key: DECO_TICKETS_MANAGE_PERM, label: 'Gestionar i planificar tickets' },
+      { key: DECO_TICKETS_VALIDATE_PERM, label: 'Validar tickets' },
+      { key: DECO_TICKETS_REOPEN_PERM, label: 'Reobrir tickets validats' },
+      { key: DECO_TICKETS_EXTERNALIZE_PERM, label: 'Externalitzar tickets' },
+      { key: DECO_TICKETS_DELETE_PERM, label: 'Eliminar tickets' },
     ],
   },
   {

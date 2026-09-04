@@ -1,6 +1,7 @@
 type ChannelLike = {
   source?: string | null
   ticketId?: string | null
+  ticketType?: string | null
   eventId?: string | null
   projectId?: string | null
   name?: string | null
@@ -30,7 +31,10 @@ export function buildChannelPushUrl(channelId: string, channel?: ChannelLike | n
   const eventId = String(channel?.eventId || '').trim()
 
   if (source === 'maintenance_ticket' && ticketId) {
-    return `/menu/manteniment/tickets?ticketId=${encodeURIComponent(ticketId)}&ops=1`
+    const ticketsPath = channel?.ticketType === 'deco'
+      ? '/menu/deco/tickets'
+      : '/menu/manteniment/tickets'
+    return `${ticketsPath}?ticketId=${encodeURIComponent(ticketId)}&ops=1`
   }
 
   if ((source === 'events' || source === 'event_comanda') && eventId) {

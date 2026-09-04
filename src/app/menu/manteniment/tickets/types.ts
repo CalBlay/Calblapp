@@ -93,6 +93,10 @@ export type Ticket = {
   creatorValidatedAt?: number | string | null
   creatorValidatedById?: string | null
   creatorValidatedByName?: string | null
+  creatorRejectedAt?: number | string | null
+  creatorRejectedById?: string | null
+  creatorRejectedByName?: string | null
+  creatorRejectionNote?: string | null
   capValidatedAt?: number | string | null
   capValidatedById?: string | null
   capValidatedByName?: string | null

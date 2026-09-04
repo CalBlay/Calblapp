@@ -10,6 +10,43 @@ import { isUiPermissionGranted } from '@/lib/server/permissions'
 import { accessUserFromAuth } from '@/lib/server/spacesApiAuth'
 import { isQualitatDepartment } from '@/lib/maintenanceTicketCreators'
 import { normalizeRole } from '@/lib/roles'
+import {
+  DECO_TICKETS_DELETE_PERM,
+  DECO_TICKETS_EXTERNALIZE_PERM,
+  DECO_TICKETS_INBOX_PERM,
+  DECO_TICKETS_MANAGE_PERM,
+  DECO_TICKETS_REOPEN_PERM,
+  DECO_TICKETS_VALIDATE_PERM,
+} from '@/lib/decoTicketsPermissions'
+
+export type DecoTicketPermission =
+  | 'inbox'
+  | 'delete'
+  | 'manage'
+  | 'validate'
+  | 'reopen'
+  | 'externalize'
+
+const DECO_PERMISSION_KEYS: Record<DecoTicketPermission, string> = {
+  inbox: DECO_TICKETS_INBOX_PERM,
+  delete: DECO_TICKETS_DELETE_PERM,
+  manage: DECO_TICKETS_MANAGE_PERM,
+  validate: DECO_TICKETS_VALIDATE_PERM,
+  reopen: DECO_TICKETS_REOPEN_PERM,
+  externalize: DECO_TICKETS_EXTERNALIZE_PERM,
+}
+
+export async function canUseDecoTicketPermission(
+  user: Parameters<typeof accessUserFromAuth>[0],
+  permission: DecoTicketPermission
+): Promise<boolean> {
+  const accessUser = accessUserFromAuth(user)
+  if (!accessUser.id) return false
+  return isUiPermissionGranted({
+    user: accessUser,
+    permission: DECO_PERMISSION_KEYS[permission],
+  })
+}
 
 /** Servidor: pot veure/gestionar tots els tickets de la safata. */
 export async function canManageMaintenanceTicketInbox(

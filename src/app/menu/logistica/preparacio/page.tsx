@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
@@ -122,6 +122,7 @@ function normalizeExcelTimeValue(value: unknown) {
 }
 
 export default function LogisticsPage() {
+  const pathname = usePathname() || ''
   const searchParams = useSearchParams()
   const searchParamsSafe = searchParams ?? new URLSearchParams()
   const { data: session } = useSession()
@@ -129,23 +130,29 @@ export default function LogisticsPage() {
   const currentUserId = String(session?.user?.id || '').trim()
   const currentUserName = String(session?.user?.name || '').trim()
   const role = (session?.user?.role || '').toLowerCase()
+  const isDecoPreparation = pathname.startsWith('/menu/deco/preparacio')
+  const isAdmin = role === 'admin'
+  const isDecoRestricted = isDecoPreparation && !isAdmin
   const isWorker = role === 'treballador'
   const isManager = isPreparationManagerRole(role)
   const canEditPreparationList = useMemo(() => {
+    if (isDecoRestricted) return false
     if (!permsReady) return isManager
     return canEditPath('/menu/logistica/preparacio')
-  }, [canEditPath, isManager, permsReady])
+  }, [canEditPath, isDecoRestricted, isManager, permsReady])
   const showPreparerView = useMemo(() => {
+    if (isDecoPreparation) return true
     if (!permsReady) return isWorker
     return !canEditPreparationList
-  }, [canEditPreparationList, isWorker, permsReady])
+  }, [canEditPreparationList, isDecoPreparation, isWorker, permsReady])
   const canImportServices = useMemo(() => {
+    if (isDecoRestricted) return false
     if (!permsReady) return isManager
     return uiActions[PREPARATION_IMPORT_PERM] === true
-  }, [isManager, permsReady, uiActions])
+  }, [isDecoRestricted, isManager, permsReady, uiActions])
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
-    const fallback = isWorker ? buildTodayRange() : buildDefaultWeekRange()
+    const fallback = isWorker || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
     return parseDateRangeFromSearch(searchParamsSafe, fallback)
   })
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
@@ -154,7 +161,7 @@ export default function LogisticsPage() {
   const latestFilterRef = useRef({
     dateRange: parseDateRangeFromSearch(
       searchParamsSafe,
-      isWorker ? buildTodayRange() : buildDefaultWeekRange()
+      isWorker || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
     ),
     mode: parseFilterMode(searchParamsSafe.get('mode')) as PreparationFilterMode,
   })
@@ -181,7 +188,10 @@ export default function LogisticsPage() {
 
     const loadWarehouses = async () => {
       try {
-        const res = await fetch('/api/logistics/preparation-warehouses', { cache: 'no-store' })
+        const warehouseScope = isDecoPreparation ? '?scope=deco' : ''
+        const res = await fetch(`/api/logistics/preparation-warehouses${warehouseScope}`, {
+          cache: 'no-store',
+        })
         const json = (await res.json().catch(() => null)) as
           | { ok?: boolean; warehouses?: AllowedPreparationWarehouse[] }
           | null
@@ -199,7 +209,7 @@ export default function LogisticsPage() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [isDecoPreparation])
 
   useEffect(() => {
     let ignore = false
@@ -496,7 +506,11 @@ export default function LogisticsPage() {
         const res = await fetch(`/api/logistics/${encodeURIComponent(rowId)}/complete`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ warehouse, done }),
+          body: JSON.stringify({
+            warehouse,
+            done,
+            scope: isDecoPreparation ? 'deco' : undefined,
+          }),
         })
         const payload = (await res.json().catch(() => null)) as { error?: string } | null
         if (!res.ok) {
@@ -515,7 +529,7 @@ export default function LogisticsPage() {
         setUpdating(false)
       }
     },
-    [refresh]
+    [isDecoPreparation, refresh]
   )
 
   const handleConfirm = async () => {
@@ -756,8 +770,13 @@ export default function LogisticsPage() {
     <section className="space-y-6">
       <ModuleHeader
         icon={<Truck className="h-7 w-7 text-emerald-600" />}
-        title="Preparació logística"
-        subtitle="Planificació de dates i hores de preparació per serveis"
+        title={isDecoPreparation ? 'Imatge-Deco' : 'Preparació logística'}
+        mainHref={isDecoPreparation ? '/menu/deco' : undefined}
+        subtitle={
+          isDecoPreparation
+            ? 'Preparació de serveis · validació del magatzem Deco'
+            : 'Planificació de dates i hores de preparació per serveis'
+        }
         actions={
           <div className="flex items-center gap-2">
             {canEditPreparationList ? (
@@ -814,11 +833,10 @@ export default function LogisticsPage() {
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
         <LogisticsGrid
           rows={rows}
-          warehouseTasks={warehouseTasks}
+          warehouseTasks={isDecoRestricted ? [] : warehouseTasks}
           loading={loading}
           isWorker={showPreparerView}
-          isManager={isManager}
-          canEditPreparationList={canEditPreparationList}
+          canEditPreparationList={isDecoPreparation ? false : canEditPreparationList}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           edited={edited}

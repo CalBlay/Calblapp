@@ -53,9 +53,19 @@ export function defaultPushUrlForNotificationType(
     case 'maintenance_ticket_resolved':
     case 'maintenance_ticket_pending_cap_validation':
     case 'maintenance_ticket_validated':
+    case 'maintenance_ticket_reopened':
     case 'maintenance_ticket_stale':
     case 'maintenance_ticket_external_stale':
       return maintenanceTicketPushUrl(extras?.ticketId)
+    case 'deco_ticket_new':
+    case 'deco_ticket_assigned':
+    case 'deco_ticket_resolved':
+    case 'deco_ticket_pending_cap_validation':
+    case 'deco_ticket_validated':
+    case 'deco_ticket_reopened':
+      return extras?.ticketId
+        ? `/menu/deco/tickets?ticketId=${encodeURIComponent(String(extras.ticketId))}`
+        : '/menu/deco/tickets'
     case 'incident_marketing_9xx_new':
     case 'incident_action_assigned':
       return extras?.incidentId

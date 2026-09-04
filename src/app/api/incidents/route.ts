@@ -8,13 +8,14 @@ import type { Query } from "firebase-admin/firestore";
 import {
   buildTicketBody,
   notifyForNewMaintenanceTicket,
+  notifyForNewDecoTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
 import { canPostIncident } from '@/lib/incidentPolicy'
 import { canViewIncidentsModule } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
-import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
+import { incidentCategoryRequiresMedia } from '@/lib/incidentTypology'
 import {
   extractQuadrantResponsibleNames,
   type IncidentEventResponsible,
@@ -493,9 +494,9 @@ export async function POST(req: Request) {
     const categoryId = String(category?.id || '').trim()
     const hasAttachment =
       normalizedImages.length > 0 || Boolean(primaryImage.url || primaryImage.path)
-    if (isIncidentCategoryGroup2xx(categoryId) && !hasAttachment) {
+    if (incidentCategoryRequiresMedia(categoryId) && !hasAttachment) {
       return NextResponse.json(
-        { error: 'Les incidències del grup 2XX (Maquinària) requereixen adjuntar com a mínim una foto o fitxer.' },
+        { error: 'Les incidències de Maquinària (2XX) i Deco (4XX) requereixen adjuntar com a mínim una imatge o un vídeo.' },
         { status: 400 }
       )
     }
@@ -587,7 +588,7 @@ export async function POST(req: Request) {
         status: "nou",
         ticketType,
         createdAt: now,
-        createdById: null,
+        createdById: user.id,
         createdByName: respSala || "",
         assignedToIds: [],
         assignedToNames: [],
@@ -603,6 +604,7 @@ export async function POST(req: Request) {
         sourceEventTitle: eventTitle,
         sourceEventLocation: eventLocation,
         sourceEventDate: eventDate,
+        sourceIncidentId: docRef.id,
         imageUrl: primaryImage.url || null,
         imagePath: primaryImage.path || null,
         imageMeta: primaryImage.meta || null,
@@ -615,17 +617,15 @@ export async function POST(req: Request) {
           {
             status: "nou",
             at: now,
-            byId: null,
+            byId: user.id,
             byName: respSala || "",
           },
         ],
       });
 
-      await notifyForNewMaintenanceTicket({
-        workflowStage: 'tickets_inbox',
-        payload: {
-          type: 'maintenance_ticket_new',
-          title: 'Nou ticket de manteniment',
+      const notificationPayload = {
+          type: ticketType === 'deco' ? 'deco_ticket_new' : 'maintenance_ticket_new',
+          title: ticketType === 'deco' ? 'Nou ticket d’Imatge-Deco' : 'Nou ticket de manteniment',
           body: buildTicketBody({
             machine: '',
             location: eventLocation,
@@ -638,8 +638,15 @@ export async function POST(req: Request) {
           location: eventLocation,
           machine: '',
           source: 'incidencia',
-        },
-      })
+        } as const
+      if (ticketType === 'deco') {
+        await notifyForNewDecoTicket({ payload: notificationPayload })
+      } else {
+        await notifyForNewMaintenanceTicket({
+          workflowStage: 'tickets_inbox',
+          payload: notificationPayload,
+        })
+      }
 
       if (primaryPath) {
         const meta = primaryImage.meta as { size?: number; type?: string } | null | undefined;

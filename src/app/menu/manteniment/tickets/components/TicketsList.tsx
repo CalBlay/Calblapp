@@ -27,6 +27,7 @@ type Props = {
   canDelete: (ticket: Ticket) => boolean
   canCreatorValidate?: (ticket: Ticket) => boolean
   onCreatorValidate?: (ticket: Ticket) => void
+  onCreatorReject?: (ticket: Ticket) => void
   canShowOps?: (ticket: Ticket) => boolean
   onOpenOps?: (ticket: Ticket) => void
   formatDateTime: (value?: number | string | null) => string
@@ -109,8 +110,21 @@ const DAYS_BADGE_STYLES = {
   neutral: 'bg-slate-100 text-slate-700',
 } as const
 
-const getCardTitle = (ticket: Ticket) =>
-  String(ticket.machine || ticket.operatorTitle || ticket.ticketCode || 'Ticket').trim()
+const getCardTitle = (ticket: Ticket) => {
+  const codes = [ticket.ticketCode, ticket.incidentNumber]
+    .map((value) => normalizeText(String(value || '')))
+    .filter(Boolean)
+  const descriptiveTitle = [
+    ticket.machine,
+    ticket.operatorTitle,
+    ticket.description,
+    ticket.sourceEventTitle,
+  ]
+    .map((value) => String(value || '').trim())
+    .find((value) => value && !codes.includes(normalizeText(value)))
+
+  return descriptiveTitle || 'Ticket'
+}
 
 const getCardDescription = (ticket: Ticket) => {
   const description = String(ticket.description || '').trim()
@@ -206,6 +220,7 @@ export default function TicketsList({
   canDelete,
   canCreatorValidate,
   onCreatorValidate,
+  onCreatorReject,
   canShowOps,
   onOpenOps,
   formatDateTime,
@@ -309,13 +324,13 @@ export default function TicketsList({
                         isStale ? STALE_TICKET_CARD_CLASS : sectionStyle.card
                       }`}
                     >
-                      <div className="flex items-start gap-3 px-4 py-3">
-                        <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-col gap-3 px-4 py-3">
+                        <div className="min-w-0 w-full space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-white/70 bg-white/85 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                            <span className="max-w-full break-all rounded-full border border-white/70 bg-white/85 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                               {codeLabel}
                             </span>
-                            <span className={`min-w-0 ${typography('cardTitle')}`}>{cardTitle}</span>
+                            <span className={`min-w-0 break-words ${typography('cardTitle')}`}>{cardTitle}</span>
                             <span
                               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses[ticket.status]}`}
                             >
@@ -340,21 +355,21 @@ export default function TicketsList({
                             ) : null}
                           </div>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                          {!externalReporterView ? <span>{creatorDetail}</span> : null}
-                          {centerLabel ? <span>Centre: {centerLabel}</span> : null}
-                          <span>Ubicacio: {locationLabel}</span>
-                          {!externalReporterView && eventLabel ? (
-                            <span>Esdeveniment: {eventLabel}</span>
-                          ) : null}
-                        </div>
-                        {cardDescription ? (
-                          <div className="mt-1 rounded-xl border border-white/80 bg-white/90 px-3.5 py-2.5 shadow-sm">
-                            <p className="line-clamp-3 text-base font-medium leading-relaxed text-slate-900 md:text-[17px]">
-                              {cardDescription}
-                            </p>
+                          <div className="grid min-w-0 gap-x-4 gap-y-1 text-xs text-slate-500 sm:grid-cols-2">
+                            {!externalReporterView ? <span className="min-w-0 break-words">{creatorDetail}</span> : null}
+                            {centerLabel ? <span className="min-w-0 break-words">Centre: {centerLabel}</span> : null}
+                            <span className="min-w-0 break-words">Ubicacio: {locationLabel}</span>
+                            {!externalReporterView && eventLabel ? (
+                              <span className="min-w-0 break-words">Esdeveniment: {eventLabel}</span>
+                            ) : null}
                           </div>
-                        ) : null}
+                          {cardDescription ? (
+                            <div className="mt-1 min-w-0 rounded-xl border border-white/80 bg-white/90 px-3.5 py-2.5 shadow-sm">
+                              <p className="line-clamp-3 break-words text-base font-medium leading-relaxed text-slate-900 md:text-[17px]">
+                                {cardDescription}
+                              </p>
+                            </div>
+                          ) : null}
 
                           {externalReporterView && assignmentSummary ? (
                             <div className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-2 text-sm font-medium text-blue-950 shadow-sm">
@@ -368,19 +383,33 @@ export default function TicketsList({
                           ) : null}
                         </div>
 
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/70 pt-3">
                           {showCreatorValidate ? (
                             <button
                               type="button"
-                              title="Validar resolucio"
-                              aria-label="Validar resolucio del ticket"
+                              title="Confirmar que la resolució és correcta"
+                              aria-label="Confirmar que la resolució del ticket és correcta"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 onCreatorValidate?.(ticket)
                               }}
                               className="rounded-full border border-violet-300 bg-white/85 px-3 py-2 text-xs font-semibold text-violet-700 shadow-sm hover:bg-white"
                             >
-                              Validar
+                              Correcte
+                            </button>
+                          ) : null}
+                          {showCreatorValidate && onCreatorReject ? (
+                            <button
+                              type="button"
+                              title="Indicar que la resolució no és correcta"
+                              aria-label="Reobrir el ticket perquè la resolució no és correcta"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onCreatorReject(ticket)
+                              }}
+                              className="rounded-full border border-rose-300 bg-white/85 px-3 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50"
+                            >
+                              No és correcte
                             </button>
                           ) : null}
                           {showOps ? (

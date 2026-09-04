@@ -37,6 +37,7 @@ import {
 } from '@/lib/logistics/preparationProgress'
 import {
   PREPARATION_WAREHOUSE_LABELS,
+  PREPARATION_WAREHOUSE_CODES,
   type PreparationWarehouseCode,
 } from '@/lib/logistics/preparationWarehouses'
 import PreparationWarehouseToggles, {
@@ -67,7 +68,6 @@ interface LogisticsGridProps {
   warehouseTasks: LogisticsWarehousePrepRow[]
   loading: boolean
   isWorker: boolean
-  isManager: boolean
   canEditPreparationList: boolean
   edited: EditedMap
   setEdited: Dispatch<SetStateAction<EditedMap>>
@@ -159,7 +159,6 @@ export default function LogisticsGrid({
   warehouseTasks,
   loading,
   isWorker,
-  isManager,
   canEditPreparationList,
   edited,
   setEdited,
@@ -182,11 +181,10 @@ export default function LogisticsGrid({
   currentUserName,
 }: LogisticsGridProps) {
   const displayWarehouses = showAllWarehouses
-    ? ([
-        { code: 'BODEGA' as const, label: 'Bodega' },
-        { code: 'PARAMENT' as const, label: 'Parament' },
-        { code: 'MATERIAL' as const, label: 'Material' },
-      ] satisfies AllowedPreparationWarehouse[])
+    ? PREPARATION_WAREHOUSE_CODES.map((code) => ({
+        code,
+        label: PREPARATION_WAREHOUSE_LABELS[code],
+      }))
     : allowedWarehouses
 
   return (
@@ -675,8 +673,6 @@ function EditableTable({
               const pax = edited[ev.id]?.NumPax ?? (ev.NumPax != null ? String(ev.NumPax) : '')
               const ubicacio = edited[ev.id]?.Ubicacio ?? (ev.Ubicacio || '')
               const dataInici = edited[ev.id]?.DataInici ?? (ev.DataInici || '')
-              const eventDate = ev.EventDate || ev.DataInici || ''
-              const eventTime = displayEventTime(ev)
               const serviceDate = ev.ServiceDate || ev.DataInici || ''
               const serviceTime = ev.ServiceTime || ev.HoraInici || ''
               const rowIsNew = ev.id.startsWith('draft_')

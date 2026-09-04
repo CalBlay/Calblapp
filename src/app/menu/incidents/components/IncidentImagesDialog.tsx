@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { Camera, ImageOff } from 'lucide-react'
+import { ImageOff, Paperclip } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { Incident } from '@/hooks/useIncidents'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 
 interface Props {
   incident: Incident | null
@@ -37,7 +38,7 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
       try {
         const res = await fetch(`/api/incidents/${incidentId}`, { cache: 'no-store' })
         const json = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(String(json?.error || 'Error carregant fotos'))
+        if (!res.ok) throw new Error(String(json?.error || 'Error carregant adjunts'))
         if (cancelled) return
 
         const nextImages = Array.isArray(json?.incident?.images)
@@ -50,7 +51,7 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
       } catch (err) {
         if (!cancelled) {
           setImages([])
-          setError(err instanceof Error ? err.message : 'Error carregant fotos')
+          setError(err instanceof Error ? err.message : 'Error carregant adjunts')
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -77,24 +78,24 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
       <DialogContent className="w-[95vw] max-w-4xl rounded-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Camera className="h-5 w-5 text-slate-600" />
-            <span>{incident?.incidentNumber || 'Fotos incidència'}</span>
+            <Paperclip className="h-5 w-5 text-slate-600" />
+            <span>{incident?.incidentNumber || 'Adjunts incidència'}</span>
           </DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {[incident?.eventTitle, incident?.description].filter(Boolean).join(' · ') || 'Fotos adjuntes'}
+            {[incident?.eventTitle, incident?.description].filter(Boolean).join(' · ') || 'Adjunts de la incidència'}
           </DialogDescription>
         </DialogHeader>
 
         {loading ? (
           <p className={cn('py-10 text-center text-slate-500', typography('bodySm'))}>
-            Carregant fotos…
+            Carregant adjunts…
           </p>
         ) : error ? (
           <p className={cn('py-10 text-center text-red-600', typography('bodySm'))}>{error}</p>
         ) : images.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-500">
             <ImageOff className="h-8 w-8" />
-            <p className={typography('bodySm')}>No hi ha fotos disponibles en aquesta incidència.</p>
+            <p className={typography('bodySm')}>No hi ha adjunts disponibles en aquesta incidència.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -105,16 +106,25 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
               >
                 <div className="aspect-[4/3] bg-slate-100">
                   {image.url ? (
-                    <a href={image.url} target="_blank" rel="noreferrer" className="block h-full w-full">
-                      <Image
+                    String(image.meta?.type || '').startsWith('video/') || isTicketVideoUrl(image.url) ? (
+                      <video
                         src={image.url}
-                        alt={`Foto incidència ${index + 1}`}
                         className="h-full w-full object-cover"
-                        width={800}
-                        height={600}
-                        unoptimized
+                        controls
+                        preload="metadata"
                       />
-                    </a>
+                    ) : (
+                      <a href={image.url} target="_blank" rel="noreferrer" className="block h-full w-full">
+                        <Image
+                          src={image.url}
+                          alt={`Foto incidència ${index + 1}`}
+                          className="h-full w-full object-cover"
+                          width={800}
+                          height={600}
+                          unoptimized
+                        />
+                      </a>
+                    )
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-slate-400">
                       <ImageOff className="h-8 w-8" />
@@ -125,7 +135,7 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
                   )}
                 </div>
                 <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-500">
-                  <span>Foto {index + 1}</span>
+                  <span>Adjunt {index + 1}</span>
                   {typeof image.meta?.size === 'number' ? (
                     <span>{Math.round(image.meta.size / 1024)} KB</span>
                   ) : null}

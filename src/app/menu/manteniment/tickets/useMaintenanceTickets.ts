@@ -19,7 +19,7 @@ import {
   type ExternalReporterTicketBucket,
 } from '@/lib/maintenanceTicketCreators'
 import { normalizeRole } from '@/lib/roles'
-import type { Ticket, TicketPriority, TicketStatus } from './types'
+import type { Ticket, TicketPriority, TicketStatus, TicketType } from './types'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
@@ -32,6 +32,13 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
+import {
+  DECO_TICKETS_EXTERNALIZE_PERM,
+  DECO_TICKETS_INBOX_PERM,
+  DECO_TICKETS_MANAGE_PERM,
+  DECO_TICKETS_REOPEN_PERM,
+  DECO_TICKETS_VALIDATE_PERM,
+} from '@/lib/decoTicketsPermissions'
 import {
   matchesMaintenanceSiteFilters,
   resolveMaintenanceTicketCenter,
@@ -122,20 +129,27 @@ function classifyInternalTicketBucket(ticket: Ticket): InternalTicketBucket | nu
   return null
 }
 
-export function useMaintenanceTickets() {
+export function useMaintenanceTickets(options: { ticketType?: TicketType } = {}) {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const role = normalizeRole(sessionUser.role || '')
   const department = normalizeDept(sessionUser.department || '')
   const userId = sessionUser.id || ''
   const { hasAction } = useUiPermissions()
+  const ticketType = options.ticketType || 'maquinaria'
 
-  const isExternalReporter = isExternalMaintenanceTicketReporter({
-    role,
-    department,
-  })
-  const canValidate = hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)
-  const canReopen = hasAction(MAINTENANCE_TICKETS_REOPEN_PERM)
+  const canManageDeco =
+    ticketType === 'deco' &&
+    (hasAction(DECO_TICKETS_MANAGE_PERM) || hasAction(DECO_TICKETS_INBOX_PERM))
+  const isExternalReporter = ticketType === 'deco'
+    ? !canManageDeco
+    : isExternalMaintenanceTicketReporter({ role, department })
+  const canValidate = hasAction(
+    ticketType === 'deco' ? DECO_TICKETS_VALIDATE_PERM : MAINTENANCE_TICKETS_VALIDATE_PERM
+  )
+  const canReopen = hasAction(
+    ticketType === 'deco' ? DECO_TICKETS_REOPEN_PERM : MAINTENANCE_TICKETS_REOPEN_PERM
+  )
   const canCapValidateTicket = useCallback(
     (_ticket: Ticket) => canValidate,
     [canValidate]
@@ -144,7 +158,9 @@ export function useMaintenanceTickets() {
     (ticket: Ticket) => canCreatorValidateMaintenanceTicket(ticket, userId),
     [userId]
   )
-  const canExternalize = hasAction(MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
+  const canExternalize = hasAction(
+    ticketType === 'deco' ? DECO_TICKETS_EXTERNALIZE_PERM : MAINTENANCE_TICKETS_EXTERNALIZE_PERM
+  )
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)
@@ -196,7 +212,9 @@ export function useMaintenanceTickets() {
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
 
-  const { locations, centers, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
+  const { locations, centers, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog(
+    ticketType === 'deco' ? 'deco' : 'manteniment'
+  )
 
   const defaultCreateLocation = useMemo(
     () => resolveDefaultTicketLocationFromUserName(sessionUser.name, locations) || '',
@@ -226,7 +244,10 @@ export function useMaintenanceTickets() {
 
         const params = new URLSearchParams()
         params.set('limit', '100')
-        params.set('ticketType', 'maquinaria')
+        params.set(
+          'ticketType',
+          ticketType === 'maquinaria' && isExternalReporter ? 'all' : ticketType
+        )
         if (statusFilter !== '__all__') params.set('status', statusFilter)
         if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
         if (dateModeFilter === 'planned') {
@@ -265,7 +286,15 @@ export function useMaintenanceTickets() {
         }
       }
     },
-    [dateModeFilter, filters.end, filters.start, priorityFilter, statusFilter]
+    [
+      dateModeFilter,
+      filters.end,
+      filters.start,
+      isExternalReporter,
+      priorityFilter,
+      statusFilter,
+      ticketType,
+    ]
   )
 
   const {
@@ -302,6 +331,9 @@ export function useMaintenanceTickets() {
     needsWorkerName,
     createPriority,
     setCreatePriority,
+    createTicketType,
+    setCreateTicketType,
+    allowTicketTypeSelection,
     createAttachments,
     createAttachmentCount,
     maxTicketAttachments,
@@ -319,6 +351,8 @@ export function useMaintenanceTickets() {
     defaultCenter: defaultCreateCenter,
     defaultWorkerName: defaultCreateWorkerName,
     defaultLocation: defaultCreateLocation,
+    ticketType,
+    allowTicketTypeSelection: ticketType === 'maquinaria' && isExternalReporter,
   })
 
   useEffect(() => {
@@ -454,22 +488,58 @@ export function useMaintenanceTickets() {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ validationApproval: 'creator' }),
+        body: JSON.stringify({ creatorValidationDecision: 'correct' }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
       await fetchTickets()
       setSelected((prev) =>
         prev && prev.id === ticket.id
           ? {
               ...prev,
               creatorValidatedAt: Date.now(),
-              status: prev.capValidatedAt ? 'validat' : 'fet',
+              status: 'validat',
+              workflowStage: prev.externalized ? 'externalized' : 'closed',
             }
           : prev
       )
     } catch (err: unknown) {
       const error = err as ErrorWithMessage
       alert(error?.message || "No s'ha pogut validar")
+    }
+  }
+
+  const handleCreatorReject = async (ticket: Ticket, note: string) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatorValidationDecision: 'incorrect',
+          creatorValidationNote: note,
+        }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      await fetchTickets()
+      setSelected((prev) =>
+        prev && prev.id === ticket.id
+          ? {
+              ...prev,
+              status: (prev.assignedToIds || []).length > 0 ? 'assignat' : 'reassignat',
+              workflowStage: (prev.assignedToIds || []).length > 0
+                ? 'planned_internal'
+                : 'tickets_inbox',
+              requiresCreatorValidation: false,
+              creatorRejectedAt: Date.now(),
+              creatorRejectionNote: note,
+              resolvedAt: null,
+            }
+          : prev
+      )
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut reobrir el ticket")
     }
   }
 
@@ -1089,7 +1159,7 @@ export function useMaintenanceTickets() {
     filters.end,
     filters.start,
     locationFilter,
-    tickets,
+    normalizedTickets,
     zoneFilter,
   ])
 
@@ -1148,6 +1218,9 @@ export function useMaintenanceTickets() {
     needsWorkerName,
     createPriority,
     setCreatePriority,
+    createTicketType,
+    setCreateTicketType,
+    allowTicketTypeSelection,
     createAttachmentCount,
     maxTicketAttachments,
     createBusy,
@@ -1206,6 +1279,7 @@ export function useMaintenanceTickets() {
     handleSendToPlanner,
     handleDirectResolution,
     handleCreatorValidate,
+    handleCreatorReject,
     handleDelete,
     fetchMoreTickets: () =>
       nextTicketsCursor

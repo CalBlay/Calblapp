@@ -54,3 +54,9 @@ export function familyLabelForCategoryId(
 export function isIncidentCategoryGroup2xx(categoryId: string): boolean {
   return normalizeFamilyPrefix(categoryId || '') === '2'
 }
+
+/** Maquinaria (2XX) i Decoracio (4XX): cal adjuntar com a minim una imatge o un video. */
+export function incidentCategoryRequiresMedia(categoryId: string): boolean {
+  const prefix = normalizeFamilyPrefix(categoryId || '')
+  return prefix === '2' || prefix === '4'
+}

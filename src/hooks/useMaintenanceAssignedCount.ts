@@ -24,7 +24,7 @@ export function useMaintenanceAssignedCount() {
       try {
         setLoading(true)
         const res = await fetch(
-          `/api/maintenance/tickets?status=assignat&assignedToId=${userId}`,
+          `/api/maintenance/tickets?ticketType=maquinaria&status=assignat&assignedToId=${userId}`,
           { cache: 'no-store' }
         )
         if (!res.ok) throw new Error('Error carregant tickets')

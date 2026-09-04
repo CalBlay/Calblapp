@@ -45,8 +45,15 @@ export function bucketForNotificationType(type: string): BucketKey | null {
     normalized === 'maintenance_ticket_resolved' ||
     normalized === 'maintenance_ticket_pending_cap_validation' ||
     normalized === 'maintenance_ticket_validated' ||
+    normalized === 'maintenance_ticket_reopened' ||
     normalized === 'maintenance_ticket_stale' ||
     normalized === 'maintenance_ticket_external_stale'
+    || normalized === 'deco_ticket_new'
+    || normalized === 'deco_ticket_assigned'
+    || normalized === 'deco_ticket_resolved'
+    || normalized === 'deco_ticket_pending_cap_validation'
+    || normalized === 'deco_ticket_validated'
+    || normalized === 'deco_ticket_reopened'
   ) {
     return 'maintenance'
   }

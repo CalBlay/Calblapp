@@ -73,6 +73,10 @@ import {
 } from '@/lib/maintenanceTicketsPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
+import {
+  DECO_TICKETS_ACTION,
+  DECO_TICKETS_UI_PATH,
+} from '@/lib/decoTicketsPermissions'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
 
@@ -371,6 +375,21 @@ export async function isUiPermissionGranted(params: {
       if (eff === 'deny') return false
       if (eff !== 'allow') return false
       return baseCanAttachEventVisitVideo(params.user)
+    }
+  }
+
+  if (parsed?.path === DECO_TICKETS_UI_PATH) {
+    if (Object.values(DECO_TICKETS_ACTION).includes(parsed.action as never)) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: DECO_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const permission = PERM.action(DECO_TICKETS_UI_PATH, parsed.action)
+      const effect = await getClientOverrideEffectForPermission(params.user.id, permission)
+      if (effect === 'deny') return false
+      if (effect === 'allow') return true
+      return canEditUiPath({ user: params.user, path: DECO_TICKETS_UI_PATH })
     }
   }
 

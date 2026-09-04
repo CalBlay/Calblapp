@@ -15,7 +15,7 @@ import {
   MAX_UPLOAD_VIDEO_BYTES,
   MAX_VIDEO_INPUT_BYTES,
 } from '@/lib/media/ticketAttachments'
-import type { TicketPriority } from './types'
+import type { TicketPriority, TicketType } from './types'
 
 type Params = {
   refreshTickets?: () => Promise<void>
@@ -28,6 +28,8 @@ type Params = {
   requireLocation?: boolean
   /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
   routingOverride?: ManualTicketRouting
+  ticketType?: TicketType
+  allowTicketTypeSelection?: boolean
 }
 
 type SessionUser = {
@@ -49,6 +51,8 @@ export function useMaintenanceTicketComposer({
   defaultMachine = '',
   requireLocation = true,
   routingOverride,
+  ticketType = 'maquinaria',
+  allowTicketTypeSelection = false,
 }: Params) {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
@@ -68,6 +72,7 @@ export function useMaintenanceTicketComposer({
   const [createDescription, setCreateDescription] = useState('')
   const [createWorkerName, setCreateWorkerName] = useState('')
   const [createPriority, setCreatePriority] = useState<TicketPriority>('normal')
+  const [createTicketType, setCreateTicketType] = useState<TicketType>(ticketType)
   const [createAttachments, setCreateAttachments] = useState<PendingTicketAttachment[]>([])
   const [createBusy, setCreateBusy] = useState(false)
   const [attachmentCompressing, setAttachmentCompressing] = useState(false)
@@ -133,6 +138,7 @@ export function useMaintenanceTicketComposer({
     setZoneQuery(zone)
     setMachineQuery(mac)
     setCreateWorkerName(center ? '' : defaultWorkerName)
+    setCreateTicketType(ticketType)
   }
 
   const openCreate = (preset?: { center?: string; location?: string; zone?: string; machine?: string }) => {
@@ -157,6 +163,7 @@ export function useMaintenanceTicketComposer({
     setCreateDescription('')
     setCreateWorkerName('')
     setCreatePriority('normal')
+    setCreateTicketType(ticketType)
     createAttachments.forEach((item) => URL.revokeObjectURL(item.preview))
     setCreateAttachments([])
     setAttachmentError(null)
@@ -268,6 +275,7 @@ export function useMaintenanceTicketComposer({
   }
 
   const getEffectiveMachine = () => createMachine.trim() || machineQuery.trim()
+  const effectiveTicketType = allowTicketTypeSelection ? createTicketType : ticketType
 
   const validateCreateForm = () => {
     if (!createCenter.trim()) {
@@ -277,7 +285,9 @@ export function useMaintenanceTicketComposer({
       return 'Selecciona una ubicacio.'
     }
     if (!getEffectiveMachine()) {
-      return 'Indica la maquinaria (cerca al llistat o escriu el nom).'
+      return effectiveTicketType === 'deco'
+        ? 'Indica l element o peticio de decoracio.'
+        : 'Indica la maquinaria (cerca al llistat o escriu el nom).'
     }
     if (!createDescription.trim()) {
       return 'La descripcio es obligatoria.'
@@ -326,7 +336,7 @@ export function useMaintenanceTicketComposer({
           description: createDescription.trim(),
           workerName: createWorkerName.trim() || null,
           priority: createPriority,
-          ticketType: 'maquinaria',
+          ticketType: effectiveTicketType,
           source: routing.source,
           intakeChannel: routing.intakeChannel,
           imageUrl: primary?.url || null,
@@ -392,6 +402,9 @@ export function useMaintenanceTicketComposer({
     needsWorkerName,
     createPriority,
     setCreatePriority,
+    createTicketType,
+    setCreateTicketType,
+    allowTicketTypeSelection,
     createAttachments,
     createAttachmentCount: createAttachments.length,
     maxTicketAttachments: MAX_TICKET_ATTACHMENTS,

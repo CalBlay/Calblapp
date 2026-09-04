@@ -25,6 +25,7 @@ import {
 
 type UsePlannerDataArgs = {
   canViewTickets: boolean
+  ticketType?: 'maquinaria' | 'deco'
   weekStart: Date
   dayCount: number
   tab: 'preventius' | 'tickets' | 'externalized'
@@ -366,6 +367,7 @@ function getPlannedTemplateIdsForCurrentCycle(
 
 export default function usePlannerData({
   canViewTickets,
+  ticketType = 'maquinaria',
   weekStart,
   dayCount,
   tab,
@@ -397,12 +399,12 @@ export default function usePlannerData({
       }
     }
     const requests: Promise<Response>[] = [
-      fetch('/api/maintenance/tickets?limit=1000', { cache: 'no-store' }),
+      fetch(`/api/maintenance/tickets?ticketType=${ticketType}&limit=1000`, { cache: 'no-store' }),
     ]
     if (weekRange?.start && weekRange?.end) {
       requests.push(
         fetch(
-          `/api/maintenance/tickets?start=${encodeURIComponent(weekRange.start)}&end=${encodeURIComponent(weekRange.end)}&dateMode=planned&limit=500`,
+          `/api/maintenance/tickets?ticketType=${ticketType}&start=${encodeURIComponent(weekRange.start)}&end=${encodeURIComponent(weekRange.end)}&dateMode=planned&limit=500`,
           { cache: 'no-store' }
         )
       )
@@ -422,7 +424,7 @@ export default function usePlannerData({
       pending: mapPendingTickets(list),
       externalized: mapExternalizedTickets(list),
     }
-  }, [canViewTickets])
+  }, [canViewTickets, ticketType])
 
   const dueTemplates = useMemo<DueTemplate[]>(() => {
     const weekEnd = addDays(weekStart, dayCount - 1)
@@ -546,14 +548,21 @@ export default function usePlannerData({
     const loadMasterData = async () => {
       try {
         const [templatesRes, centersRes, machinesRes, usersRes, ticketsData] = await Promise.all([
-          fetch('/api/maintenance/templates', { cache: 'no-store' }),
+          ticketType === 'maquinaria'
+            ? fetch('/api/maintenance/templates', { cache: 'no-store' })
+            : Promise.resolve(null),
           fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
           fetch('/api/maintenance/machines', { cache: 'no-store' }),
-          fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
+          fetch(
+            ticketType === 'deco'
+              ? '/api/personnel?includeDepartmentHeads=true'
+              : '/api/personnel?department=manteniment',
+            { cache: 'no-store' }
+          ),
           loadTicketsData({ start: startStr, end: endStr }),
         ])
 
-        const templatesJson = templatesRes.ok ? await templatesRes.json() : { templates: [] }
+        const templatesJson = templatesRes?.ok ? await templatesRes.json() : { templates: [] }
         const templateList = Array.isArray(templatesJson?.templates) ? templatesJson.templates : []
         setTemplates(
           templateList
@@ -585,6 +594,11 @@ export default function usePlannerData({
         setUsers(
           usersList
             .filter((u: UserApiItem) => u?.id && u?.name)
+            .filter((u: UserApiItem) => {
+              if (ticketType !== 'deco') return true
+              const department = normalizeName(u.departmentLower || u.department || '')
+              return ['deco', 'decoracio', 'decoracions'].includes(department)
+            })
             .map((u: UserApiItem) => ({
               id: String(u.id),
               name: String(u.name),
@@ -607,7 +621,7 @@ export default function usePlannerData({
       }
     }
     void loadMasterData()
-  }, [dayCount, loadTicketsData, weekStart])
+  }, [dayCount, loadTicketsData, ticketType, weekStart])
 
   const resolveWorkerIds = useCallback(
     (names: string[]) => {
@@ -639,14 +653,16 @@ export default function usePlannerData({
       const plannedStartStr = dueDates[0] && dueDates[0] < startStr ? dueDates[0] : startStr
 
       const [plannedRes, ticketsData] = await Promise.all([
-        fetch(
-          `/api/maintenance/preventius/planned?start=${encodeURIComponent(plannedStartStr)}&end=${encodeURIComponent(endStr)}`,
-          { cache: 'no-store' }
-        ),
+        ticketType === 'maquinaria'
+          ? fetch(
+              `/api/maintenance/preventius/planned?start=${encodeURIComponent(plannedStartStr)}&end=${encodeURIComponent(endStr)}`,
+              { cache: 'no-store' }
+            )
+          : Promise.resolve(null),
         loadTicketsData({ start: startStr, end: endStr }),
       ])
 
-      const plannedJson = plannedRes.ok ? await plannedRes.json() : { items: [] }
+      const plannedJson = plannedRes?.ok ? await plannedRes.json() : { items: [] }
       const plannedList = Array.isArray(plannedJson?.items) ? plannedJson.items : []
       if (requestedScheduleSeqRef.current !== requestId) return
       const plannedMapped: ScheduledItem[] = plannedList
@@ -844,7 +860,7 @@ export default function usePlannerData({
         void latestLoadWeekScheduleRef.current?.()
       }
     }
-  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, users, weekStart])
+  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, ticketType, users, weekStart])
 
   useEffect(() => {
     latestLoadWeekScheduleRef.current = loadWeekSchedule
@@ -887,7 +903,12 @@ export default function usePlannerData({
     (dayIndex: number, start: string, end: string, ignoreId?: string) => {
       const operators =
         users
-          .filter((u) => normalizeName(u.department || '').includes('manten'))
+          .filter((u) => {
+            const department = normalizeName(u.department || '')
+            return ticketType === 'deco'
+              ? ['deco', 'decoracio', 'decoracions'].includes(department)
+              : department.includes('manten')
+          })
           .map((u) => ({ id: u.id, name: u.name })) || []
       const list = operators.length > 0 ? operators : users.map((u) => ({ id: u.id, name: u.name }))
       const opKey = (name: string) => normalizeName(name)
@@ -907,7 +928,7 @@ export default function usePlannerData({
         return !has
       })
     },
-    [scheduledItems, users]
+    [scheduledItems, ticketType, users]
   )
 
   const persistTicketPlanning = useCallback(

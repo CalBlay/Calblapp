@@ -3,14 +3,17 @@ import { maintenanceTicketOpsRoomsToSidebarItems } from '@/lib/messaging/channel
 import type { MaintenanceTicketOpsRoom } from '@/lib/messaging/maintenanceTicketOps.server'
 import type { OpsWorkspaceConfig } from '@/lib/messaging/opsWorkspaceTypes'
 
-export function createMaintenanceOpsWorkspaceConfig(): OpsWorkspaceConfig<MaintenanceTicketOpsRoom> {
+export function createMaintenanceOpsWorkspaceConfig(
+  ticketType: 'maquinaria' | 'deco' = 'maquinaria'
+): OpsWorkspaceConfig<MaintenanceTicketOpsRoom> {
+  const isDeco = ticketType === 'deco'
   return {
-    roomsUrl: '/api/maintenance/tickets/ops/rooms',
-    contextTitle: 'Manteniment',
+    roomsUrl: `/api/maintenance/tickets/ops/rooms?ticketType=${ticketType}`,
+    contextTitle: isDeco ? 'Imatge-Deco' : 'Manteniment',
     sidebarEyebrow: 'Ops',
-    sidebarDescription: 'Tickets nous sense planificar',
-    getSidebarEmptyMessage: () => 'No hi ha tickets nous amb xat actiu.',
-    mainEmptyMessage: 'No hi ha cap ticket nou amb xat actiu.',
+    sidebarDescription: 'Tickets actius',
+    getSidebarEmptyMessage: () => 'No hi ha tickets amb xat actiu.',
+    mainEmptyMessage: 'No hi ha cap ticket amb xat actiu.',
     roomsToSidebarItems: maintenanceTicketOpsRoomsToSidebarItems,
     getVisibleRooms: (rooms) => rooms,
     resolveInitialSelection: ({ rooms, initialRoomId }) => ({
@@ -21,9 +24,13 @@ export function createMaintenanceOpsWorkspaceConfig(): OpsWorkspaceConfig<Mainte
     }),
     getActiveLabel: (room) => room?.ticketLabel || 'Ticket',
     getTopSubtitle: (room) =>
-      room?.creatorName ? `Ops · ${room.creatorName}` : 'Ops · Ticket de manteniment',
+      room?.creatorName
+        ? `Ops · ${room.creatorName}`
+        : `Ops · Ticket ${isDeco ? 'de Deco' : 'de manteniment'}`,
     getChannelSubtitle: (room) =>
-      room?.creatorName ? `Ops · ${room.creatorName}` : 'Ops · Ticket de manteniment',
+      room?.creatorName
+        ? `Ops · ${room.creatorName}`
+        : `Ops · Ticket ${isDeco ? 'de Deco' : 'de manteniment'}`,
     getAvatarText: (room, activeLabel) => initials(room?.ticketLabel || activeLabel),
     ensureRoom: async (room) => {
       const res = await fetch(

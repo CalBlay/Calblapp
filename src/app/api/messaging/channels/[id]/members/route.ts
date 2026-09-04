@@ -194,6 +194,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           id: String(channel.ticketId || ''),
           createdById: channel.requesterUserId ?? null,
           opsManagerUserId: channel.responsibleUserId ?? null,
+          ticketType: channel.ticketType === 'deco' ? 'deco' : 'maquinaria',
         },
         channel: { responsibleUserId: channel.responsibleUserId },
         userId,

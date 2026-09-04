@@ -11,8 +11,8 @@ const {
   warehouseDocId,
 } = require('../src/lib/eventComanda/warehouseIds')
 
-test('isPreparationWarehouseCode accepts only the three logistics warehouse literals', () => {
-  assert.deepEqual([...PREPARATION_WAREHOUSE_CODES], ['BODEGA', 'PARAMENT', 'MATERIAL'])
+test('isPreparationWarehouseCode accepts the logistics and Deco warehouse literals', () => {
+  assert.deepEqual([...PREPARATION_WAREHOUSE_CODES], ['BODEGA', 'PARAMENT', 'MATERIAL', 'DECO'])
   for (const code of PREPARATION_WAREHOUSE_CODES) {
     assert.equal(isPreparationWarehouseCode(code), true)
   }
@@ -26,6 +26,7 @@ test('normalizePreparationWarehouseCode trims and uppercases before validating',
   assert.equal(normalizePreparationWarehouseCode(' bodega '), 'BODEGA')
   assert.equal(normalizePreparationWarehouseCode('Parament'), 'PARAMENT')
   assert.equal(normalizePreparationWarehouseCode('material'), 'MATERIAL')
+  assert.equal(normalizePreparationWarehouseCode('deco'), 'DECO')
   assert.equal(normalizePreparationWarehouseCode('cuina'), null)
   assert.equal(normalizePreparationWarehouseCode(''), null)
   assert.equal(normalizePreparationWarehouseCode(null), null)

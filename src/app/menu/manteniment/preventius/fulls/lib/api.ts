@@ -112,6 +112,7 @@ export async function fetchJourneyTickets(
     if (end) params.set('end', end)
     params.set('dateMode', 'planned')
     params.set('limit', '500')
+    params.set('ticketType', 'maquinaria')
     if (role === 'treballador' && userId) params.set('assignedToId', userId)
 
     const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, { cache: 'no-store' })
@@ -164,6 +165,7 @@ export async function fetchWaitingJourneyTickets(
     const params = new URLSearchParams()
     params.set('status', 'espera')
     params.set('limit', '200')
+    params.set('ticketType', 'maquinaria')
     if (role === 'treballador' && userId) params.set('assignedToId', userId)
 
     const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, { cache: 'no-store' })

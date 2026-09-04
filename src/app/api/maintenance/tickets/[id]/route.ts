@@ -7,6 +7,7 @@ import {
   canReopenMaintenanceTickets,
   canValidateMaintenanceTickets,
   canViewQualitatCuinaCentralMaintenanceTickets,
+  canUseDecoTicketPermission,
 } from '@/lib/server/maintenanceTicketsAccess'
 import { clearStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
@@ -14,6 +15,7 @@ import {
   buildAssignedTicketBodyForCreator,
   buildTicketBody,
   notifyMaintenanceAssignees,
+  notifyForNewDecoTicket,
   notifyTicketCreator,
   notifyTicketEnteredPlanner,
   notifyTicketPendingCapValidation,
@@ -112,6 +114,8 @@ type UpdatePayload = {
   newSegmentEndTime?: string | null
   statusNote?: string | null
   validationApproval?: 'creator' | 'cap'
+  creatorValidationDecision?: 'correct' | 'incorrect'
+  creatorValidationNote?: string | null
   completionImages?: Array<{
     url?: string | null
     path?: string | null
@@ -151,6 +155,10 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   }> | null
   requiresCreatorValidation?: boolean
   creatorValidatedAt?: number | string | null
+  creatorRejectedAt?: number | string | null
+  creatorRejectedById?: string | null
+  creatorRejectedByName?: string | null
+  creatorRejectionNote?: string | null
   capValidatedAt?: number | string | null
   resolvedByArea?: string | null
 }
@@ -279,7 +287,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
     const data = snap.data() as MaintenanceTicketRecord
     const canViewAllTickets =
-      (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+      String(data.ticketType || 'maquinaria').toLowerCase() === 'deco'
+        ? (await canUseDecoTicketPermission(user, 'manage')) ||
+          (await canUseDecoTicketPermission(user, 'inbox'))
+        : (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
     const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
     const cuinaCentralUserIds = canViewQualitatCuinaCentral
       ? new Set(await getCuinaCentralUserIds())
@@ -326,10 +337,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const canManageTickets = await canManageAllMaintenanceTickets(user)
-  const canManageInbox = await canManageMaintenanceTicketInbox(user)
-  const canValidate = await canValidateMaintenanceTickets(user)
-  const canReopen = await canReopenMaintenanceTickets(user)
+  let canManageTickets = await canManageAllMaintenanceTickets(user)
+  let canManageInbox = await canManageMaintenanceTicketInbox(user)
+  let canValidate = await canValidateMaintenanceTickets(user)
+  let canReopen = await canReopenMaintenanceTickets(user)
   const role = auth.role
 
   const { id } = await ctx.params
@@ -342,18 +353,29 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     const current = snap.data() as MaintenanceTicketRecord
+    const isDecoTicket = String(current.ticketType || 'maquinaria').toLowerCase() === 'deco'
+    if (isDecoTicket) {
+      ;[canManageTickets, canManageInbox, canValidate, canReopen] = await Promise.all([
+        canUseDecoTicketPermission(user, 'manage'),
+        canUseDecoTicketPermission(user, 'inbox'),
+        canUseDecoTicketPermission(user, 'validate'),
+        canUseDecoTicketPermission(user, 'reopen'),
+      ])
+    }
     const previousWorkflowStage = normalizeTicketWorkflowStage(current.workflowStage)
 
-    const validationApprovalEarly =
-      body.validationApproval === 'creator' || body.validationApproval === 'cap'
-        ? body.validationApproval
-        : null
+    const creatorValidationDecisionEarly =
+      body.creatorValidationDecision === 'correct' || body.creatorValidationDecision === 'incorrect'
+        ? body.creatorValidationDecision
+        : body.validationApproval === 'creator'
+          ? 'correct'
+          : null
 
     // Creator validation is a dedicated early path below; all other mutations
     // require manage/inbox OR being the assigned worker (treballador).
     // View-only actors (e.g. Qualitat Cuina Central) must not mutate.
     if (
-      validationApprovalEarly !== 'creator' &&
+      !creatorValidationDecisionEarly &&
       !canActorMutateMaintenanceTicket({
         role,
         userId: user.id,
@@ -365,7 +387,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    if (role === 'treballador' && !canManageTickets && !canManageInbox) {
+    if (
+      role === 'treballador' &&
+      !canManageTickets &&
+      !canManageInbox &&
+      !creatorValidationDecisionEarly
+    ) {
       const assignedIds: string[] = Array.isArray(current.assignedToIds)
         ? current.assignedToIds
         : []
@@ -440,6 +467,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       body.validationApproval === 'creator' || body.validationApproval === 'cap'
         ? body.validationApproval
         : null
+    const creatorValidationDecision =
+      body.creatorValidationDecision === 'correct' || body.creatorValidationDecision === 'incorrect'
+        ? body.creatorValidationDecision
+        : validationApproval === 'creator'
+          ? 'correct'
+          : null
 
     if (assigneesChanged && currentAssignedIds.length > 0) {
       const canReassignFromCurrentStatus =
@@ -452,12 +485,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
-    if (validationApproval === 'creator') {
+    if (creatorValidationDecision) {
       if (!canCreatorValidateMaintenanceTicket(current, user.id)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
 
       const now = Date.now()
+      const rejectionNote = String(body.creatorValidationNote || '').trim()
+      if (creatorValidationDecision === 'incorrect' && !rejectionNote) {
+        return NextResponse.json(
+          { error: "Cal indicar per què la resolució no és correcta." },
+          { status: 400 }
+        )
+      }
       const ticketCode = current.ticketCode || current.incidentNumber || null
       const notifyBase = {
         ticketId: id,
@@ -474,49 +514,104 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         }),
       }
 
-      const creatorUpdates: Record<string, unknown> = {
-        creatorValidatedAt: now,
-        creatorValidatedById: user.id,
-        creatorValidatedByName: user.name || '',
-        updatedAt: now,
-      }
-
-      if (current.capValidatedAt) {
-        creatorUpdates.status = 'validat'
-        creatorUpdates.workflowStage = current.externalized ? 'externalized' : 'closed'
-        creatorUpdates.resolvedAt = now
-        creatorUpdates.resolvedById = user.id
-        creatorUpdates.resolvedByName = user.name || ''
-        creatorUpdates.statusHistory = admin.firestore.FieldValue.arrayUnion({
+      if (creatorValidationDecision === 'correct') {
+        const creatorUpdates: Record<string, unknown> = {
+          status: 'validat',
+          workflowStage: current.externalized ? 'externalized' : 'closed',
+          requiresCreatorValidation: false,
+          creatorValidatedAt: now,
+          creatorValidatedById: user.id,
+          creatorValidatedByName: user.name || '',
+          resolvedAt: now,
+          updatedAt: now,
+          updatedById: user.id,
+          updatedByName: user.name || '',
+          statusHistory: admin.firestore.FieldValue.arrayUnion({
           status: 'validat',
           at: now,
           byId: user.id,
           byName: user.name || '',
           note: 'Validat pel creador',
-        })
-      }
-
-      await ref.set(creatorUpdates, { merge: true })
-
-      if (!current.capValidatedAt) {
+          }),
+        }
+        await ref.set(creatorUpdates, { merge: true })
         await notifyTicketPendingCapValidation({
+          ticketType: isDecoTicket ? 'deco' : 'maquinaria',
           payload: {
-            type: 'maintenance_ticket_pending_cap_validation',
-            title: 'Ticket pendent de validar',
+            type: isDecoTicket
+              ? 'deco_ticket_validated'
+              : 'maintenance_ticket_validated',
+            title: 'Resolució validada pel creador',
             ...notifyBase,
+            status: 'validat',
+            workflowStage: current.externalized ? 'externalized' : 'closed',
           },
           excludeIds: [user.id],
         })
       } else {
-        await notifyTicketCreator({
-          uid: current.createdById || null,
-          payload: {
-            type: 'maintenance_ticket_validated',
-            title: 'Ticket validat',
-            ...notifyBase,
-            status: 'validat',
-          },
+        const reopenedStatus = currentAssignedIds.length > 0 ? 'assignat' : 'reassignat'
+        const reopenedStage = current.externalized
+          ? 'externalized'
+          : currentAssignedIds.length > 0
+            ? 'planned_internal'
+            : 'tickets_inbox'
+        const creatorUpdates: Record<string, unknown> = {
+          status: reopenedStatus,
+          workflowStage: reopenedStage,
+          requiresCreatorValidation: false,
+          creatorValidatedAt: null,
+          creatorValidatedById: null,
+          creatorValidatedByName: null,
+          creatorRejectedAt: now,
+          creatorRejectedById: user.id,
+          creatorRejectedByName: user.name || '',
+          creatorRejectionNote: rejectionNote,
+          capValidatedAt: null,
+          capValidatedById: null,
+          capValidatedByName: null,
+          resolvedAt: null,
+          resolvedById: null,
+          resolvedByName: null,
+          updatedAt: now,
+          updatedById: user.id,
+          updatedByName: user.name || '',
+          statusHistory: admin.firestore.FieldValue.arrayUnion({
+            status: reopenedStatus,
+            at: now,
+            byId: user.id,
+            byName: user.name || '',
+            note: `Reobert pel creador: ${rejectionNote}`,
+          }),
+        }
+        await ref.set(creatorUpdates, { merge: true })
+
+        const reopenedPayload = {
+          type: isDecoTicket
+            ? 'deco_ticket_reopened' as const
+            : 'maintenance_ticket_reopened' as const,
+          title: 'El creador ha reobert el ticket',
+          ...notifyBase,
+          body: `${notifyBase.body} · Motiu: ${rejectionNote}`,
+          status: reopenedStatus,
+          workflowStage: reopenedStage,
+        }
+        const responsibleIds = Array.from(
+          new Set([
+            ...currentAssignedIds,
+            String(current.resolvedById || '').trim(),
+          ].filter(Boolean))
+        )
+        await notifyMaintenanceAssignees({
+          uids: responsibleIds,
+          payload: reopenedPayload,
           excludeIds: [user.id],
+        })
+        await notifyTicketPendingCapValidation({
+          ticketType: isDecoTicket ? 'deco' : 'maquinaria',
+          payload: {
+            ...reopenedPayload,
+          },
+          excludeIds: [user.id, ...responsibleIds],
         })
       }
 
@@ -735,6 +830,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
 
       const requiresCreatorValidation = maintenanceTicketRequiresCreatorValidation(current)
+      if (requiresCreatorValidation) {
+        return NextResponse.json(
+          { error: 'Aquest ticket està pendent de validació del creador.' },
+          { status: 400 }
+        )
+      }
       if (currentStatus !== 'fet' && !requiresCreatorValidation) {
         return NextResponse.json({ error: 'Nomes es pot validar des de Fet' }, { status: 400 })
       }
@@ -923,11 +1024,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.capValidatedAt = null
       updates.capValidatedById = null
       updates.capValidatedByName = null
-      if (updates.workflowStage === 'resolved_admin') {
-        updates.requiresCreatorValidation = true
-      } else {
-        updates.requiresCreatorValidation = false
-      }
+      updates.requiresCreatorValidation = false
       if (
         Array.isArray(body.completionImages) &&
         body.completionImages.length > 0 &&
@@ -957,6 +1054,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         endTime: body.statusEndTime ?? null,
         note: body.statusNote ?? body.resolutionNote ?? '',
       })
+    }
+
+    const becameDone = nextStatus === 'fet' && currentStatus !== 'fet'
+    if (becameDone) {
+      updates.requiresCreatorValidation = false
+      updates.creatorValidatedAt = null
+      updates.creatorValidatedById = null
+      updates.creatorValidatedByName = null
+      updates.creatorRejectedAt = null
+      updates.creatorRejectedById = null
+      updates.creatorRejectedByName = null
+      updates.creatorRejectionNote = null
+      updates.capValidatedAt = null
+      updates.capValidatedById = null
+      updates.capValidatedByName = null
     }
 
     // Manager/cap Fulls journey (and similar non-worker status paths) skip
@@ -1031,10 +1143,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     await onMaintenanceTicketUpdated(id, mergedTicket)
 
-    if (
-      nextWorkflowStage === 'resolved_admin' &&
-      previousWorkflowStage !== 'resolved_admin'
-    ) {
+    if (becameDone) {
       const ticketCode = current.ticketCode || current.incidentNumber || null
       const effectiveMachine =
         body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
@@ -1048,8 +1157,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       await notifyTicketResolvedForCreator({
         uid: current.createdById || null,
         payload: {
-          type: 'maintenance_ticket_resolved',
-          title: 'Ticket fet',
+          type: isDecoTicket ? 'deco_ticket_resolved' : 'maintenance_ticket_resolved',
+          title: 'Ticket marcat com a fet',
           body: buildTicketBody({
             machine: effectiveMachine,
             location: effectiveLocation,
@@ -1062,9 +1171,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           location: effectiveLocation,
           machine: effectiveMachine,
           source: current.source || null,
-          workflowStage: 'resolved_admin',
+          workflowStage: nextWorkflowStage,
         },
-        excludeIds: [user.id],
       })
     }
 
@@ -1082,10 +1190,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           ? String(body.description).trim()
           : (current.description || '')
 
-      await notifyTicketEnteredPlanner({
-        payload: {
-          type: 'maintenance_ticket_new',
-          title: 'Ticket al planificador',
+      const plannerNotification = {
+          type: isDecoTicket ? 'deco_ticket_new' : 'maintenance_ticket_new',
+          title: isDecoTicket ? 'Ticket al planificador Deco' : 'Ticket al planificador',
           body: buildTicketBody({
             machine: effectiveMachine,
             location: effectiveLocation,
@@ -1098,9 +1205,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           location: effectiveLocation,
           machine: effectiveMachine,
           source: current.source || null,
-        },
-        excludeIds: [user.id],
-      })
+          workflowStage: 'planner_queue',
+        } as const
+      if (isDecoTicket) {
+        await notifyForNewDecoTicket({ payload: plannerNotification, excludeIds: [user.id] })
+      } else {
+        await notifyTicketEnteredPlanner({
+          payload: plannerNotification,
+          excludeIds: [user.id],
+        })
+      }
     }
 
     if (nextStatus === 'validat') {
@@ -1116,7 +1230,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       await notifyTicketCreator({
         uid: creatorId,
         payload: {
-          type: 'maintenance_ticket_validated',
+          type: isDecoTicket ? 'deco_ticket_validated' : 'maintenance_ticket_validated',
           title: 'Ticket validat',
           body: buildTicketBody({
             machine: effectiveMachine,
@@ -1152,7 +1266,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const plannedStart =
         body.plannedStart !== undefined ? body.plannedStart : (current.plannedStart ?? null)
       const assignPayload = {
-        type: 'maintenance_ticket_assigned' as const,
+        type: isDecoTicket ? 'deco_ticket_assigned' as const : 'maintenance_ticket_assigned' as const,
         title: 'Ticket assignat',
         body: buildTicketBody({
           machine: effectiveMachine,
@@ -1267,7 +1381,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     }
     const data = snap.data() as MaintenanceTicketRecord
 
-    const canDeleteAsManager = await canDeleteMaintenanceTickets(user)
+    const canDeleteAsManager =
+      String(data.ticketType || 'maquinaria').toLowerCase() === 'deco'
+        ? await canUseDecoTicketPermission(user, 'delete')
+        : await canDeleteMaintenanceTickets(user)
 
     if (!canDeleteAsManager) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

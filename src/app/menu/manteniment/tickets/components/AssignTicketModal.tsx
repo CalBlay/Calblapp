@@ -156,6 +156,17 @@ type Props = {
   onClose: () => void
 }
 
+const STATUS_BADGE_CLASSES: Record<TicketStatus, string> = {
+  nou: 'bg-emerald-100 text-emerald-800',
+  assignat: 'bg-blue-100 text-blue-800',
+  reassignat: 'bg-orange-100 text-orange-800',
+  en_curs: 'bg-amber-100 text-amber-800',
+  espera: 'bg-slate-100 text-slate-700',
+  fet: 'bg-green-100 text-green-800',
+  no_fet: 'bg-rose-100 text-rose-700',
+  validat: 'bg-purple-100 text-purple-800',
+}
+
 export default function AssignTicketModal({
   ticket,
   assignBusy,
@@ -211,16 +222,7 @@ export default function AssignTicketModal({
   onOpenOps,
   onClose,
 }: Props) {
-  const statusBadgeClasses: Record<TicketStatus, string> = {
-    nou: 'bg-emerald-100 text-emerald-800',
-    assignat: 'bg-blue-100 text-blue-800',
-    reassignat: 'bg-orange-100 text-orange-800',
-    en_curs: 'bg-amber-100 text-amber-800',
-    espera: 'bg-slate-100 text-slate-700',
-    fet: 'bg-green-100 text-green-800',
-    no_fet: 'bg-rose-100 text-rose-700',
-    validat: 'bg-purple-100 text-purple-800',
-  }
+  const statusBadgeClasses = STATUS_BADGE_CLASSES
   const getPlanningActionLabel = (action?: string) => {
     if (action === 'replanificat') return 'Replanificat'
     if (action === 'desplanificat') return 'Desplanificat'
@@ -324,6 +326,7 @@ export default function AssignTicketModal({
     !isExternallyManaged &&
     (workflowStage === 'tickets_inbox' || workflowStage === '')
   const headerTitle = String(ticket.operatorTitle || ticket.description || ticket.machine || ticket.location || 'Ticket').trim()
+  const creatorExplanation = String(ticket.description || '').trim()
   const originLocation = String(ticket.sourceEventLocation || ticket.location || detailsLocation || '').trim()
   const headerMeta = [ticket.ticketCode || ticket.incidentNumber || 'TIC', originLocation]
     .filter(Boolean)
@@ -709,6 +712,13 @@ export default function AssignTicketModal({
                   sourceText={getSourceText(ticket.source)}
                   assignedToNames={ticket.assignedToNames}
                 />
+
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                  <div className={typography('eyebrow')}>Explicacio original del creador</div>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
+                    {creatorExplanation || 'No hi ha cap explicacio informada.'}
+                  </p>
+                </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className={typography('eyebrow')}>Estat actual</div>

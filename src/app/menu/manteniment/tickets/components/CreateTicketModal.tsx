@@ -8,7 +8,7 @@ import {
   formatTicketAttachmentLimitMb,
 } from '@/lib/media/ticketAttachments'
 import type { PendingTicketAttachment } from '../useMaintenanceTicketComposer'
-import type { MachineItem, TicketPriority } from '../types'
+import type { MachineItem, TicketPriority, TicketType } from '../types'
 import type { CenterRow } from '@/app/menu/manteniment/dades/types'
 
 const normalizeSiteValue = (value?: string | null) => String(value || '').trim().toLowerCase()
@@ -50,6 +50,9 @@ type Props = {
   showMachineList: boolean
   setShowMachineList: (value: boolean) => void
   priorityLabels: Record<TicketPriority, string>
+  createTicketType?: TicketType
+  setCreateTicketType?: (value: TicketType) => void
+  allowTicketTypeSelection?: boolean
   onClose: () => void
   onCreate: () => void
   createBusy: boolean
@@ -105,6 +108,9 @@ export default function CreateTicketModal({
   showMachineList,
   setShowMachineList,
   priorityLabels,
+  createTicketType = 'maquinaria',
+  setCreateTicketType,
+  allowTicketTypeSelection = false,
   onClose,
   onCreate,
   createBusy,
@@ -296,6 +302,22 @@ export default function CreateTicketModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4 md:px-6">
+          {allowTicketTypeSelection ? (
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Destinació *
+              </label>
+              <select
+                className="h-12 w-full rounded-2xl border bg-white px-4 text-base"
+                value={createTicketType}
+                onChange={(event) => setCreateTicketType?.(event.target.value as TicketType)}
+              >
+                <option value="maquinaria">Manteniment</option>
+                <option value="deco">Imatge-Deco</option>
+              </select>
+            </div>
+          ) : null}
+
           <div>
             <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600">
               Prioritat *
@@ -562,7 +584,7 @@ export default function CreateTicketModal({
 
             <div className="relative md:col-span-2">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Maquinaria *
+                {createTicketType === 'deco' ? 'Element o petició Deco *' : 'Maquinaria *'}
               </label>
               <div className="relative">
                 <input

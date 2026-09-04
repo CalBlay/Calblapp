@@ -216,6 +216,33 @@ export const MODULES: ModuleDef[] = [
     ],
   },
 
+  {
+    label: 'Imatge-Deco',
+    path: '/menu/deco',
+    roles: ['admin', 'direccio', 'cap', 'treballador'],
+    departments: ['deco', 'decoracio', 'decoracions'],
+    submodules: [
+      {
+        label: 'Tickets',
+        path: '/menu/deco/tickets',
+        roles: ['admin', 'direccio', 'cap'],
+        departments: ['deco', 'decoracio', 'decoracions'],
+      },
+      {
+        label: 'Planificador',
+        path: '/menu/deco/planificador',
+        roles: ['admin', 'direccio', 'cap'],
+        departments: ['deco', 'decoracio', 'decoracions'],
+      },
+      {
+        label: 'Preparació',
+        path: '/menu/deco/preparacio',
+        roles: ['admin', 'direccio', 'cap', 'treballador'],
+        departments: ['deco', 'decoracio', 'decoracions'],
+      },
+    ],
+  },
+
   { label: 'Quadrants', path: '/menu/quadrants',
     roles: ['admin','direccio','cap'] ,
     departments: ['logistica','cuina','serveis'],

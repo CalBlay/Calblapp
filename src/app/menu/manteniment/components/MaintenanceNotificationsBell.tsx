@@ -45,9 +45,21 @@ const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_resolved',
   'maintenance_ticket_pending_cap_validation',
   'maintenance_ticket_validated',
+  'maintenance_ticket_reopened',
   'maintenance_ticket_stale',
   'maintenance_ticket_external_stale',
 ])
+
+const DECO_NOTIFICATION_TYPES = new Set([
+  'deco_ticket_new',
+  'deco_ticket_assigned',
+  'deco_ticket_resolved',
+  'deco_ticket_pending_cap_validation',
+  'deco_ticket_validated',
+  'deco_ticket_reopened',
+])
+
+type NotificationModule = 'maintenance' | 'deco'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -80,17 +92,23 @@ function extractNotificationLabel(notification: MaintenanceNotification) {
   const primary = code ? `${code} \u00B7 ${primaryBase}` : primaryBase
   const secondary = location || body || machine || ''
 
-  if (notification.type === 'maintenance_ticket_assigned') {
+  if (notification.type === 'maintenance_ticket_assigned' || notification.type === 'deco_ticket_assigned') {
     return { prefix: 'Assignat', primary, secondary }
   }
-  if (notification.type === 'maintenance_ticket_resolved') {
+  if (notification.type === 'maintenance_ticket_resolved' || notification.type === 'deco_ticket_resolved') {
     return { prefix: 'Resolt', primary, secondary }
   }
-  if (notification.type === 'maintenance_ticket_pending_cap_validation') {
+  if (
+    notification.type === 'maintenance_ticket_pending_cap_validation' ||
+    notification.type === 'deco_ticket_pending_cap_validation'
+  ) {
     return { prefix: 'Pendent validar', primary, secondary }
   }
-  if (notification.type === 'maintenance_ticket_validated') {
+  if (notification.type === 'maintenance_ticket_validated' || notification.type === 'deco_ticket_validated') {
     return { prefix: 'Validat', primary, secondary }
+  }
+  if (notification.type === 'maintenance_ticket_reopened' || notification.type === 'deco_ticket_reopened') {
+    return { prefix: 'Reobert', primary, secondary }
   }
   if (notification.type === 'maintenance_ticket_stale') {
     return { prefix: 'Retard', primary, secondary }
@@ -104,9 +122,11 @@ function extractNotificationLabel(notification: MaintenanceNotification) {
 function MaintenanceNotificationItems({
   notifications,
   onDismiss,
+  module,
 }: {
   notifications: MaintenanceNotification[]
   onDismiss: (notificationId: string) => Promise<void>
+  module: NotificationModule
 }) {
   const router = useRouter()
   const closeBell = useCloseModuleNotificationsBell()
@@ -126,6 +146,12 @@ function MaintenanceNotificationItems({
     }
 
     const ticketId = String(notification.ticketId || '').trim()
+    if (module === 'deco') {
+      const query = ticketId ? `?ticketId=${encodeURIComponent(ticketId)}` : ''
+      router.push(`/menu/deco/tickets${query}`)
+      return
+    }
+
     if (!ticketId) {
       router.push('/menu/manteniment/tickets')
       return
@@ -191,9 +217,11 @@ function MaintenanceNotificationItems({
 
 export default function MaintenanceNotificationsBell({
   showWhenEmpty = true,
+  module = 'maintenance',
 }: {
   /** Mantenir visible la campaneta encara sense avisos pendents (creadors de tickets). */
   showWhenEmpty?: boolean
+  module?: NotificationModule
 }) {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
@@ -215,13 +243,14 @@ export default function MaintenanceNotificationsBell({
     }
   }, [userId, mutate])
 
+  const notificationTypes = module === 'deco' ? DECO_NOTIFICATION_TYPES : MAINTENANCE_NOTIFICATION_TYPES
   const notifications = useMemo(
     () =>
       (Array.isArray(data?.notifications) ? data.notifications : []).filter(
         (notification: MaintenanceNotification) =>
-          !notification.read && MAINTENANCE_NOTIFICATION_TYPES.has(String(notification.type || ''))
+          !notification.read && notificationTypes.has(String(notification.type || ''))
       ),
-    [data]
+    [data, notificationTypes]
   )
 
   const dismiss = async (notificationId: string) => {
@@ -230,7 +259,7 @@ export default function MaintenanceNotificationsBell({
   }
 
   const markAll = async () => {
-    for (const type of MAINTENANCE_NOTIFICATION_TYPES) {
+    for (const type of notificationTypes) {
       await markAllNotificationsRead(type)
     }
     await mutate()
@@ -238,10 +267,10 @@ export default function MaintenanceNotificationsBell({
 
   return (
     <ModuleNotificationsBell
-      title="Avisos de manteniment"
+      title={module === 'deco' ? 'Avisos d’Imatge-Deco' : 'Avisos de manteniment'}
       count={notifications.length}
       showWhenEmpty={showWhenEmpty}
-      emptyMessage="Cap avís de manteniment pendent"
+      emptyMessage={module === 'deco' ? 'Cap avís d’Imatge-Deco pendent' : 'Cap avís de manteniment pendent'}
       headerActions={
         <button
           type="button"
@@ -253,7 +282,7 @@ export default function MaintenanceNotificationsBell({
         </button>
       }
     >
-      <MaintenanceNotificationItems notifications={notifications} onDismiss={dismiss} />
+      <MaintenanceNotificationItems notifications={notifications} onDismiss={dismiss} module={module} />
     </ModuleNotificationsBell>
   )
 }

@@ -2,7 +2,10 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
-import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
+import {
+  listDecoTicketInboxRecipientIds,
+  listMaintenanceTicketInboxRecipientIds,
+} from '@/lib/server/maintenanceTicketInboxRecipients'
 import {
   defaultPushUrlForNotificationType,
   sendPushToUsers,
@@ -25,8 +28,15 @@ type NotificationPayload = {
     | 'maintenance_ticket_resolved'
     | 'maintenance_ticket_pending_cap_validation'
     | 'maintenance_ticket_validated'
+    | 'maintenance_ticket_reopened'
     | 'maintenance_ticket_stale'
     | 'maintenance_ticket_external_stale'
+    | 'deco_ticket_new'
+    | 'deco_ticket_assigned'
+    | 'deco_ticket_resolved'
+    | 'deco_ticket_pending_cap_validation'
+    | 'deco_ticket_validated'
+    | 'deco_ticket_reopened'
   title: string
   body: string
   ticketId: string
@@ -69,6 +79,10 @@ async function getMaintenanceCapUserIds(): Promise<string[]> {
     .map((doc) => doc.id)
 }
 
+async function getDecoManagerUserIds(): Promise<string[]> {
+  return listDecoTicketInboxRecipientIds()
+}
+
 export async function notifyMaintenanceManagers(params: {
   payload: NotificationPayload
   excludeIds?: string[]
@@ -104,6 +118,19 @@ export async function notifyForNewMaintenanceTicket(params: {
   await notifyLogisticsTicketUsers({ payload, excludeIds: params.excludeIds })
 }
 
+export async function notifyForNewDecoTicket(params: {
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  const targets = (await getDecoManagerUserIds()).filter(
+    (id) => !params.excludeIds?.includes(id)
+  )
+  await createNotifications(targets, {
+    ...params.payload,
+    workflowStage: params.payload.workflowStage || 'tickets_inbox',
+  })
+}
+
 /** Quan un ticket passa del mòdul tickets al planificador. */
 export async function notifyTicketEnteredPlanner(params: {
   payload: NotificationPayload
@@ -136,7 +163,7 @@ export async function notifyTicketCreator(params: {
   await createNotifications([uid], payload)
 }
 
-/** Gestor ha tancat directament el ticket: el creador ha de validar. */
+/** El responsable marca el ticket com a fet: avisa el creador perquè pugui respondre. */
 export async function notifyTicketResolvedForCreator(params: {
   uid?: string | null
   payload: NotificationPayload
@@ -145,11 +172,16 @@ export async function notifyTicketResolvedForCreator(params: {
   await notifyTicketCreator(params)
 }
 
-/** Creador validat: avisa el cap de manteniment per completar la validació. */
+/** Avisa els responsables del departament d'un canvi que han de conèixer. */
 export async function notifyTicketPendingCapValidation(params: {
   payload: NotificationPayload
   excludeIds?: string[]
+  ticketType?: 'maquinaria' | 'deco'
 }) {
+  if (params.ticketType === 'deco') {
+    await notifyForNewDecoTicket(params)
+    return
+  }
   await notifyMaintenanceManagers(params)
 }
 

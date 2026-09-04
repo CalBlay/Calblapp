@@ -11,6 +11,8 @@ const MAINTENANCE_TICKET_API_VIEW_PATHS = [
   '/menu/manteniment/preventius/fulls',
   '/menu/manteniment/dades',
   '/menu/manteniment/seguiment',
+  '/menu/deco/tickets',
+  '/menu/deco/planificador',
 ] as const
 
 export async function canUseMaintenanceTicketApi(
@@ -82,7 +84,12 @@ export async function requireMaintenanceDataAccess(
   const allowed =
     mode === 'edit'
       ? await canEditUiPath({ user: auth.user, path: '/menu/manteniment/dades' })
-      : await canViewUiPath({ user: auth.user, path: '/menu/manteniment/dades' })
+      : (
+          await Promise.all([
+            canViewUiPath({ user: auth.user, path: '/menu/manteniment/dades' }),
+            canViewUiPath({ user: auth.user, path: '/menu/deco/tickets' }),
+          ])
+        ).some(Boolean)
 
   if (!allowed) {
     return { ok: false, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }

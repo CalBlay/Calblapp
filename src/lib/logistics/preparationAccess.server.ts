@@ -1,6 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
+import { DECO_PREPARATION_UI_PATH } from '@/lib/decoTicketsPermissions'
 import {
   PREPARATION_UI_PATH,
   preparationWarehousePerm,
@@ -46,9 +47,16 @@ function listExplicitPreparationWarehouses(actions: Record<string, boolean>): Pr
   )
 }
 
-export async function listPreparationWarehousesForUser(userId: string, role: string) {
+export async function listPreparationWarehousesForUser(
+  userId: string,
+  role: string,
+  options: { scope?: 'deco' } = {}
+) {
   const normalizedRole = normalizeRole(role)
-  if (normalizedRole === 'admin' || normalizedRole === 'direccio') {
+  if (
+    normalizedRole === 'admin' ||
+    (normalizedRole === 'direccio' && options.scope !== 'deco')
+  ) {
     return [...PREPARATION_WAREHOUSE_CODES]
   }
 
@@ -64,6 +72,12 @@ export async function listPreparationWarehousesForUser(userId: string, role: str
     accessUser,
     assignmentSnap.exists ? (assignmentSnap.data() as UserAccessAssignmentDoc) : null
   )
+  if (
+    options.scope === 'deco' && uiMap[DECO_PREPARATION_UI_PATH] === true
+  ) {
+    return ['DECO'] as PreparationWarehouseCode[]
+  }
+  if (options.scope === 'deco') return [] as PreparationWarehouseCode[]
   if (uiMap[PREPARATION_UI_PATH] !== true) return [] as PreparationWarehouseCode[]
 
   const actions = buildActionsFromAssignment(
