@@ -1,8 +1,11 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const { test } = require('node:test')
 
 const {
   canPruneMissingZohoAttachmentSlots,
+  deletedZohoAttachmentIdsFromDocument,
   extractZohoFieldAttachments,
   listExistingZohoAttachmentBaseKeys,
   mergeZohoFieldAttachments,
@@ -84,4 +87,27 @@ test('attachment slot helpers protect against destructive empty-sync cleanup', (
     path: 'zohoFile3Path',
     source: 'zohoFile3Source',
   })
+})
+
+test('deleted Zoho attachment ids are normalized for sync suppression', () => {
+  assert.deepEqual(
+    [...deletedZohoAttachmentIdsFromDocument({
+      calendarDeletedZohoAttachmentIds: [' att-1 ', '', null, 'att-2'],
+    })],
+    ['att-1', 'att-2']
+  )
+  assert.deepEqual([...deletedZohoAttachmentIdsFromDocument({})], [])
+})
+
+test('Zoho sync discovers attachments only from the configured file fields', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/zoho/sync-attachments.ts'),
+    'utf8'
+  )
+  assert.doesNotMatch(source, /function\s+listZohoRecordAttachments/)
+  assert.doesNotMatch(source, /const\s+legacy\s*=\s*await/)
+  assert.deepEqual(ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES, [
+    'Fulla_d_enc_rrec',
+    'Full_de_Tast',
+  ])
 })

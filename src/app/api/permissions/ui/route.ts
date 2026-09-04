@@ -116,6 +116,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/calendar', action: 'manual:update' },
   { path: '/menu/calendar', action: 'manual:delete' },
   { path: '/menu/calendar', action: 'attach:sharepoint' },
+  { path: '/menu/calendar', action: 'documents:delete' },
   { path: '/menu/calendar', action: 'email:send-documents' },
   { path: '/menu/calendar', action: 'mail-groups:manage' },
   { path: '/menu/calendar', action: 'sync:zoho' },

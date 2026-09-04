@@ -30,11 +30,13 @@ type Props = {
   ln: CalendarLN[]
   stage: string
   commercial: string[]
+  location: string[]
   codeStatus: string
   showCodeStatus?: boolean
   onRemoveLn: (value: CalendarLN) => void
   onClearStage: () => void
   onRemoveCommercial: (value: string) => void
+  onRemoveLocation: (value: string) => void
   onClearCodeStatus: () => void
   onClearAll: () => void
 }
@@ -43,20 +45,23 @@ export default function CalendarActiveFilters({
   ln,
   stage,
   commercial,
+  location,
   codeStatus,
   showCodeStatus,
   onRemoveLn,
   onClearStage,
   onRemoveCommercial,
+  onRemoveLocation,
   onClearCodeStatus,
   onClearAll,
 }: Props) {
   const hasLn = ln.length > 0
   const hasStage = stage !== 'all'
   const hasCommercial = commercial.length > 0
+  const hasLocation = location.length > 0
   const hasCode = showCodeStatus && codeStatus !== 'all'
 
-  if (!hasLn && !hasStage && !hasCommercial && !hasCode) return null
+  if (!hasLn && !hasStage && !hasCommercial && !hasLocation && !hasCode) return null
 
   return (
     <div className="hidden min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:flex">
@@ -78,6 +83,13 @@ export default function CalendarActiveFilters({
           key={`com-${name}`}
           label={name}
           onRemove={() => onRemoveCommercial(name)}
+        />
+      ))}
+      {location.map((name) => (
+        <FilterChip
+          key={`location-${name}`}
+          label={name}
+          onRemove={() => onRemoveLocation(name)}
         />
       ))}
       {hasCode && (

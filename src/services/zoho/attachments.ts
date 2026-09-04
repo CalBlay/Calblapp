@@ -44,6 +44,15 @@ export function listExistingZohoAttachmentBaseKeys(
   return Object.keys(existing).filter((key) => /^zohoFile\d+$/i.test(key))
 }
 
+export function deletedZohoAttachmentIdsFromDocument(
+  existing?: Record<string, unknown>
+): Set<string> {
+  const values = Array.isArray(existing?.calendarDeletedZohoAttachmentIds)
+    ? existing.calendarDeletedZohoAttachmentIds
+    : []
+  return new Set(values.map((id) => String(id || '').trim()).filter(Boolean))
+}
+
 export function canPruneMissingZohoAttachmentSlots(
   currentKeys: ReadonlySet<string>
 ): boolean {

@@ -8,6 +8,8 @@ const ROOT = path.join(__dirname, '..')
 require('./register.cjs')
 
 const {
+  calendarAttachmentFieldKeys,
+  isAllowedCalendarAttachmentField,
   isAllowedCalendarManualAttachField,
   isAllowedCalendarManualCollection,
   pickCalendarManualPutFields,
@@ -46,6 +48,23 @@ test('attach fields must be fileN slots', () => {
   assert.equal(isAllowedCalendarManualAttachField('role'), false)
   assert.equal(isAllowedCalendarManualAttachField('file1Name'), false)
   assert.equal(isAllowedCalendarManualAttachField('../../etc'), false)
+})
+
+test('calendar attachment deletion accepts only manual and Zoho slots', () => {
+  assert.equal(isAllowedCalendarAttachmentField('file1'), true)
+  assert.equal(isAllowedCalendarAttachmentField('zohoFile12'), true)
+  assert.equal(isAllowedCalendarAttachmentField('file1Name'), false)
+  assert.equal(isAllowedCalendarAttachmentField('otherFile1'), false)
+  assert.deepEqual(calendarAttachmentFieldKeys('zohoFile2'), [
+    'zohoFile2',
+    'zohoFile2Name',
+    'zohoFile2MimeType',
+    'zohoFile2AttachmentId',
+    'zohoFile2ModifiedTime',
+    'zohoFile2Size',
+    'zohoFile2Path',
+    'zohoFile2Source',
+  ])
 })
 
 test('PUT picker keeps modal + attachment fields and drops privilege keys', () => {
@@ -104,4 +123,15 @@ test('calendar email route rejects non-stage collections before Admin SDK read',
   assert.ok(guardIdx >= 0, 'email route must validate collection')
   assert.ok(readIdx >= 0, 'email route must still read the document')
   assert.ok(guardIdx < readIdx, 'collection guard must run before Admin SDK read')
+})
+
+test('calendar attachment DELETE requires its permission and validates field and collection', () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, 'src/app/api/calendar/manual/[id]/attachments/[field]/route.ts'),
+    'utf8'
+  )
+  assert.match(source, /CALENDAR_PERM\.deleteDocuments/)
+  assert.match(source, /isAllowedCalendarAttachmentField\(field\)/)
+  assert.match(source, /isAllowedCalendarManualCollection\(collection\)/)
+  assert.match(source, /FieldValue\.delete\(\)/)
 })

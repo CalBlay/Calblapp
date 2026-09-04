@@ -12,6 +12,24 @@ export function isAllowedCalendarManualAttachField(field: unknown): boolean {
   return typeof field === 'string' && /^file\d+$/.test(field.trim())
 }
 
+/** Attachment slots exposed by the calendar (`fileN` and synced `zohoFileN`). */
+export function isAllowedCalendarAttachmentField(field: unknown): boolean {
+  return typeof field === 'string' && /^(?:file|zohoFile)\d+$/.test(field.trim())
+}
+
+export function calendarAttachmentFieldKeys(field: string): string[] {
+  return [
+    field,
+    `${field}Name`,
+    `${field}MimeType`,
+    `${field}AttachmentId`,
+    `${field}ModifiedTime`,
+    `${field}Size`,
+    `${field}Path`,
+    `${field}Source`,
+  ]
+}
+
 const MANUAL_PUT_META_FIELDS = new Set(['codeConfirmed'])
 
 /**

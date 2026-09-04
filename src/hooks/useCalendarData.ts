@@ -33,6 +33,7 @@ export function useCalendarData(filters?: {
   ln?: string | string[]
   stage?: string
   commercial?: string | string[]
+  location?: string | string[]
   start?: string
   end?: string
 }) {
@@ -227,6 +228,13 @@ export function useCalendarData(filters?: {
         data = data.filter((d) => cSet.has(normalize(d.Comercial || '')))
       }
 
+      /* ---------- UBICACIO ---------- */
+      const locationValues = toArrayFilter(filters?.location)
+      if (locationValues.length) {
+        const locationSet = new Set(locationValues.map(normalize))
+        data = data.filter((d) => locationSet.has(normalize(d.Ubicacio || '')))
+      }
+
       data.sort(
         (a, b) =>
           new Date(a.DataInici || '').getTime() -
@@ -251,6 +259,7 @@ export function useCalendarData(filters?: {
     filters?.ln,
     filters?.stage,
     filters?.commercial,
+    filters?.location,
     filters?.start,
     filters?.end,
   ])

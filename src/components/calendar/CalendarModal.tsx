@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
-import { ExternalLink, Mail } from 'lucide-react'
+import { ExternalLink, Loader2, Mail, Trash2 } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
@@ -197,6 +197,7 @@ export default function CalendarModal({
     Array<{ key: string; url: string; name?: string; source?: string }>
   >([])
   const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
+  const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null)
   const [multiDay, setMultiDay] = useState(false)
 
   // Només editable si és Confirmat o manual (respectant readonly si ve informat)
@@ -279,6 +280,9 @@ export default function CalendarModal({
   const canEditComercialIntern =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
+  const canDeleteDocuments =
+    !readonly &&
+    (isAdmin || (permsReady && uiActions[CALENDAR_PERM.deleteDocuments] === true))
   const canSendEmail = useMemo(() => {
     if (!permsReady) return canManageDocuments
     return uiActions[CALENDAR_PERM.sendDocuments] === true
@@ -585,30 +589,25 @@ export default function CalendarModal({
 
   // 🗑️ Eliminar un enllaç (fileN) de Firestore
   const handleDeleteFile = async (key: string) => {
-    if (!canManageDocuments) return
-    const target = files.find((f) => f.key === key)
-    if (String(target?.source || '').startsWith('zoho')) {
-      alert('Aquest document ve de Zoho i no es pot eliminar manualment des del calendari.')
-      return
-    }
+    if (!canDeleteDocuments || deletingFileKey) return
     if (!confirm('Vols eliminar aquest enllaç del document?')) return
 
     try {
-      const payload: Record<string, unknown> = { collection: COLLECTION }
-      payload[key] = null
-      const res = await fetch(`/api/calendar/manual/${deal.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      setDeletingFileKey(key)
+      const res = await fetch(
+        `/api/calendar/manual/${deal.id}/attachments/${encodeURIComponent(key)}?collection=${encodeURIComponent(COLLECTION)}`,
+        { method: 'DELETE' }
+      )
       if (!res.ok) throw new Error('Error eliminant l’enllaç')
 
       setFiles((prev) => prev.filter((f) => f.key !== key))
-      alert('🗑️ Enllaç eliminat correctament')
       onSaved?.()
+      document.dispatchEvent(new CustomEvent('calendar:reload'))
     } catch (err) {
       console.error('❌ Error eliminant enllaç:', err)
       alert('❌ No s’ha pogut eliminar l’enllaç.')
+    } finally {
+      setDeletingFileKey(null)
     }
   }
 
@@ -984,15 +983,22 @@ export default function CalendarModal({
                       {displayCalendarFileName({ key, url, name })}
                     </a>
 
-                    {canManageDocuments &&
-                      !String(files.find((f) => f.key === key)?.source || '').startsWith('zoho') && (
+                    {canDeleteDocuments && (
                       <Button
+                        type="button"
                         size="sm"
                         variant="ghost"
-                        className="text-red-500 text-xs shrink-0"
+                        className="shrink-0 text-red-500 hover:bg-red-50 hover:text-red-700"
                         onClick={() => handleDeleteFile(key)}
+                        disabled={deletingFileKey !== null}
+                        aria-label={`Eliminar ${displayCalendarFileName({ key, url, name })}`}
+                        title="Eliminar document"
                       >
-                        🗑️
+                        {deletingFileKey === key ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     )}
                   </li>
@@ -1131,6 +1137,5 @@ export default function CalendarModal({
     </>
   )
 }
-
 
 

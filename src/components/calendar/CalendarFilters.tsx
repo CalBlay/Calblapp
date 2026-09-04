@@ -27,6 +27,7 @@ export interface CalendarFilterChange {
   ln?: CalendarLN[]
   stage?: CalendarStage
   commercial?: string[]
+  location?: string[]
   codeStatus?: CalendarCodeStatus
 }
 
@@ -34,9 +35,11 @@ export interface CalendarFiltersProps {
   ln?: CalendarLN[] | CalendarLN | string
   stage?: CalendarStage | string
   commercial?: string[] | string
+  location?: string[] | string
   codeStatus?: CalendarCodeStatus | string
   showCodeStatus?: boolean
   comercialOptions?: string[]
+  locationOptions?: string[]
   onChange: (f: CalendarFilterChange) => void
   onReset?: () => void
 }
@@ -97,9 +100,11 @@ export default function CalendarFilters({
   ln: lnProp,
   stage: stageProp,
   commercial: commercialProp,
+  location: locationProp,
   codeStatus: codeStatusProp,
   showCodeStatus,
   comercialOptions,
+  locationOptions,
   onChange,
   onReset,
 }: CalendarFiltersProps) {
@@ -109,6 +114,9 @@ export default function CalendarFilters({
   const [stage, setStage] = useState<CalendarStage>(() => coerceAll(String(stageProp || 'all')) as CalendarStage)
   const [commercialValues, setCommercialValues] = useState<string[]>(() =>
     toArray(commercialProp)
+  )
+  const [locationValues, setLocationValues] = useState<string[]>(() =>
+    toArray(locationProp)
   )
   const [codeStatus, setCodeStatus] = useState<CalendarCodeStatus>(() =>
     coerceAll(String(codeStatusProp || 'all')) as CalendarCodeStatus
@@ -125,12 +133,17 @@ export default function CalendarFilters({
   useEffect(() => setLnValues(toArray(lnProp) as CalendarLN[]), [lnProp])
   useEffect(() => setStage(coerceAll(String(stageProp || 'all')) as CalendarStage), [stageProp])
   useEffect(() => setCommercialValues(toArray(commercialProp)), [commercialProp])
+  useEffect(() => setLocationValues(toArray(locationProp)), [locationProp])
   useEffect(
     () =>
       setCodeStatus(
         coerceAll(String(codeStatusProp || 'all')) as CalendarCodeStatus
       ),
     [codeStatusProp]
+  )
+  const showLocation = useMemo(
+    () => Array.isArray(locationOptions) && locationOptions.length > 0,
+    [locationOptions]
   )
 
   useEffect(() => {
@@ -142,15 +155,17 @@ export default function CalendarFilters({
       ln: lnValues,
       stage,
       commercial: commercialValues,
+      location: locationValues,
       codeStatus,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lnValues, stage, commercialValues, codeStatus])
+  }, [lnValues, stage, commercialValues, locationValues, codeStatus])
 
   const resetAll = () => {
     setLnValues([])
     setStage('all')
     setCommercialValues([])
+    setLocationValues([])
     setCodeStatus('all')
     onReset?.()
   }
@@ -175,6 +190,18 @@ export default function CalendarFilters({
     setCommercialValues((prev) =>
       prev.includes(value)
         ? prev.filter((v) => v !== value)
+        : [...prev, value]
+    )
+  }
+
+  const toggleLocation = (value: string) => {
+    if (value === 'all') {
+      setLocationValues([])
+      return
+    }
+    setLocationValues((prev) =>
+      prev.includes(value)
+        ? prev.filter((item) => item !== value)
         : [...prev, value]
     )
   }
@@ -265,6 +292,33 @@ export default function CalendarFilters({
                   onChange={() => toggleCommercial(c)}
                 />
                 {c}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ubicacio (opcional) */}
+      {showLocation && (
+        <div>
+          <label className="text-[11px] text-gray-500">Ubicació</label>
+          <div className="mt-1 max-h-48 space-y-2 overflow-y-auto rounded-md border bg-white p-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={locationValues.length === 0}
+                onChange={() => toggleLocation('all')}
+              />
+              Totes
+            </label>
+            {locationOptions!.map((location) => (
+              <label key={location} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={locationValues.includes(location)}
+                  onChange={() => toggleLocation(location)}
+                />
+                {location}
               </label>
             ))}
           </div>

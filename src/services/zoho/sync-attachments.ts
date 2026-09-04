@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import {
   canPruneMissingZohoAttachmentSlots,
+  deletedZohoAttachmentIdsFromDocument,
   listExistingZohoAttachmentBaseKeys,
   mergeZohoFieldAttachments,
   shouldImportZohoAttachment,
@@ -25,16 +26,6 @@ async function getZohoFieldAttachmentValue(
     `/${moduleName}/${recordId}?fields=${fieldApiName}`
   )
   return res.data?.[0]?.[fieldApiName]
-}
-
-async function listZohoRecordAttachments(
-  moduleName: string,
-  recordId: string
-): Promise<ZohoAttachment[]> {
-  const res = await zohoFetch<{ data?: ZohoAttachment[] }>(
-    `/${moduleName}/${recordId}/Attachments`
-  )
-  return Array.isArray(res.data) ? res.data : []
 }
 
 async function downloadZohoAttachment(
@@ -115,20 +106,7 @@ async function resolveZohoDealAttachments(
     fieldValues.push(value)
   }
 
-  const merged = mergeZohoFieldAttachments(fieldValues)
-  const legacy = await listZohoRecordAttachments(moduleName, dealId).catch(() => [])
-
-  if (legacy.length === 0) return merged
-
-  const out = [...merged]
-  const seen = new Set(out.map((attachment) => String(attachment.id || '').trim()))
-  for (const attachment of legacy) {
-    const id = String(attachment.id || '').trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(attachment)
-  }
-  return out
+  return mergeZohoFieldAttachments(fieldValues)
 }
 
 export async function buildZohoAttachmentFields(
@@ -153,10 +131,15 @@ export async function buildZohoAttachmentFields(
   let reusedCount = 0
   let deletedFromStorage = 0
   let slotIndex = 0
+  const deletedAttachmentIds = deletedZohoAttachmentIdsFromDocument(existing)
 
   for (const attachment of attachments) {
     const metadataName = String(attachment.File_Name || '').trim()
     if (metadataName && !shouldImportZohoAttachment(metadataName)) continue
+    if (deletedAttachmentIds.has(String(attachment.id || '').trim())) {
+      slotIndex += 1
+      continue
+    }
 
     const slot = `zohoFile${slotIndex + 1}`
     const keys = zohoAttachmentSlotKeys(slot)

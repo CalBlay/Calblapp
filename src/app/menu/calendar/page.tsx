@@ -57,6 +57,7 @@ type CalendarViewState = {
   ln: CalendarLN[]
   stage: string
   commercial: string[]
+  location: string[]
   codeStatus: string
   start: string
   end: string
@@ -67,6 +68,7 @@ type CalendarFilterChange = {
   ln?: CalendarLN[]
   stage?: string
   commercial?: string[]
+  location?: string[]
   codeStatus?: string
 }
 
@@ -159,6 +161,7 @@ const makeInitialState = (): CalendarViewState => {
     ln: [],
     stage: 'all',
     commercial: [],
+    location: [],
     codeStatus: 'all',
     start: dates.start,
     end: dates.end,
@@ -186,7 +189,7 @@ const makeInitialState = (): CalendarViewState => {
 /* ------------------------------ */
 export default function CalendarPage() {
   const [state, setState] = useState<CalendarViewState>(makeInitialState)
-  const { ln, stage, commercial, codeStatus, start, end, mode, rangeMonths } = state
+  const { ln, stage, commercial, location, codeStatus, start, end, mode, rangeMonths } = state
   const { setOpen: openFiltersPanel, setContent } = useFilters()
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((v, i) => v === b[i])
@@ -196,12 +199,14 @@ export default function CalendarPage() {
       const nextLn = f.ln ?? prev.ln
       const nextStage = f.stage ?? prev.stage
       const nextCommercial = f.commercial ?? prev.commercial
+      const nextLocation = f.location ?? prev.location
       const nextCodeStatus = f.codeStatus ?? prev.codeStatus
 
       const changed =
         !arraysEqual(prev.ln, nextLn) ||
         prev.stage !== nextStage ||
         !arraysEqual(prev.commercial, nextCommercial) ||
+        !arraysEqual(prev.location, nextLocation) ||
         prev.codeStatus !== nextCodeStatus
 
       if (!changed) return prev
@@ -210,6 +215,7 @@ export default function CalendarPage() {
         ln: nextLn,
         stage: nextStage,
         commercial: nextCommercial,
+        location: nextLocation,
         codeStatus: nextCodeStatus,
       }
     })
@@ -241,6 +247,7 @@ export default function CalendarPage() {
     ln,
     stage,
     commercial,
+    location,
     start,
     end,
   })
@@ -250,6 +257,7 @@ export default function CalendarPage() {
     ln,
     stage,
     commercial: EMPTY_FILTER_LIST,
+    location: EMPTY_FILTER_LIST,
     start,
     end,
   })
@@ -264,6 +272,16 @@ export default function CalendarPage() {
     )
   ).sort()
 
+  /* Ubicacions disponibles */
+  const locationOptions = Array.from(
+    new Set(
+      dealsForFilters
+        .map((deal) => deal.Ubicacio)
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map((value) => value.trim())
+    )
+  ).sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+
   /* Netejar comercial si deixa de ser vàlid */
   useEffect(() => {
     if (!commercial.length) return
@@ -275,6 +293,15 @@ export default function CalendarPage() {
       }))
     }
   }, [commercial, ln, start, end, comercialOptions])
+
+  /* Netejar ubicacions si deixen de ser valides */
+  useEffect(() => {
+    if (!location.length) return
+    const valid = location.filter((value) => locationOptions.includes(value))
+    if (valid.length !== location.length) {
+      setState((prev) => ({ ...prev, location: valid }))
+    }
+  }, [location, locationOptions])
 
   /* Sessió */
   const { data: session } = useSession()
@@ -394,9 +421,11 @@ export default function CalendarPage() {
         ln={ln}
         stage={stage}
         commercial={commercial}
+        location={location}
         codeStatus={codeStatus}
         showCodeStatus={canManageCodes}
         comercialOptions={comercialOptions}
+        locationOptions={locationOptions}
         onChange={applyFilterChange}
         onReset={() =>
           setState((prev) => ({
@@ -404,6 +433,7 @@ export default function CalendarPage() {
             ln: [],
             stage: 'all',
             commercial: [],
+            location: [],
             codeStatus: 'all',
           }))
         }
@@ -708,6 +738,7 @@ export default function CalendarPage() {
             ln={ln}
             stage={stage}
             commercial={commercial}
+            location={location}
             codeStatus={codeStatus}
             showCodeStatus={canManageCodes}
             onRemoveLn={(value) =>
@@ -723,6 +754,12 @@ export default function CalendarPage() {
                 commercial: prev.commercial.filter((item) => item !== value),
               }))
             }
+            onRemoveLocation={(value) =>
+              setState((prev) => ({
+                ...prev,
+                location: prev.location.filter((item) => item !== value),
+              }))
+            }
             onClearCodeStatus={() =>
               setState((prev) => ({ ...prev, codeStatus: 'all' }))
             }
@@ -732,6 +769,7 @@ export default function CalendarPage() {
                 ln: [],
                 stage: 'all',
                 commercial: [],
+                location: [],
                 codeStatus: 'all',
               }))
             }
@@ -1024,5 +1062,3 @@ export default function CalendarPage() {
     </div>
   )
 }
-
-
