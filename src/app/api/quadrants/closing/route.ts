@@ -9,7 +9,16 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
-import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  canEditUiPath,
+  canViewUiPath,
+  isAllowedByClientOverride,
+} from '@/lib/server/permissions'
+import {
+  EVENT_CLOSING_ACTION,
+  canCloseEventDepartment,
+  canEnableEventClosingAction,
+} from '@/lib/eventClosingPermissions'
 import {
   applyClosingUpdatesToQuadrantData,
   normalizeClosingEventId,
@@ -47,12 +56,23 @@ export async function PUT(req: NextRequest) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const ok = await isAllowedByClientOverride({
+    const closingOverrideAllowed = await isAllowedByClientOverride({
       userId: auth.user.id,
       role: auth.user.role,
-      permission: PERM.action('/menu/events', 'event:close'),
+      permission: PERM.action('/menu/events', EVENT_CLOSING_ACTION),
     })
-    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const [canViewEvents, canEditEvents] = await Promise.all([
+      canViewUiPath({ user: auth.user, path: '/menu/events' }),
+      canEditUiPath({ user: auth.user, path: '/menu/events' }),
+    ])
+    const hasClosingPermission = canEnableEventClosingAction({
+      canViewEvents,
+      canEditEvents,
+      hasClosingOverride: closingOverrideAllowed === true,
+    })
+    if (!hasClosingPermission) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -73,11 +93,13 @@ export async function PUT(req: NextRequest) {
       jwtString(token, ['department', 'userDepartment', 'dept', 'departmentName'])
     )
     const role = norm(roleRaw)
-    const isAdmin = role === 'admin'
-    const isDireccio = role === 'direccio' || role === 'direccion'
-    const isCap = role.includes('cap')
 
-    if (!(isAdmin || isDireccio || isCap || deptToken === norm(department))) {
+    if (!canCloseEventDepartment({
+      role,
+      userDepartment: deptToken,
+      targetDepartment: department,
+      hasClosingPermission,
+    })) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

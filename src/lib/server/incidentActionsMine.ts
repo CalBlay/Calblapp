@@ -1,6 +1,7 @@
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
 import {
+  isIncidentActionAssignedToUser,
   type IncidentActionMineIncidentMeta,
   type IncidentActionMineRow,
 } from '@/lib/incidentActionsMine'
@@ -94,7 +95,9 @@ export async function fetchAssignedIncidentActionsForUser(params: {
       .where('assignedToName', '==', userName)
       .get()
     for (const doc of byNameSnap.docs) {
-      if (!merged.has(doc.id)) merged.set(doc.id, doc.data())
+      const data = doc.data()
+      if (!isIncidentActionAssignedToUser(data, { id: userId, name: userName })) continue
+      if (!merged.has(doc.id)) merged.set(doc.id, data)
     }
   }
 

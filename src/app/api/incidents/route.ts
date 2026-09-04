@@ -11,8 +11,12 @@ import {
   notifyForNewDecoTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
-import { canPostIncident } from '@/lib/incidentPolicy'
-import { canViewIncidentsModule } from '@/lib/server/incidentsApiAuth'
+import { canPostIncident, isIncidentCreatedByUser } from '@/lib/incidentPolicy'
+import {
+  canEditIncidentsModule,
+  canViewIncidentsCommandBoard,
+  canViewIncidentsModule,
+} from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
 import { incidentCategoryRequiresMedia } from '@/lib/incidentTypology'
@@ -30,6 +34,7 @@ interface IncidentDoc {
   importance?: string;
   description?: string;
   createdBy?: string;
+  createdById?: string;
   status?: string;
   createdAt?: FirebaseFirestore.Timestamp | string;
   eventTitle?: string;
@@ -707,7 +712,11 @@ export async function GET(req: Request) {
     }
 
     const accessUser = { ...user, id: String(user.id) };
-    const canViewModule = await canViewIncidentsModule(accessUser);
+    const [canViewModule, canEditModule, canViewCommandBoard] = await Promise.all([
+      canViewIncidentsModule(accessUser),
+      canEditIncidentsModule(accessUser),
+      canViewIncidentsCommandBoard(accessUser),
+    ]);
     const canViewEventScopedIncidents = Boolean(eventId) && canPostIncident(accessUser);
     if (!canViewModule && !canViewEventScopedIncidents) {
       return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
@@ -754,7 +763,7 @@ export async function GET(req: Request) {
     // 1️⃣ Llegir incidències crues
     const snap = await ref.get();
 
-    const raw = snap.docs.map((doc) => {
+    const unscopedRaw = snap.docs.map((doc) => {
       const d = doc.data();
       return {
         id: doc.id,
@@ -762,6 +771,15 @@ export async function GET(req: Request) {
         createdAt: normalizeTimestamp(d.createdAt),
       };
     }) as IncidentDoc[];
+
+    const restrictGeneralListToCreator =
+      canViewModule &&
+      !canEditModule &&
+      !canViewCommandBoard &&
+      !canViewEventScopedIncidents;
+    const raw = restrictGeneralListToCreator
+      ? unscopedRaw.filter((incident) => isIncidentCreatedByUser(user, incident))
+      : unscopedRaw;
 
     // 2️⃣ Recuperar esdeveniments stage_verd
     const eventIds = [...new Set(raw.map((i) => i.eventId).filter(Boolean))] as string[];

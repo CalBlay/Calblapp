@@ -17,7 +17,7 @@ import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { isProductionWorker } from '@/lib/accessControl'
+import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import EventNotificationsBell from './components/EventNotificationsBell'
 import {
@@ -53,6 +53,15 @@ const normalize = (s?: string | null) =>
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ')
+
+const departmentDefaultLn = (department?: string | null): LnKey | undefined => {
+  const normalized = normalizeDept(department)
+  if (normalized === 'empresa') return 'empresa'
+  if (normalized === 'casaments') return 'casaments'
+  if (normalized === 'foodlovers') return 'foodlovers'
+  if (normalized === 'agenda') return 'agenda'
+  return undefined
+}
 
 type SessionUser = {
   id?: string
@@ -99,7 +108,7 @@ export default function EventsPage() {
   const { data: session, status: sessionStatus } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { hasAction, ready: permsReady, canEditPath } = useUiPermissions()
+  const { hasAction, ready: permsReady, canViewPath, canEditPath } = useUiPermissions()
 
   const role = String(session?.user?.role || '').toLowerCase()
   const isAdmin = role === 'admin' || role === 'direccio'
@@ -113,6 +122,7 @@ export default function EventsPage() {
     })
 
   const userDept = String((session?.user as SessionUser)?.department || 'total').toLowerCase()
+  const defaultLn = departmentDefaultLn((session?.user as SessionUser)?.department)
   const isCasamentsCommercialDept = normalize(
     String((session?.user as SessionUser)?.department || '')
   ).includes('casament')
@@ -121,21 +131,31 @@ export default function EventsPage() {
     department: (session?.user as SessionUser)?.department,
   })
 
-  const scope: 'all' | 'mine' = role === 'treballador' && !productionWorker ? 'mine' : 'all'
+  const hasFullEventsAccess =
+    permsReady && canViewPath('/menu/events') && canEditPath('/menu/events')
+  const scope: 'all' | 'mine' =
+    role === 'treballador' && !productionWorker && !hasFullEventsAccess ? 'mine' : 'all'
   const includeQuadrants = role === 'treballador' && !productionWorker
 
   const initial: FiltersState = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })
     const e = endOfWeek(new Date(), { weekStartsOn: 1 })
-    return { start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd') }
-  }, [])
+    return { start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd'), ln: defaultLn }
+  }, [defaultLn])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
   const [filterResetSignal, setFilterResetSignal] = useState(0)
+  const [departmentFilterInitialized, setDepartmentFilterInitialized] = useState(false)
   const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
   const [preparerHistoryMode, setPreparerHistoryMode] = useState(
     () => searchParams?.get('history') === '1'
   )
+
+  useEffect(() => {
+    if (departmentFilterInitialized || sessionStatus === 'loading') return
+    setFilters((prev) => ({ ...prev, ln: defaultLn }))
+    setDepartmentFilterInitialized(true)
+  }, [defaultLn, departmentFilterInitialized, sessionStatus])
 
   useEffect(() => {
     setPreparerHistoryMode(searchParams?.get('history') === '1')
@@ -543,7 +563,7 @@ export default function EventsPage() {
       start: format(s, 'yyyy-MM-dd'),
       end: format(e, 'yyyy-MM-dd'),
       mode: 'week',
-      ln: undefined,
+      ln: defaultLn,
       responsable: undefined,
       commercial: undefined,
       location: undefined,
@@ -555,7 +575,7 @@ export default function EventsPage() {
     params.delete('history')
     const query = params.toString()
     router.replace(query ? `/menu/events?${query}` : '/menu/events', { scroll: false })
-  }, [router, searchParams])
+  }, [defaultLn, router, searchParams])
 
   const visibleEventCount = comandaPreparerOnly
     ? warehouseComandaLoading

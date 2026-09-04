@@ -140,7 +140,10 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         label: 'Adjuntar vídeo visita comercial',
       },
       { key: PERM.action('/menu/events', 'modifications:register'), label: 'Registrar modificacions' },
-      { key: PERM.action('/menu/events', 'event:close'), label: 'Tancar esdeveniment' },
+      {
+        key: PERM.action('/menu/events', 'event:close'),
+        label: 'Tancament operatiu i hores reals',
+      },
     ],
   },
   {

@@ -15,6 +15,8 @@ import { INCIDENT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTyp
 import { INCIDENTS_ACCIONS_PATH, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import {
   buildIncidentActionMineLabel,
+  isIncidentActionNotificationVisible,
+  isPendingIncidentActionStatus,
   type IncidentActionMineRow,
 } from '@/lib/incidentActionsMine'
 
@@ -173,7 +175,7 @@ export default function IncidentNotificationsBell() {
   const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
   const { data, mutate } = useSWR(userId ? 'incident-notifications' : null, fetchIncidentNotifications)
   const { data: mineData, mutate: mutateMine } = useSWR(
-    userId ? '/api/incidents/actions/mine?status=pending' : null,
+    userId ? '/api/incidents/actions/mine?status=all&scope=assigned' : null,
     fetcher
   )
 
@@ -206,14 +208,22 @@ export default function IncidentNotificationsBell() {
   }, [])
 
   const notifications = useMemo(() => {
-    const unreadNotifications = (Array.isArray(data) ? data : []).filter(
-      (notification: IncidentNotification) =>
-        !notification.read && INCIDENT_TYPES.has(String(notification.type || ''))
-    )
-
-    const pendingActions = Array.isArray(mineData?.actions)
+    const assignedActions = Array.isArray(mineData?.actions)
       ? (mineData.actions as IncidentActionMineRow[])
       : []
+    const assignedActionIds = new Set(
+      assignedActions.map((action) => String(action.id || '').trim()).filter(Boolean)
+    )
+    const unreadNotifications = (Array.isArray(data) ? data : []).filter(
+      (notification: IncidentNotification) => {
+        if (notification.read || !INCIDENT_TYPES.has(String(notification.type || ''))) return false
+        return isIncidentActionNotificationVisible(notification, assignedActionIds)
+      }
+    )
+
+    const pendingActions = assignedActions.filter((action) =>
+      isPendingIncidentActionStatus(action.status)
+    )
 
     const notifiedActionIds = new Set(
       unreadNotifications

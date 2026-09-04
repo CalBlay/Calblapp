@@ -8,12 +8,14 @@ import {
   isIsoDateDayParam,
   queryStageCollectionDocsInDateRange,
 } from '@/lib/firestoreStageRangeQuery'
+import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
 export const runtime = 'nodejs'
 
 interface TokenLike {
+  sub?: string
   role?: string
   userRole?: string
   user?: { role?: string; name?: string; department?: string }
@@ -232,7 +234,8 @@ const getEventsListCached = unstable_cache(
     role: Role,
     userNameNorm: string,
     qsDept: string,
-    sessDept: string
+    sessDept: string,
+    hasFullEventsAccess: boolean
   ): Promise<EventsListCachedPayload> => {
     let deptsToUse: string[] = []
     const isProductionOperationalWorker = role === 'treballador' && sessDept === 'produccio'
@@ -448,7 +451,7 @@ const getEventsListCached = unstable_cache(
     }
 
     let finalEvents = enriched
-    if (role === 'treballador' && !isProductionOperationalWorker) {
+    if (role === 'treballador' && !isProductionOperationalWorker && !hasFullEventsAccess) {
       finalEvents = enriched
         .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id as string))
         .map((ev) => {
@@ -520,7 +523,34 @@ export async function GET(req: NextRequest) {
         ''
     )
 
-    console.log('[events/list] ð¢ Token info:', { role, sessDept, qsDept, scope, userName })
+    const userId = String(token.sub || '').trim()
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const permissionUser = {
+      id: userId,
+      role,
+      department: sessDept,
+    }
+    const canViewEvents = await canViewUiPath({
+      user: permissionUser,
+      path: '/menu/events',
+    })
+    if (!canViewEvents) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const hasFullEventsAccess = await canEditUiPath({
+      user: permissionUser,
+      path: '/menu/events',
+    })
+
+    console.log('[events/list] ð¢ Token info:', {
+      role,
+      sessDept,
+      qsDept,
+      scope,
+      userName,
+      hasFullEventsAccess,
+    })
 
     if (role === 'cap' && !sessDept) {
       return NextResponse.json(
@@ -530,7 +560,15 @@ export async function GET(req: NextRequest) {
     }
 
     const userNameNorm = role === 'treballador' && sessDept !== 'produccio' ? normalize(userName) : ''
-    const cached = await getEventsListCached(start, end, role, userNameNorm, qsDept, sessDept)
+    const cached = await getEventsListCached(
+      start,
+      end,
+      role,
+      userNameNorm,
+      qsDept,
+      sessDept,
+      hasFullEventsAccess
+    )
     const { _log, ...payload } = cached
 
     console.info('[events/list] completed', {

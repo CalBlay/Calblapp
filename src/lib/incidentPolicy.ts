@@ -55,6 +55,28 @@ function normalizeIdentity(value?: string | null) {
     .trim()
 }
 
+export function isIncidentCreatedByUser(
+  user: {
+    id?: string | null
+    name?: string | null
+    email?: string | null
+  },
+  incident: { createdById?: string | null; createdBy?: string | null }
+): boolean {
+  const userId = String(user.id || '').trim()
+  const createdById = String(incident.createdById || '').trim()
+  if (userId && createdById) return userId === createdById
+
+  // Compatibilitat amb incidències antigues que encara no tenen `createdById`.
+  const ownerAliases = new Set(
+    [user.name, user.email]
+      .map((value) => normalizeIdentity(value || ''))
+      .filter(Boolean)
+  )
+  const createdBy = normalizeIdentity(incident.createdBy || '')
+  return Boolean(createdBy && ownerAliases.has(createdBy))
+}
+
 export function canDeleteIncident(
   user: { id?: string | null; role?: string | null; department?: string | null; name?: string | null; email?: string | null },
   incident: { createdById?: string | null; createdBy?: string | null }
@@ -74,17 +96,7 @@ export function canDeleteIncident(
   if (role === 'admin') return true
   if (role === 'cap' && dept === 'produccio') return true
 
-  const userId = String(user.id || '').trim()
-  if (userId && userId === String(incident.createdById || '').trim()) return true
-
-  // Compatibilitat amb incidències antigues sense createdById.
-  const ownerAliases = new Set(
-    [user.name, user.email]
-      .map((value) => normalizeIdentity(value || ''))
-      .filter(Boolean)
-  )
-  const createdBy = normalizeIdentity(incident.createdBy || '')
-  return Boolean(createdBy && ownerAliases.has(createdBy))
+  return isIncidentCreatedByUser(user, incident)
 }
 
 export const INCIDENT_STATUS_VALUES = ['obert', 'en_curs', 'resolt', 'tancat'] as const

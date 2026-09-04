@@ -6,9 +6,30 @@ const {
   canPostIncident,
   canManageIncidentCategories,
   canDeleteIncident,
+  isIncidentCreatedByUser,
   normalizeIncidentStatus,
   normalizeIncidentActionStatus,
 } = require('../src/lib/incidentPolicy')
+
+test('isIncidentCreatedByUser prefers id and supports legacy name/email aliases', () => {
+  const user = {
+    id: 'user-1',
+    name: 'Glòria Rodríguez',
+    email: 'foodlovers@calblay.com',
+  }
+
+  assert.equal(
+    isIncidentCreatedByUser(user, { createdById: 'user-1', createdBy: 'Un altre nom' }),
+    true
+  )
+  assert.equal(
+    isIncidentCreatedByUser(user, { createdById: 'other', createdBy: 'Glòria Rodríguez' }),
+    false
+  )
+  assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Gloria Rodriguez' }), true)
+  assert.equal(isIncidentCreatedByUser(user, { createdBy: 'foodlovers@calblay.com' }), true)
+  assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Una altra persona' }), false)
+})
 
 test('canAccessIncidentsModule allows production workers and allowed dept roles', () => {
   assert.equal(

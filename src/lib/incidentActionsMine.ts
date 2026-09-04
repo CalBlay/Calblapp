@@ -26,6 +26,28 @@ export type IncidentActionMineRow = {
   incident: IncidentActionMineIncidentMeta
 }
 
+export function isIncidentActionAssignedToUser(
+  action: { assignedToId?: string | null; assignedToName?: string | null },
+  user: { id?: string | null; name?: string | null }
+): boolean {
+  const assignedToId = String(action.assignedToId || '').trim()
+  const userId = String(user.id || '').trim()
+  if (assignedToId) return Boolean(userId && assignedToId === userId)
+
+  const assignedToName = String(action.assignedToName || '').trim()
+  const userName = String(user.name || '').trim()
+  return Boolean(assignedToName && userName && assignedToName === userName)
+}
+
+export function isIncidentActionNotificationVisible(
+  notification: { type?: string | null; actionId?: string | null },
+  assignedActionIds: ReadonlySet<string>
+): boolean {
+  if (notification.type !== 'incident_action_assigned') return true
+  const actionId = String(notification.actionId || '').trim()
+  return Boolean(actionId && assignedActionIds.has(actionId))
+}
+
 export function isPendingIncidentActionStatus(status: IncidentActionStatus) {
   return status === 'open' || status === 'in_progress'
 }

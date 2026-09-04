@@ -40,7 +40,8 @@ import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import EventClosingModal from './EventClosingModal'
-import { normalizeAuditDepartment } from '@/lib/auditDepartment'
+import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
@@ -292,11 +293,6 @@ const treballadorsPersons =
   const isCuina = deptN === 'cuina'
   const canWriteAvisos = isAdmin || isDireccio || isProduccio
   const isWorkerResponsible = roleN === 'treballador' && !!event?.isResponsible
-  const canCloseEvent =
-    isAdmin || isDireccio || isCapDept || isWorkerResponsible
-
-
-
   const baseCanAttachVisitVideo = baseCanAttachEventVisitVideo(user)
 
   const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
@@ -313,7 +309,7 @@ const treballadorsPersons =
     const eventId = String(event?.id ?? '').trim()
     if (!eventId || !canCreateIncident) return
 
-    const dept = normalizeAuditDepartment(user.department)
+    const dept = resolveAuditDepartmentForUser(user.department)
     if (!dept) return
 
     const warmAudit = () => {
@@ -382,7 +378,11 @@ const treballadorsPersons =
   const canAttachVisitVideo = baseCanAttachVisitVideo && canUiAttachVisitVideo
   const canOpenVisitVideo = canAttachVisitVideo || canDocs
   const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
-  const canCloseEventPerm = canCloseEvent && canUiCloseEvent
+  const canCloseEventPerm = canOpenEventClosing({
+    role: user?.role,
+    hasClosingPermission: canUiCloseEvent,
+  })
+  const canOpenOperationalClosing = canCreateIncident || canCloseEventPerm
 
   const openDocuments = useCallback(() => {
     if (event?.id) {
@@ -422,7 +422,7 @@ const treballadorsPersons =
 const operativa = useMemo(
   () =>
     [
-      canCreateIncident
+      canOpenOperationalClosing
         ? {
             key: 'audit-execution',
             label: 'Tancament operatiu',
@@ -495,7 +495,7 @@ const operativa = useMemo(
 
     ].filter(Boolean) as MenuActionItem[],
   [
-    canCreateIncident,
+    canOpenOperationalClosing,
     canSeeIncidents,
     canCreateModificationPerm,
     canSeeModifications,
@@ -843,5 +843,3 @@ const recursos = useMemo(
     </>
   )
 }
-
-

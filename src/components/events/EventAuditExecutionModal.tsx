@@ -25,7 +25,7 @@ import {
   afterMobileFilePicker,
   prepareAuditImageUpload,
 } from '@/lib/media/prepareAuditImageUpload'
-import { normalizeAuditDepartment } from '@/lib/auditDepartment'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 import { cn } from '@/lib/utils'
 import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
 import EventExtrasModal from './EventExtrasModal'
@@ -134,7 +134,9 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
 
   const userRole = String(user.role || '').trim().toLowerCase()
   const department =
-    userRole === 'comercial' ? 'comercial' : normalizeAuditDepartment(user.department || '') || ''
+    userRole === 'comercial'
+      ? 'comercial'
+      : resolveAuditDepartmentForUser(user.department || '') || ''
   const eventId = String(event.id || '')
   const eventDay = String(event.start || '').slice(0, 10)
 

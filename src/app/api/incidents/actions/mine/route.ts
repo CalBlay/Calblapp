@@ -32,6 +32,7 @@ export async function GET(req: Request) {
     const statusRaw = String(searchParams.get('status') || 'pending').trim().toLowerCase()
     const q = String(searchParams.get('q') || '').trim()
     const overdueOnly = searchParams.get('overdue') === '1'
+    const assignedOnly = searchParams.get('scope') === 'assigned'
 
     const status =
       statusRaw === 'all' ||
@@ -44,8 +45,9 @@ export async function GET(req: Request) {
         : 'pending'
 
     const canSeeAllActions =
-      (await canEditIncidentsModule(auth.user)) ||
-      (await canViewIncidentsCommandBoard(auth.user))
+      !assignedOnly &&
+      ((await canEditIncidentsModule(auth.user)) ||
+        (await canViewIncidentsCommandBoard(auth.user)))
 
     const allRows = canSeeAllActions
       ? await fetchAllIncidentActions()

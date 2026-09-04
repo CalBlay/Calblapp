@@ -81,6 +81,10 @@ import {
   DECO_TICKETS_UI_PATH,
   DECO_TICKETS_VALIDATE_PERM,
 } from '@/lib/decoTicketsPermissions'
+import {
+  EVENT_CLOSING_ACTION,
+  canEnableEventClosingAction,
+} from '@/lib/eventClosingPermissions'
 
 type UiPermissionMap = Record<string, boolean>
 type UiEditMap = Record<string, boolean>
@@ -280,6 +284,13 @@ export async function GET() {
   }
 
   // Edició al calendari implica crear/editar manuals i adjuntar (llevat de deny explícit)
+  const eventClosingPermission = PERM.action(EVENTS_UI_PATH, EVENT_CLOSING_ACTION)
+  actions[eventClosingPermission] = canEnableEventClosingAction({
+    canViewEvents: map[EVENTS_UI_PATH] === true,
+    canEditEvents: edit[EVENTS_UI_PATH] === true,
+    hasClosingOverride: effectFor(assignment, eventClosingPermission) === 'allow',
+  })
+
   if (edit['/menu/calendar'] === true) {
     for (const action of CALENDAR_EDIT_IMPLIED_ACTIONS) {
       const key = PERM.action('/menu/calendar', action)

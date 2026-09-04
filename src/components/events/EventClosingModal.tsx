@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useEventPersonnel, type Person } from '@/hooks/useEventPersonnel'
+import { normalizeDept } from '@/lib/accessControl'
+import { canCloseEventDepartment } from '@/lib/eventClosingPermissions'
 
 type Props = {
   open: boolean
@@ -25,6 +27,8 @@ type Row = Person & {
 const norm = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
+const normDepartment = (s?: string | null) => normalizeDept(s)
+
 export default function EventClosingModal({ open, onClose, eventId, eventName, user }: Props) {
   const { data, loading, error } = useEventPersonnel(eventId)
   const [selectedDept, setSelectedDept] = useState<string>('')
@@ -34,15 +38,15 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
 
   const departments = useMemo(() => {
     const set = new Set<string>()
-    data?.responsables?.forEach(p => p.department && set.add(norm(p.department)))
-    data?.conductors?.forEach(p => p.department && set.add(norm(p.department)))
-    data?.treballadors?.forEach(p => p.department && set.add(norm(p.department)))
+    data?.responsables?.forEach(p => p.department && set.add(normDepartment(p.department)))
+    data?.conductors?.forEach(p => p.department && set.add(normDepartment(p.department)))
+    data?.treballadors?.forEach(p => p.department && set.add(normDepartment(p.department)))
     return Array.from(set)
   }, [data])
 
   useEffect(() => {
     if (!departments.length) return
-    const userDept = norm(user?.department)
+    const userDept = normDepartment(user?.department)
     if (userDept && departments.includes(userDept)) {
       setSelectedDept(userDept)
     } else if (!selectedDept) {
@@ -56,7 +60,7 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
     const pushRows = (arr?: Person[], role?: string) => {
       if (!Array.isArray(arr)) return
       arr.forEach(p => {
-        if (norm(p.department) !== selectedDept) return
+      if (normDepartment(p.department) !== selectedDept) return
         list.push({ ...p, role: p.role || role })
       })
     }
@@ -70,7 +74,12 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
   const isAdmin = roleN === 'admin'
   const isDireccio = roleN === 'direccio' || roleN === 'direccion'
   const isCap = roleN.includes('cap')
-  const canEdit = isAdmin || isDireccio || isCap || norm(user?.department) === selectedDept
+  const canEdit = canCloseEventDepartment({
+    role: user?.role,
+    userDepartment: user?.department,
+    targetDepartment: selectedDept,
+    hasClosingPermission: true,
+  })
   const canSwitchDepartment = isAdmin || isDireccio || isCap
 
   const handleApplyHourToAll = () => {
