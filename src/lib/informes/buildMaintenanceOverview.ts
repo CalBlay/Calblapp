@@ -49,7 +49,10 @@ type BuildParams = {
 type TicketRecord = Record<string, unknown> & {
   ticketCode?: string
   incidentNumber?: string
+  center?: string | null
   location?: string
+  workLocation?: string | null
+  zone?: string | null
   machine?: string
   status?: string
   priority?: string
@@ -72,6 +75,7 @@ type InternalWorkItem = {
   createdAt: string
   lastActivityAt?: string
   location: string
+  siteValues: string[]
   machine: string
   status: string
   priority: string
@@ -416,6 +420,11 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       createdAt: createdAtMs ? new Date(createdAtMs).toISOString() : '',
       lastActivityAt: eventAtMs ? new Date(eventAtMs).toISOString() : '',
       location: String(data.location || '').trim(),
+      // Els tickets nous separen centre, ubicació interna i zona. Prioritzem
+      // el valor més específic per resoldre correctament tota la jerarquia.
+      siteValues: [data.zone, data.workLocation, data.center, data.location]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
       machine: String(data.machine || '').trim(),
       status: normalizeText(data.status) || 'nou',
       priority: normalizeText(data.priority) || 'normal',
@@ -439,6 +448,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       eventAtMs: preventiu.eventAtMs,
       createdAt: preventiu.createdAt,
       location: preventiu.location,
+      siteValues: [preventiu.location].filter(Boolean),
       machine: '',
       status: preventiu.status,
       priority: preventiu.priority,
@@ -498,7 +508,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
           location: params.location || '',
           zone: params.zone || '',
         },
-        item.location
+        ...item.siteValues
       )
     ) {
       return false

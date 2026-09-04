@@ -409,7 +409,30 @@ export function MaintenanceInformesPanel() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="custom-location">Ubicació</Label>
+              <Label htmlFor="custom-center">Centre (ubicació)</Label>
+              <Select
+                value={customCenter || '__all__'}
+                onValueChange={(value) => {
+                  setCustomCenter(selectAll(value))
+                  setCustomLocation('')
+                  setCustomZone('')
+                }}
+              >
+                <SelectTrigger id="custom-center">
+                  <SelectValue placeholder="Tots" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Tots</SelectItem>
+                  {(customOptions?.centers || []).map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="custom-location">Ubicació interna</Label>
               <Select
                 value={customLocation || '__all__'}
                 onValueChange={(v) => setCustomLocation(selectAll(v))}

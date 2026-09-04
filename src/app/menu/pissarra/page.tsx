@@ -8,6 +8,7 @@ import { startOfWeek, endOfWeek } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { formatDateOnly } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import usePissarra from '@/hooks/usePissarra'
@@ -203,7 +204,7 @@ export default function PissarraPage() {
       filteredFlat.map((ev): PissarraExportRow => {
         if (mode === 'cuina') {
           return {
-            Data: ev.startDate || '',
+            Data: formatDateOnly(ev.startDate, ''),
             Hora: ev.startTime || '',
             Esdeveniment: ev.eventName || '',
             Ubicacio: ev.location || '',
@@ -222,7 +223,7 @@ export default function PissarraPage() {
           }
         }
         return {
-          Data: ev.startDate || '',
+          Data: formatDateOnly(ev.startDate, ''),
           Hora: ev.startTime || '',
           Arribada: ev.arrivalTime || '',
           Esdeveniment: ev.eventName || '',
@@ -310,7 +311,7 @@ export default function PissarraPage() {
         const base =
           mode === 'cuina'
             ? {
-                Data: ev.startDate || '',
+                Data: formatDateOnly(ev.startDate, ''),
                 Hora: ev.startTime || '',
                 Esdeveniment: ev.eventName || '',
                 Ubicacio: ev.location || '',
@@ -328,7 +329,7 @@ export default function PissarraPage() {
                 'G2 Hora inici': ev.group2StartTime || '',
               }
             : {
-                Data: ev.startDate || '',
+                Data: formatDateOnly(ev.startDate, ''),
                 Hora: ev.startTime || '',
                 Arribada: ev.arrivalTime || '',
                 Esdeveniment: ev.eventName || '',
@@ -354,19 +355,22 @@ export default function PissarraPage() {
     <meta charset="utf-8" />
     <title>${escapeHtml(exportBase)}</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+      @page { size: A4 landscape; margin: 10mm; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #111; }
       h1 { font-size: 16px; margin-bottom: 8px; }
       .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
-      table { width: 100%; border-collapse: collapse; font-size: 11px; }
-      th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 1px solid #ddd; padding: 4px 5px; vertical-align: top; overflow-wrap: anywhere; }
       th { background: #f3f4f6; text-align: left; }
       tr:nth-child(even) td { background: #fafafa; }
     </style>
   </head>
   <body>
     <h1>Pissarra (${escapeHtml(mode)})</h1>
-    <div class="meta">Setmana: ${escapeHtml(week.startISO)} - ${escapeHtml(
-      week.endISO
+    <div class="meta">Setmana: ${escapeHtml(formatDateOnly(week.startISO, week.startISO))} - ${escapeHtml(
+      formatDateOnly(week.endISO, week.endISO)
     )}</div>
     <table>
       <thead><tr>${header}</tr></thead>
@@ -480,10 +484,14 @@ export default function PissarraPage() {
       <main className="flex flex-col h-full w-full overflow-y-auto bg-gray-50">
         <style>{`
           @media print {
+            @page { size: A4 portrait; margin: 10mm; }
             body * { visibility: hidden; }
             #pissarra-print-root, #pissarra-print-root * { visibility: visible; }
-            #pissarra-print-root { position: absolute; left: 0; top: 0; width: 100%; }
+            #pissarra-print-root { position: absolute; left: 0; top: 0; width: 100%; background: white; }
             #pissarra-print-root [data-print='content'] { max-height: none !important; overflow: visible !important; }
+            #pissarra-print-root .pissarra-print-day { break-inside: auto; page-break-inside: auto; }
+            #pissarra-print-root .pissarra-print-day-header { break-after: avoid; page-break-after: avoid; }
+            #pissarra-print-root .pissarra-print-event { break-inside: avoid; page-break-inside: avoid; }
           }
         `}</style>
 
