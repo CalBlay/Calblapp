@@ -1,6 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import {
+  isCalendarAllFilter,
+  normalizeCalendarFilterValue,
+  toCalendarArrayFilter,
+  dealMatchesCalendarLocationFilter,
+} from '@/lib/calendar/calendarDealFilters'
 
 export interface Deal {
   id: string
@@ -41,33 +47,10 @@ export function useCalendarData(filters?: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const normalize = (v = '') =>
-    v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-
-  const isAll = (v?: string) => {
-    const n = normalize(v || '')
-    if (!n) return true
-    if (n === 'all') return true
-    if (n.startsWith('tots') || n.startsWith('totes')) return true
-    return false
-  }
-
-  const toArrayFilter = (value?: string | string[]) => {
-    if (Array.isArray(value)) {
-      return value.filter(
-        (v) => typeof v === 'string' && v.trim() && !isAll(v)
-      )
-    }
-    const single = String(value || '').trim()
-    if (!single) return []
-    if (isAll(single)) return []
-    return [single]
-  }
-
   const normalizeCollection = (
     c?: string
   ): 'stage_verd' | 'stage_taronja' | 'stage_groc' | '' => {
-    const n = normalize(c || '')
+    const n = normalizeCalendarFilterValue(c || '')
     if (!n) return ''
     if (n.startsWith('stage_')) {
       if (n === 'stage_verd' || n === 'stage_taronja' || n === 'stage_groc') return n
@@ -203,15 +186,15 @@ export function useCalendarData(filters?: {
       })
 
       /* ---------- LN ---------- */
-      const lnValues = toArrayFilter(filters?.ln)
+      const lnValues = toCalendarArrayFilter(filters?.ln)
       if (lnValues.length) {
-        const lnSet = new Set(lnValues.map(normalize))
-        data = data.filter((d) => lnSet.has(normalize(d.LN || '')))
+        const lnSet = new Set(lnValues.map(normalizeCalendarFilterValue))
+        data = data.filter((d) => lnSet.has(normalizeCalendarFilterValue(d.LN || '')))
       }
 
       /* ---------- STAGE ---------- */
-      if (!isAll(filters?.stage)) {
-        const st = normalize(filters!.stage!)
+      if (!isCalendarAllFilter(filters?.stage)) {
+        const st = normalizeCalendarFilterValue(filters!.stage!)
         data = data.filter((d) => {
           const col = d.collection || ''
           if (st === 'confirmat') return col === 'stage_verd'
@@ -222,18 +205,14 @@ export function useCalendarData(filters?: {
       }
 
       /* ---------- COMERCIAL ---------- */
-      const commercialValues = toArrayFilter(filters?.commercial)
+      const commercialValues = toCalendarArrayFilter(filters?.commercial)
       if (commercialValues.length) {
-        const cSet = new Set(commercialValues.map(normalize))
-        data = data.filter((d) => cSet.has(normalize(d.Comercial || '')))
+        const cSet = new Set(commercialValues.map(normalizeCalendarFilterValue))
+        data = data.filter((d) => cSet.has(normalizeCalendarFilterValue(d.Comercial || '')))
       }
 
       /* ---------- UBICACIO ---------- */
-      const locationValues = toArrayFilter(filters?.location)
-      if (locationValues.length) {
-        const locationSet = new Set(locationValues.map(normalize))
-        data = data.filter((d) => locationSet.has(normalize(d.Ubicacio || '')))
-      }
+      data = data.filter((d) => dealMatchesCalendarLocationFilter(d.Ubicacio, filters?.location))
 
       data.sort(
         (a, b) =>
