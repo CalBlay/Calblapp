@@ -10,6 +10,12 @@ export function hasInternalApiSecret(): boolean {
   return Boolean(getInternalApiSecret())
 }
 
+/** Vercel Cron envia CRON_SECRET com a Bearer; manté el secret intern com a fallback. */
+export function getCronSecret(): string | undefined {
+  const value = process.env.CRON_SECRET || process.env.INTERNAL_API_SECRET
+  return value?.trim() || undefined
+}
+
 export function readInternalSecretFromRequest(req: Request): string {
   const authorization = req.headers.get('authorization') || ''
   const bearer = authorization.startsWith('Bearer ')
@@ -31,7 +37,7 @@ export function isInternalApiAuthorized(req: Request): boolean {
 
 /** 401/503 si la petició cron no porta el secret configurat. */
 export function requireCronAuth(req: Request): NextResponse | null {
-  const secret = getInternalApiSecret()
+  const secret = getCronSecret()
   if (!secret) {
     return NextResponse.json({ error: 'Cron secret not configured' }, { status: 503 })
   }

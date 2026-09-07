@@ -16,12 +16,16 @@ export async function GET(req: Request) {
       url.searchParams.get('includeAttachments') === '1' ||
       url.searchParams.get('includeAttachments') === 'true'
     const forceFullSync = url.searchParams.get('full') === '1'
+    const syncOptions = {
+      includeAttachments,
+      forceFullSync,
+    }
 
     if (mode === 'cron') {
       const cronDenied = requireCronAuth(req)
       if (cronDenied) return cronDenied
 
-      const result = await syncZohoDealsToFirestore({ includeAttachments })
+      const result = await syncZohoDealsToFirestore(syncOptions)
       return NextResponse.json({
         ok: true,
         mode: 'cron',
@@ -40,10 +44,7 @@ export async function GET(req: Request) {
     })
     if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const result = await syncZohoDealsToFirestore({
-      includeAttachments,
-      forceFullSync,
-    })
+    const result = await syncZohoDealsToFirestore(syncOptions)
 
     return NextResponse.json({
       ok: true,

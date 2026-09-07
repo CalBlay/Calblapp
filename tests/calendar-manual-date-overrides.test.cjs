@@ -3,6 +3,7 @@ const { test } = require('node:test')
 
 const {
   hasManualDateOverride,
+  isManualOverrideChange,
   preserveManualCalendarOverrides,
 } = require('../src/lib/calendar/manualOverrides')
 
@@ -49,5 +50,25 @@ test('a manual override of either boundary protects the event from date cleanup'
   assert.equal(
     hasManualDateOverride({ manualOverrides: { NomEvent: true } }),
     false
+  )
+})
+
+test('normalizing a missing DataFi to the unchanged DataInici is not a manual change', () => {
+  assert.equal(
+    isManualOverrideChange('DataFi', '2026-09-14', {
+      DataInici: '2026-09-14',
+      DataFi: null,
+    }),
+    false
+  )
+})
+
+test('moving a one-day event marks its normalized DataFi as changed', () => {
+  assert.equal(
+    isManualOverrideChange('DataFi', '2026-09-16', {
+      DataInici: '2026-09-14',
+      DataFi: null,
+    }),
+    true
   )
 })

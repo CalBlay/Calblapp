@@ -10,7 +10,10 @@ import {
   isAllowedCalendarManualCollection,
   pickCalendarManualPutFields,
 } from '@/lib/calendar/calendarManualCollection'
-import { CALENDAR_MANUAL_OVERRIDE_FIELDS } from '@/lib/calendar/manualOverrides'
+import {
+  CALENDAR_MANUAL_OVERRIDE_FIELDS,
+  isManualOverrideChange,
+} from '@/lib/calendar/manualOverrides'
 
 function accessUserFromSession(user: {
   id: string
@@ -32,11 +35,6 @@ function accessUserFromSession(user: {
 
 
 export const runtime = 'nodejs'
-
-const comparable = (value: unknown) => {
-  if (value === null || value === undefined) return ''
-  return String(value).trim()
-}
 
 /**
  * 🟢 POST — Desa o actualitza un fitxer adjunt (file1, file2, ...)
@@ -151,7 +149,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     for (const [field, value] of Object.entries(safeData)) {
       if (!CALENDAR_MANUAL_OVERRIDE_FIELDS.has(field)) continue
-      if (comparable(previous[field]) !== comparable(value)) {
+      if (isManualOverrideChange(field, value, previous)) {
         manualOverrides[field] = true
       }
     }

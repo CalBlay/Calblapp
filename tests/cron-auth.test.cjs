@@ -58,12 +58,12 @@ test('requireCronAuth accepts x-internal-secret, x-cron-secret, and Bearer', () 
   })
 })
 
-test('requireCronAuth prefers INTERNAL_API_SECRET over CRON_SECRET', async () => {
+test('requireCronAuth prefers CRON_SECRET over INTERNAL_API_SECRET', async () => {
   await withEnv(
     { INTERNAL_API_SECRET: 'internal-only', CRON_SECRET: 'cron-only' },
     async () => {
-      assert.equal(requireCronAuth(req({ 'x-internal-secret': 'internal-only' })), null)
-      const denied = requireCronAuth(req({ 'x-cron-secret': 'cron-only' }))
+      assert.equal(requireCronAuth(req({ 'x-cron-secret': 'cron-only' })), null)
+      const denied = requireCronAuth(req({ 'x-internal-secret': 'internal-only' }))
       assert.ok(denied)
       assert.equal(denied.status, 401)
     }
