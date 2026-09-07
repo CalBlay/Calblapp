@@ -5,6 +5,7 @@ const {
   canManageDecoTickets,
   isDecoDepartment,
   isDecoDepartmentHead,
+  resolveDecoTicketActionGrant,
 } = require('../src/lib/decoTicketsPermissions')
 const { getVisibleModules } = require('../src/lib/accessControl')
 
@@ -44,5 +45,56 @@ test('Deco caps see tickets, planner and preparation; workers only see preparati
   assert.deepEqual(
     workerModule?.submodules?.map((submodule) => submodule.path),
     ['/menu/deco/preparacio']
+  )
+})
+
+test('Deco ticket actions require view; deny/allow overrides beat the edit default', () => {
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: false,
+      canEditTickets: true,
+      overrideEffect: 'allow',
+    }),
+    false
+  )
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: true,
+      canEditTickets: true,
+      overrideEffect: 'deny',
+    }),
+    false
+  )
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: true,
+      canEditTickets: false,
+      overrideEffect: 'allow',
+    }),
+    true
+  )
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: true,
+      canEditTickets: false,
+      overrideEffect: 'Allow',
+    }),
+    false
+  )
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: true,
+      canEditTickets: true,
+      overrideEffect: null,
+    }),
+    true
+  )
+  assert.equal(
+    resolveDecoTicketActionGrant({
+      canViewTickets: true,
+      canEditTickets: false,
+      overrideEffect: null,
+    }),
+    false
   )
 })

@@ -9,6 +9,7 @@ import {
   queryStageCollectionDocsInDateRange,
 } from '@/lib/firestoreStageRangeQuery'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
+import { shouldRestrictEventsListToOwnAssignments } from '@/lib/eventListAccess'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
@@ -451,7 +452,13 @@ const getEventsListCached = unstable_cache(
     }
 
     let finalEvents = enriched
-    if (role === 'treballador' && !isProductionOperationalWorker && !hasFullEventsAccess) {
+    if (
+      shouldRestrictEventsListToOwnAssignments({
+        role,
+        isProductionOperationalWorker,
+        hasFullEventsAccess,
+      })
+    ) {
       finalEvents = enriched
         .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id as string))
         .map((ev) => {

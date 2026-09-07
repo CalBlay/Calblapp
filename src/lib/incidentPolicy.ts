@@ -55,6 +55,21 @@ function normalizeIdentity(value?: string | null) {
     .trim()
 }
 
+/** View-only board users see their own incidents; editors, command-board, and event posters see the full list. */
+export function shouldRestrictIncidentListToCreator(params: {
+  canViewModule: boolean
+  canEditModule: boolean
+  canViewCommandBoard: boolean
+  canViewEventScopedIncidents: boolean
+}): boolean {
+  return (
+    params.canViewModule &&
+    !params.canEditModule &&
+    !params.canViewCommandBoard &&
+    !params.canViewEventScopedIncidents
+  )
+}
+
 export function isIncidentCreatedByUser(
   user: {
     id?: string | null

@@ -27,6 +27,21 @@ export function isDecoDepartment(raw?: string | null): boolean {
   return department === 'deco' || department === 'decoracio' || department === 'decoracions'
 }
 
+/**
+ * Deco ticket actions (inbox/manage/validate/…): view is required, an explicit
+ * deny/allow override wins, otherwise the user must be able to edit the Deco tickets path.
+ */
+export function resolveDecoTicketActionGrant(params: {
+  canViewTickets: boolean
+  canEditTickets: boolean
+  overrideEffect: unknown
+}): boolean {
+  if (!params.canViewTickets) return false
+  if (params.overrideEffect === 'deny') return false
+  if (params.overrideEffect === 'allow') return true
+  return Boolean(params.canEditTickets)
+}
+
 export function canManageDecoTickets(user?: AccessUser | null): boolean {
   if (!user) return false
   const role = normalizeRole(user.role)
