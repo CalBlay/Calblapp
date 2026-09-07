@@ -27,6 +27,7 @@ import {
   Shirt,
   Factory,
   Settings,
+  Calculator,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import OpsiaIcon from '@/components/icons/OpsIcon'
@@ -182,6 +183,11 @@ const UI_MAP: Record<
     icon: Truck,
     color: 'from-orange-100 to-yellow-100',
     iconColor: 'text-orange-600',
+  },
+  '/menu/cost-serveis': {
+    icon: Calculator,
+    color: 'from-cyan-100 to-sky-50',
+    iconColor: 'text-cyan-700',
   },
   '/menu/spaces': {
     icon: CalendarDays,

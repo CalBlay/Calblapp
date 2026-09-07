@@ -331,6 +331,27 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       },
     ],
   },
+  {
+    id: 'costServeisActions',
+    title: 'Cost de serveis · Accions',
+    subtitle:
+      'Edició de fitxes, configuració (€/h, sortida, combustible, ponderació) i sincronització de costos d’estructura (OpsiaFinance).',
+    visibleWhen: { path: '/menu/cost-serveis' },
+    actions: [
+      {
+        key: PERM.action('/menu/cost-serveis/configuracio', 'save'),
+        label: 'Desar configuració / ponderació',
+      },
+      {
+        key: PERM.action('/menu/cost-serveis/edicio', 'save'),
+        label: 'Desar fitxa de cost',
+      },
+      {
+        key: PERM.action('/menu/cost-serveis/costos-estructura', 'save'),
+        label: 'Sincronitzar costos estructura (Opsia)',
+      },
+    ],
+  },
 ]
 
 export const shouldShowActionGroup = (

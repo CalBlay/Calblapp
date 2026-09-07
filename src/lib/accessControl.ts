@@ -397,6 +397,38 @@ export const MODULES: ModuleDef[] = [
   },
 
   {
+    label: 'Cost de serveis',
+    path: '/menu/cost-serveis',
+    roles: ['admin', 'direccio', 'cap', 'comercial'],
+    departments: ['logistica', 'serveis', 'cuina', 'empresa', 'direccio'],
+    submodules: [
+      {
+        label: 'Configuració',
+        path: '/menu/cost-serveis/configuracio',
+        roles: ['admin', 'direccio'],
+      },
+      {
+        label: 'Costos estructura',
+        path: '/menu/cost-serveis/costos-estructura',
+        roles: ['admin', 'direccio', 'cap'],
+        departments: ['logistica', 'serveis', 'cuina', 'empresa', 'direccio'],
+      },
+      {
+        label: 'Edició',
+        path: '/menu/cost-serveis/edicio',
+        roles: ['admin', 'direccio', 'cap'],
+        departments: ['logistica', 'serveis', 'cuina', 'empresa', 'direccio'],
+      },
+      {
+        label: 'Resultats',
+        path: '/menu/cost-serveis/resultats',
+        roles: ['admin', 'direccio', 'cap', 'comercial'],
+        departments: ['logistica', 'serveis', 'cuina', 'empresa', 'direccio'],
+      },
+    ],
+  },
+
+  {
     label: 'Calendar',
     path: '/menu/calendar',
     roles: ['admin','direccio','cap','treballador','comercial','usuari','observer'],

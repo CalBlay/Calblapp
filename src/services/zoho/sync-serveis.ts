@@ -35,6 +35,7 @@ export async function syncServeisFromDeals({
       nom: nomRaw,
       codi: norm,
       searchable: `${nomRaw} ${norm}`.toLowerCase(),
+      costWeights: { gestio: 1, preparacio: 1, rentat: 1 },
       updatedAt: new Date().toISOString(),
       origen: 'zoho',
     })

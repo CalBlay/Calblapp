@@ -50,6 +50,8 @@ export default function ModuleHeader({
     reports: 'from-cyan-100 to-indigo-50',
     projects: 'from-violet-100 to-fuchsia-50',
     settings: 'from-slate-100 to-gray-50',
+    'cost-serveis': 'from-cyan-100 to-sky-50',
+    logistica: 'from-orange-100 to-yellow-100',
   }
 
   const moduleLabels: Record<string, string> = {
@@ -64,6 +66,8 @@ export default function ModuleHeader({
     manteniment: 'Manteniment',
     deco: 'Deco',
     incidents: 'Incidències',
+    'cost-serveis': 'Cost de serveis',
+    logistica: 'Logística',
     documentacio: 'Documentació',
     'roba-personal': 'Roba personal',
     reports: 'Informes',

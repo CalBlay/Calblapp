@@ -16,10 +16,16 @@ export async function PATCH(
   }
 
   const { id } = await params
-  const body = (await req.json()) as { nom?: string }
+  const body = (await req.json()) as {
+    nom?: string
+    costWeights?: { gestio?: number; preparacio?: number; rentat?: number }
+  }
 
   try {
-    const servei = await updateServei(id, { nom: body.nom })
+    const servei = await updateServei(id, {
+      nom: body.nom,
+      costWeights: body.costWeights,
+    })
     return NextResponse.json({ servei })
   } catch (error) {
     return NextResponse.json(
