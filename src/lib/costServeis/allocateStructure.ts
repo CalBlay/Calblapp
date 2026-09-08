@@ -8,9 +8,13 @@ import { DEFAULT_SERVEI_COST_WEIGHTS } from '@/lib/serveis/utils'
 import type { ServeiWeightRow, PonderacioDept } from '@/lib/costServeis/serveiWeights'
 import { PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import type { OpsiaDeptImport } from '@/lib/costServeis/opsiaFinance'
-import type { ServiceCostSheet } from '@/lib/costServeis/types'
 import { recomputeSheet } from '@/lib/costServeis/calc'
-import type { HourlyRateByDept, FuelConfig } from '@/lib/costServeis/types'
+import type {
+  FuelConfig,
+  HourlyRateByDept,
+  ServiceCostListItem,
+  ServiceCostSheet,
+} from '@/lib/costServeis/types'
 
 export type StructurePots = {
   gestio: number
@@ -116,6 +120,61 @@ export function allocateStructurePotsToEvents(opts: {
     })
   }
   return out
+}
+
+/**
+ * Gestió/prep/rentat ja desats a la fitxa.
+ * Mateix criteri que GET /api/cost-serveis/events/[eventId]: si algun pot és > 0,
+ * no trepitjar amb el repartiment live d’Opsia (llista Edició / Resultats).
+ */
+export function hasSavedStructureCosts(
+  block?: {
+    managementCost?: number
+    preparationCost?: number
+    washingCost?: number
+  } | null
+): boolean {
+  if (!block) return false
+  return (
+    (Number(block.managementCost) || 0) > 0 ||
+    (Number(block.preparationCost) || 0) > 0 ||
+    (Number(block.washingCost) || 0) > 0
+  )
+}
+
+/**
+ * Aplica quotes live a files de llista. Conserva gestió/prep/rentat d’una fitxa
+ * ja desada; sense fitxa (o tots 0) segueix el repartiment del mes.
+ */
+export function applyLiveStructureQuotasToListItems(opts: {
+  items: ServiceCostListItem[]
+  quotas: Map<string, StructureQuota>
+  dept: PonderacioDept
+  savedDepartmentsByEventId?: Map<
+    string,
+    ServiceCostSheet['departments'] | undefined
+  >
+}): void {
+  for (const item of opts.items) {
+    const q = opts.quotas.get(item.eventId)
+    if (!q) continue
+    const detail = item.detailByDepartment[opts.dept]
+    if (!detail) continue
+    const saved = opts.savedDepartmentsByEventId?.get(item.eventId)?.[opts.dept]
+    if (hasSavedStructureCosts(saved)) continue
+    const base =
+      (Number(detail.laborCost) || 0) +
+      (Number(detail.fuelCost) || 0) +
+      (Number(detail.extras) || 0)
+    detail.managementCost = q.managementCost
+    detail.preparationCost = q.preparationCost
+    detail.washingCost = q.washingCost
+    detail.subtotal =
+      Math.round(
+        (base + q.managementCost + q.preparationCost + q.washingCost) * 100
+      ) / 100
+    item.byDepartment[opts.dept] = detail.subtotal
+  }
 }
 
 /** Aplica quotes Opsia a logistica/cuina d’una fitxa (recalcula subtotals). */

@@ -35,6 +35,7 @@ import { getOpsiaMonthDoc } from '@/lib/costServeis/opsiaFinance'
 import { listServeiWeightRows, PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import {
   allocateStructurePotsToEvents,
+  applyLiveStructureQuotasToListItems,
   resolveStructurePots,
 } from '@/lib/costServeis/allocateStructure'
 
@@ -330,6 +331,10 @@ export async function buildCostServeisListItems(
     const opsia = await getOpsiaMonthDoc(y, m)
     if (!opsia?.departments) continue
 
+    const savedDepartmentsByEventId = new Map(
+      [...sheetById.entries()].map(([id, sheet]) => [id, sheet.departments])
+    )
+
     for (const dept of PONDERACIO_DEPTS) {
       const pots = resolveStructurePots(opsia.departments[dept])
       if (!pots) continue
@@ -346,24 +351,12 @@ export async function buildCostServeisListItems(
         dept,
       })
 
-      for (const item of group) {
-        const q = quotas.get(item.eventId)
-        if (!q) continue
-        const detail = item.detailByDepartment[dept]
-        if (!detail) continue
-        const base =
-          (Number(detail.laborCost) || 0) +
-          (Number(detail.fuelCost) || 0) +
-          (Number(detail.extras) || 0)
-        detail.managementCost = q.managementCost
-        detail.preparationCost = q.preparationCost
-        detail.washingCost = q.washingCost
-        detail.subtotal =
-          Math.round(
-            (base + q.managementCost + q.preparationCost + q.washingCost) * 100
-          ) / 100
-        item.byDepartment[dept] = detail.subtotal
-      }
+      applyLiveStructureQuotasToListItems({
+        items: group,
+        quotas,
+        dept,
+        savedDepartmentsByEventId,
+      })
     }
 
     for (const item of group) {

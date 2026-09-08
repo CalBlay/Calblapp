@@ -22,6 +22,7 @@ import { listServeiWeightRows, PONDERACIO_DEPTS } from '@/lib/costServeis/servei
 import {
   allocateStructurePotsToEvents,
   applyStructureQuotasToSheet,
+  hasSavedStructureCosts,
   resolveStructurePots,
 } from '@/lib/costServeis/allocateStructure'
 import { listServeis } from '@/lib/serveis/server'
@@ -208,13 +209,7 @@ export async function GET(
             if (!pots) continue
             // Conserva valors desats si ja hi ha gestió/prep/rentat > 0
             const prev = sheet.departments[dept]
-            if (
-              existing &&
-              prev &&
-              ((prev.managementCost || 0) > 0 ||
-                (prev.preparationCost || 0) > 0 ||
-                (prev.washingCost || 0) > 0)
-            ) {
+            if (existing && hasSavedStructureCosts(prev)) {
               continue
             }
             const quotas = allocateStructurePotsToEvents({
