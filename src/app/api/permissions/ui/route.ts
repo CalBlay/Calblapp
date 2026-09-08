@@ -203,16 +203,40 @@ export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  // Construïm l'usuari base des de la sessió
+  const [aSnap, userSnap] = await Promise.all([
+    firestoreAdmin.collection('user_access_assignments').doc(auth.user.id).get(),
+    firestoreAdmin.collection('users').doc(auth.user.id).get(),
+  ])
+  const freshUser = userSnap.exists
+    ? (userSnap.data() as Record<string, unknown>)
+    : null
+
+  // La sessió aporta el vincle resolt amb personnel; les responsabilitats editables es
+  // rellegeixen del perfil perquè els canvis de Settings siguin efectius sense tornar a entrar.
   const u = auth.user
   const accessUser: AccessUser = {
-    role: u?.role ?? undefined,
-    department: u?.department ?? undefined,
-    canRespondSurveys: Boolean(u?.canRespondSurveys),
-    isDepartmentRobaLead: Boolean(u?.isDepartmentRobaLead),
+    role: typeof freshUser?.role === 'string' ? freshUser.role : u?.role ?? undefined,
+    department:
+      typeof freshUser?.department === 'string' ? freshUser.department : u?.department ?? undefined,
+    canRespondSurveys:
+      typeof freshUser?.canRespondSurveys === 'boolean'
+        ? freshUser.canRespondSurveys
+        : Boolean(u?.canRespondSurveys),
+    isDepartmentRobaLead:
+      typeof freshUser?.isDepartmentRobaLead === 'boolean'
+        ? freshUser.isDepartmentRobaLead
+        : Boolean(u?.isDepartmentRobaLead),
     robaLinkedPersonnelId: u?.robaLinkedPersonnelId ?? null,
-    opsProjectsConfigurable: typeof u?.opsProjectsConfigurable === 'boolean' ? u.opsProjectsConfigurable : undefined,
-    isTransportLead: Boolean(u?.isTransportLead),
+    opsProjectsConfigurable:
+      typeof freshUser?.opsProjectsConfigurable === 'boolean'
+        ? freshUser.opsProjectsConfigurable
+        : typeof u?.opsProjectsConfigurable === 'boolean'
+          ? u.opsProjectsConfigurable
+          : undefined,
+    isTransportLead:
+      typeof freshUser?.isTransportLead === 'boolean'
+        ? freshUser.isTransportLead
+        : Boolean(u?.isTransportLead),
   }
 
   const visibleModules = getVisibleModules(accessUser)
@@ -223,7 +247,6 @@ export async function GET() {
   }
 
   // Overrides guardats per usuari (client-scope)
-  const aSnap = await firestoreAdmin.collection('user_access_assignments').doc(auth.user.id).get()
   const assignment: UserAccessAssignmentDoc = aSnap.exists
     ? (aSnap.data() as UserAccessAssignmentDoc)
     : null
@@ -581,5 +604,13 @@ export async function GET() {
     for (const k of Object.keys(actions)) actions[k] = true
   }
 
-  return NextResponse.json({ map, edit, actions })
+  return NextResponse.json({
+    map,
+    edit,
+    actions,
+    profile: {
+      isDepartmentRobaLead: Boolean(accessUser.isDepartmentRobaLead),
+      department: String(accessUser.department || ''),
+    },
+  })
 }

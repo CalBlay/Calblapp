@@ -9,6 +9,10 @@ export type UiPermissionsResponse = {
   map: Record<string, boolean>
   edit?: Record<string, boolean>
   actions?: Record<string, boolean>
+  profile?: {
+    isDepartmentRobaLead?: boolean
+    department?: string
+  }
 }
 
 const fetcher = async (url: string) => {

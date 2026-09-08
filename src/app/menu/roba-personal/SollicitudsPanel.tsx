@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ChevronDown, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
@@ -49,7 +49,13 @@ import {
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
 import { ProductSearchCombobox } from './ProductSearchCombobox'
 import { robaPersonalApi as api } from './robaPersonalApi'
-import type { DeliveryRow, ProductRow, RequestRow, WorkerRow } from './robaPersonalTypes'
+import type {
+  DeliveryRow,
+  ProductRow,
+  RequestRow,
+  RobaOperationalSummary,
+  WorkerRow,
+} from './robaPersonalTypes'
 import {
   deliveredQtyByProductForRequestId,
   totalDeliveredUnitsForRequest,
@@ -61,6 +67,9 @@ import {
   formatRobaDayGroupLabel,
 } from './robaPersonalDates'
 import { productById } from './robaProductHelpers'
+import { buildRobaOperationalSummary, isOpenRobaRequestStatus } from './robaRequestList'
+import { RobaWorkerRequestCards } from './RobaWorkerRequestCards'
+import { getRobaOperationalNextAction } from './robaRequestExperience'
 
 type SollicitudsPanelMode = 'requests' | 'prepare' | 'pickup'
 
@@ -81,13 +90,19 @@ export function SollicitudsPanel({
   highlightRequestId = '',
   highlightDeliveryId = '',
   mode = 'requests',
+  isDepartmentRobaLeadOverride,
+  onOperationalSummaryChange,
 }: {
   highlightRequestId?: string
   /** Recollides: obre el flux de correcció d’entrega quan ve d’una notificació o URL (`deliveryId`). */
   highlightDeliveryId?: string
   mode?: SollicitudsPanelMode
+  isDepartmentRobaLeadOverride?: boolean
+  onOperationalSummaryChange?: (summary: RobaOperationalSummary) => void
 }) {
   const [rows, setRows] = useState<RequestRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
   const [pickupCorrectTarget, setPickupCorrectTarget] = useState<DeliveryRow | null>(null)
   const [pickupCorrectLinesEditor, setPickupCorrectLinesEditor] = useState<
@@ -129,7 +144,10 @@ export function SollicitudsPanel({
   const isRobaAdminOrRrhh =
     sessionRoleNorm === 'admin' || sessionDeptNorm === 'recursos humans'
   const isDeptLeadLimited =
-    Boolean((session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead) &&
+    Boolean(
+      isDepartmentRobaLeadOverride ??
+        (session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead
+    ) &&
     !isRobaAdminOrRrhh
   const robaLinkedPersonnelId = String(
     (session?.user as { robaLinkedPersonnelId?: string | null })?.robaLinkedPersonnelId || ''
@@ -382,6 +400,7 @@ export function SollicitudsPanel({
   )
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const [r, d, p, w, pref] = await Promise.all([
         api<RequestRow[]>('/api/roba-personal/requests'),
@@ -397,14 +416,19 @@ export function SollicitudsPanel({
       setProducts(p.filter((x) => x.isActive !== false))
       setWorkers(w.filter((x) => x.isActive !== false))
       setSendToRrhhSavedEmail(String(pref.savedEmail || '').trim())
+      onOperationalSummaryChange?.(buildRobaOperationalSummary(r, d))
     } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      setLoadError(message)
       toast({
         title: 'Error',
-        description: e instanceof Error ? e.message : String(e),
+        description: message,
         variant: 'destructive',
       })
+    } finally {
+      setLoading(false)
     }
-  }, [isRobaWorkerSelf])
+  }, [isRobaWorkerSelf, onOperationalSummaryChange])
 
   useEffect(() => {
     void load()
@@ -663,10 +687,7 @@ export function SollicitudsPanel({
   const canMarkPickedUpClient = (r: RequestRow) => {
     if (r.status !== 'prepared') return false
     if (sessionRoleNorm === 'admin') return true
-    const sessionRobaLead = Boolean(
-      (session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead
-    )
-    if (!sessionRobaLead) return false
+    if (!isDeptLeadLimited) return false
     return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
   }
 
@@ -682,7 +703,7 @@ export function SollicitudsPanel({
     }
     if (isRobaWorkerSelf) {
       if (r.status !== 'submitted') return false
-      return (
+      return Boolean(
         (sessionUserId && String(r.createdByUserId || '').trim() === sessionUserId) ||
         (robaLinkedPersonnelId &&
           String(r.requestedByWorkerId || '').trim() === robaLinkedPersonnelId)
@@ -1017,7 +1038,7 @@ export function SollicitudsPanel({
   const filteredListRows = useMemo(() => {
     return rows.filter((r) => {
       const day = robaRequestCalendarDay(r.createdAt)
-      if (day) {
+      if (day && !isOpenRobaRequestStatus(r.status)) {
         if (day < listRangeStart || day > listRangeEnd) return false
       }
       if (listFilterDept && r.requestingDepartment !== listFilterDept) return false
@@ -1227,7 +1248,16 @@ export function SollicitudsPanel({
     <div className="space-y-6 w-full">
       {isRequestsMode ? (
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Nova sol·licitud</h2>
+        <div>
+          <h2 className="font-semibold text-base">
+            {isRobaWorkerSelf ? 'Demanar roba' : 'Nova sol·licitud'}
+          </h2>
+          {isRobaWorkerSelf ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Tria els articles i envia la petició. Podràs seguir-ne el progrés just a sota.
+            </p>
+          ) : null}
+        </div>
         <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0">
           {lines.map((ln, i) => (
             <div
@@ -1599,7 +1629,13 @@ export function SollicitudsPanel({
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <h2 className="font-semibold text-base">
-          {isPrepareMode ? 'Sol·licituds per preparar' : isPickupMode ? 'Recepcions' : 'Sol·licituds'}
+          {isPrepareMode
+            ? 'Sol·licituds per preparar'
+            : isPickupMode
+              ? 'Recepcions'
+              : isRobaWorkerSelf
+                ? 'La meva roba'
+                : 'Sol·licituds'}
         </h2>
         <CorporateFiltersShell showHeader={false} variant="toolbar" className="mb-3 border-0 shadow-none">
           <SmartFilters
@@ -1631,7 +1667,37 @@ export function SollicitudsPanel({
           />
         </CorporateFiltersShell>
 
-        {filteredListRows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Les tasques pendents es mostren sempre. El període només limita l'històric tancat.
+        </p>
+
+        {loading ? (
+          <div
+            className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Carregant sol·licituds…
+          </div>
+        ) : loadError ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-6 text-center">
+            <p className="text-sm font-medium text-destructive">No s'han pogut carregar les sol·licituds.</p>
+            <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setLoading(true)
+                void load()
+              }}
+            >
+              Tornar-ho a provar
+            </Button>
+          </div>
+        ) : filteredListRows.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">
             Cap sol·licitud en aquest període o amb aquests filtres.
           </p>
@@ -1641,7 +1707,7 @@ export function SollicitudsPanel({
               <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-emerald-950">
                   <span className="font-semibold">{selectedBatchRows.length}</span> de{' '}
-                  <span className="font-semibold">{batchSendableRows.length}</span> solÂ·licitud(s) seleccionades per
+                  <span className="font-semibold">{batchSendableRows.length}</span> sol·licitud(s) seleccionades per
                   enviar a RRHH en una sola remesa.
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1665,6 +1731,20 @@ export function SollicitudsPanel({
               </div>
             ) : null}
 
+            {isRobaWorkerSelf ? (
+              <RobaWorkerRequestCards
+                rows={filteredListRows}
+                productLabel={prodLabel}
+                highlightedRequestId={highlightRequestId}
+                canCancel={canCancelRequestClient}
+                onCancel={(requestId) => void cancelRequest(requestId)}
+                onOpenDeliveries={(requestId) =>
+                  router.replace(
+                    `/menu/roba-personal?tab=entregues&requestId=${encodeURIComponent(requestId)}`
+                  )
+                }
+              />
+            ) : (
             <div className="overflow-x-auto rounded-2xl border border-border shadow-sm bg-card">
             <Table>
               <TableHeader>
@@ -1676,7 +1756,7 @@ export function SollicitudsPanel({
                         className="h-4 w-4 rounded border-input align-middle"
                         checked={allBatchSendableSelected}
                         onChange={(e) => toggleAllBatchSelection(e.target.checked)}
-                        aria-label="Seleccionar totes les solÂ·licituds enviables a RRHH"
+                        aria-label="Seleccionar totes les sol·licituds enviables a RRHH"
                       />
                     </TableHead>
                   ) : null}
@@ -1827,6 +1907,11 @@ export function SollicitudsPanel({
                             <span className="font-medium">
                               {ROBA_REQUEST_STATUS_LABEL[r.status] || r.status}
                             </span>
+                            {!['receipt_confirmed', 'cancelled', 'rejected'].includes(r.status) ? (
+                              <span className="mt-1 block text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
+                                Següent: {getRobaOperationalNextAction(r.status)}
+                              </span>
+                            ) : null}
                             {r.notes ? (
                               <span className="mt-1 block text-[10px] text-muted-foreground line-clamp-2">
                                 {r.notes}
@@ -1930,6 +2015,7 @@ export function SollicitudsPanel({
               </TableBody>
             </Table>
           </div>
+            )}
           </div>
         )}
       </div>

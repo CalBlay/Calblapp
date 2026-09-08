@@ -76,11 +76,15 @@ import { RobaSignaturePad } from './RobaSignaturePad'
 export function EntreguesPanel({
   prefillRequestId = '',
   prefillDeliveryId = '',
+  isDepartmentRobaLeadOverride,
 }: {
   prefillRequestId?: string
   prefillDeliveryId?: string
+  isDepartmentRobaLeadOverride?: boolean
 }) {
   const [rows, setRows] = useState<DeliveryRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [workers, setWorkers] = useState<WorkerRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [pendingReceiptRequests, setPendingReceiptRequests] = useState<RequestRow[]>([])
@@ -120,7 +124,10 @@ export function EntreguesPanel({
     sessionRoleNorm === 'admin' || sessionDeptNorm === 'recursos humans'
   const isRobaAdmin = sessionRoleNorm === 'admin'
   const isDeptLeadLimited =
-    Boolean((session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead) &&
+    Boolean(
+      isDepartmentRobaLeadOverride ??
+        (session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead
+    ) &&
     !isRobaAdminOrRrhh
   const robaLinkedPersonnelId = String(
     (session?.user as { robaLinkedPersonnelId?: string | null })?.robaLinkedPersonnelId || ''
@@ -244,6 +251,7 @@ export function EntreguesPanel({
   }, [isRobaWorkerSelf, robaLinkedPersonnelId])
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       if (isRobaLinkedWorkerUi) {
         const [d, w, p, reqs] = await Promise.all([
@@ -276,11 +284,15 @@ export function EntreguesPanel({
         setPendingReceiptRequests([])
       }
     } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      setLoadError(message)
       toast({
         title: 'Error',
-        description: e instanceof Error ? e.message : String(e),
+        description: message,
         variant: 'destructive',
       })
+    } finally {
+      setLoading(false)
     }
   }, [isRobaLinkedWorkerUi, isDeptLeadLimited, robaLinkedPersonnelId])
 
@@ -988,7 +1000,16 @@ export function EntreguesPanel({
                 {pendingReceiptRequests.length + deliveriesAwaitingWorkerCorrection.length + deliveriesPendingWorkerAck.length}
               </span>
             </div>
-            {pendingReceiptRequests.length === 0 ? (
+            {loading ? (
+              <div
+                className="flex items-center gap-2 py-2 text-sm text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Carregant recepcions pendents…
+              </div>
+            ) : pendingReceiptRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground py-2">No teniu cap recepció pendent.</p>
             ) : (
               <div className="space-y-3">
@@ -1356,7 +1377,33 @@ export function EntreguesPanel({
           ) : null}
         </CorporateFiltersShell>
 
-        {entFilteredRows.length === 0 ? (
+        {loading ? (
+          <div
+            className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Carregant entregues…
+          </div>
+        ) : loadError ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-6 text-center">
+            <p className="text-sm font-medium text-destructive">No s'han pogut carregar les entregues.</p>
+            <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setLoading(true)
+                void load()
+              }}
+            >
+              Tornar-ho a provar
+            </Button>
+          </div>
+        ) : entFilteredRows.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">
             Cap entrega en aquest periode o amb aquests filtres.
           </p>

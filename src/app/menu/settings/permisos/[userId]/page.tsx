@@ -4,12 +4,13 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
-import { ChevronDown, ChevronRight, Shield } from 'lucide-react'
+import { ChevronDown, ChevronRight, Shield, Shirt } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole, type Role } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { MODULES } from '@/lib/accessControl'
 import { applyOverrideEffects } from '@/lib/permissions/overrideState'
 import { CALENDAR_EDIT_IMPLIED_ACTIONS, PERM } from '@/lib/permissionKeys'
@@ -18,6 +19,10 @@ import {
   actionGroupDefaultExpanded,
   shouldShowActionGroup,
 } from '@/lib/permissions/matrixConfig'
+import {
+  ROBA_PERSONAL_UI_PATH,
+  ROBA_SUBMODULE_PATHS,
+} from '@/lib/robaPersonalPermissions'
 
 type AssignmentOverride = {
   permission: string
@@ -37,6 +42,7 @@ type UserAccessAssignment = {
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
+  isDepartmentRobaLead?: boolean
   isDepartmentHead?: boolean
 }
 
@@ -204,6 +210,7 @@ export default function PermisosUserPage() {
   const [opsChannelsConfigurable, setOpsChannelsConfigurable] = useState<string[]>([])
   const [opsEventsConfigurable, setOpsEventsConfigurable] = useState(false)
   const [opsProjectsConfigurable, setOpsProjectsConfigurable] = useState(true)
+  const [isDepartmentRobaLead, setIsDepartmentRobaLead] = useState(false)
   const [actionGroupExpandedManual, setActionGroupExpandedManual] = useState<
     Record<string, boolean>
   >({})
@@ -215,6 +222,7 @@ export default function PermisosUserPage() {
     opsChannelsConfigurable: string[]
     opsEventsConfigurable: boolean
     opsProjectsConfigurable: boolean
+    isDepartmentRobaLead: boolean
   } | null>(null)
   const rows = useMemo(() => buildRows(), [])
   const isDepartmentHead = Boolean(data?.isDepartmentHead)
@@ -276,6 +284,20 @@ export default function PermisosUserPage() {
     setOverrideEffects(updates)
   }
 
+  const setDepartmentRobaLeadEnabled = (enabled: boolean) => {
+    setIsDepartmentRobaLead(enabled)
+    if (!enabled) return
+    setPathVisibility(
+      [
+        ROBA_PERSONAL_UI_PATH,
+        ROBA_SUBMODULE_PATHS.sollicituds,
+        ROBA_SUBMODULE_PATHS.recollides,
+        ROBA_SUBMODULE_PATHS.entregues,
+      ],
+      true
+    )
+  }
+
   const isPathGroupVisible = (paths: string[]) =>
     paths.every((path) => {
       const base = baseFor(path)
@@ -294,6 +316,7 @@ export default function PermisosUserPage() {
     const nextOpsEventsConfigurable = Boolean(data.opsEventsConfigurable)
     const nextOpsProjectsConfigurable =
       typeof data.opsProjectsConfigurable === 'boolean' ? data.opsProjectsConfigurable : true
+    const nextIsDepartmentRobaLead = Boolean(data.isDepartmentRobaLead)
 
     setBaseRole(nextBaseRole)
     setBaseDepartment(nextBaseDepartment)
@@ -302,6 +325,7 @@ export default function PermisosUserPage() {
     setOpsChannelsConfigurable(nextOpsChannelsConfigurable)
     setOpsEventsConfigurable(nextOpsEventsConfigurable)
     setOpsProjectsConfigurable(nextOpsProjectsConfigurable)
+    setIsDepartmentRobaLead(nextIsDepartmentRobaLead)
 
     // snapshot per "Desfer canvis"
     if (!initialRef.current) {
@@ -313,6 +337,7 @@ export default function PermisosUserPage() {
         opsChannelsConfigurable: nextOpsChannelsConfigurable,
         opsEventsConfigurable: nextOpsEventsConfigurable,
         opsProjectsConfigurable: nextOpsProjectsConfigurable,
+        isDepartmentRobaLead: nextIsDepartmentRobaLead,
       }
     }
   }, [data])
@@ -327,6 +352,7 @@ export default function PermisosUserPage() {
     setOpsChannelsConfigurable(snap.opsChannelsConfigurable)
     setOpsEventsConfigurable(snap.opsEventsConfigurable)
     setOpsProjectsConfigurable(snap.opsProjectsConfigurable)
+    setIsDepartmentRobaLead(snap.isDepartmentRobaLead)
     setActionGroupExpandedManual({})
     setMsg('Canvis desfets (tornat a l’últim estat desat)')
   }
@@ -344,6 +370,7 @@ export default function PermisosUserPage() {
         opsChannelsConfigurable,
         opsEventsConfigurable,
         opsProjectsConfigurable,
+        isDepartmentRobaLead,
       }
       const res = await fetch(`/api/admin/permissions/assignments/${userId}`, {
         method: 'PUT',
@@ -360,6 +387,7 @@ export default function PermisosUserPage() {
         opsChannelsConfigurable,
         opsEventsConfigurable,
         opsProjectsConfigurable,
+        isDepartmentRobaLead,
       }
       setMsg('Desat correctament')
       await mutate()
@@ -448,6 +476,45 @@ export default function PermisosUserPage() {
             />
           </div>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 rounded-lg bg-indigo-500/10 p-2 text-indigo-700 dark:text-indigo-300">
+            <Shirt className="h-4 w-4" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold">Roba personal · Responsabilitat operativa</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Aquesta responsabilitat és diferent del permís de visualització: determina l’abast
+              departamental, les notificacions i qui pot validar la recollida i registrar entregues.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+          <div>
+            <Label htmlFor="department-roba-lead" className="text-sm font-medium">
+              Responsable de roba del departament
+            </Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              En activar-ho també es dona visibilitat a Sol·licituds, Recepcions i Entregues.
+              Cal que l’usuari tingui un departament assignat.
+            </p>
+          </div>
+          <Switch
+            id="department-roba-lead"
+            checked={isDepartmentRobaLead}
+            onCheckedChange={setDepartmentRobaLeadEnabled}
+            aria-label="Responsable de roba del departament"
+          />
+        </div>
+
+        {isDepartmentRobaLead && !baseDepartment.trim() ? (
+          <p className="rounded-lg border border-amber-300/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+            Abans de desar, indiqueu el departament base de l’usuari.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-border bg-background p-4 space-y-3">

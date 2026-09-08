@@ -17,6 +17,7 @@ type UserAccessAssignment = {
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
+  isDepartmentRobaLead?: boolean
   isDepartmentHead?: boolean
   updatedAt?: string
   updatedBy?: string
@@ -72,6 +73,7 @@ export async function GET(
         typeof userData.opsProjectsConfigurable === 'boolean'
           ? userData.opsProjectsConfigurable
           : true,
+      isDepartmentRobaLead: userData.isDepartmentRobaLead === true,
       isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
     } satisfies UserAccessAssignment)
   }
@@ -90,6 +92,7 @@ export async function GET(
       typeof userData.opsProjectsConfigurable === 'boolean'
         ? userData.opsProjectsConfigurable
         : true,
+    isDepartmentRobaLead: userData.isDepartmentRobaLead === true,
     isDepartmentHead: normalizeRole(String(userData.role || '')) === 'cap',
   } satisfies UserAccessAssignment)
 }
@@ -135,6 +138,8 @@ export async function PUT(
     typeof body.opsEventsConfigurable === 'boolean' ? body.opsEventsConfigurable : undefined
   const opsProjectsConfigurable =
     typeof body.opsProjectsConfigurable === 'boolean' ? body.opsProjectsConfigurable : undefined
+  const isDepartmentRobaLead =
+    typeof body.isDepartmentRobaLead === 'boolean' ? body.isDepartmentRobaLead : undefined
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
   const next: UserAccessAssignment = {
@@ -151,6 +156,13 @@ export async function PUT(
     await firestoreAdmin.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef)
       if (!userSnap.exists) throw new Error('USER_NOT_FOUND')
+      const currentUser = userSnap.data() as Record<string, unknown>
+      if (
+        isDepartmentRobaLead === true &&
+        !String(currentUser.department || '').trim()
+      ) {
+        throw new Error('ROBA_LEAD_DEPARTMENT_REQUIRED')
+      }
       tx.set(ref, next, { merge: true })
       tx.set(
         userRef,
@@ -161,6 +173,7 @@ export async function PUT(
           ...(opsChannelsConfigurable !== undefined ? { opsChannelsConfigurable } : {}),
           ...(opsEventsConfigurable !== undefined ? { opsEventsConfigurable } : {}),
           ...(opsProjectsConfigurable !== undefined ? { opsProjectsConfigurable } : {}),
+          ...(isDepartmentRobaLead !== undefined ? { isDepartmentRobaLead } : {}),
           updatedAt: Date.now(),
         },
         { merge: true }
@@ -169,6 +182,12 @@ export async function PUT(
   } catch (error) {
     if (error instanceof Error && error.message === 'USER_NOT_FOUND') {
       return NextResponse.json({ error: 'Usuari no trobat' }, { status: 404 })
+    }
+    if (error instanceof Error && error.message === 'ROBA_LEAD_DEPARTMENT_REQUIRED') {
+      return NextResponse.json(
+        { error: 'Cal assignar un departament al perfil d’usuari abans de fer-lo responsable de roba.' },
+        { status: 400 }
+      )
     }
     throw error
   }

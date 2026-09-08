@@ -60,14 +60,14 @@ test('manteniment parent allow does not open children; empty children hide the p
   assert.equal(withTickets['/menu/manteniment/preventius'], false)
 })
 
-test('roba-personal stays hidden on an assignment unless a path is explicitly allowed', () => {
+test('roba-personal keeps the same effective visibility with or without an assignment document', () => {
   const rrhhCap = { role: 'cap', department: 'recursos humans' }
 
   const withoutAssignment = buildUiViewMap(rrhhCap, null)
   assert.equal(withoutAssignment['/menu/roba-personal'], true)
 
   const emptyAssignment = buildUiViewMap(rrhhCap, { overrides: [] })
-  assert.equal(emptyAssignment['/menu/roba-personal'], false)
+  assert.equal(emptyAssignment['/menu/roba-personal'], true)
 
   const explicit = buildUiViewMap(rrhhCap, {
     overrides: [view('/menu/roba-personal', 'allow')],

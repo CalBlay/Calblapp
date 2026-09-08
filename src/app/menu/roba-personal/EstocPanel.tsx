@@ -24,7 +24,7 @@ import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMen
 import { ProductSearchCombobox } from './ProductSearchCombobox'
 import { robaPersonalApi as api } from './robaPersonalApi'
 import type { ProductRow, StockOverviewRow } from './robaPersonalTypes'
-import { formatDaysUntilMin } from './robaEstocFormat'
+import { formatDaysUntilMin, getStockHealth } from './robaEstocFormat'
 import { formatDateTimeValue } from '@/lib/date-format'
 import {
   isReversibleManualStockReason,
@@ -38,6 +38,7 @@ import { CorporateFilterSearch, CorporateFiltersShell } from '@/components/layou
 import { robaMovimentsDefaultMonthRange, robaRequestCalendarDay } from './robaPersonalDates'
 
 const STOCK_MOVEMENTS_PURGE_CONFIRM_PHRASE = 'ESBORRAR_TOTS_ELS_MOVIMENTS_I_RESERVA'
+type StockViewMode = 'essential' | 'planning'
 
 type StockReservedReconcileRow = {
   productId: string
@@ -81,14 +82,15 @@ export function EstocPanel() {
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [stockRows, setStockRows] = useState<StockOverviewRow[]>([])
   const [stockListSearch, setStockListSearch] = useState('')
+  const [stockViewMode, setStockViewMode] = useState<StockViewMode>('essential')
   const [movListSearch, setMovListSearch] = useState('')
   const [movTypeFilters, setMovTypeFilters] = useState<string[]>([])
   const [movListRangeStart, setMovListRangeStart] = useState(() => robaMovimentsDefaultMonthRange().start)
   const [movListRangeEnd, setMovListRangeEnd] = useState(() => robaMovimentsDefaultMonthRange().end)
   const [movListFiltersResetSignal, setMovListFiltersResetSignal] = useState(0)
   const [stockOverviewOpen, setStockOverviewOpen] = useState(true)
-  const [stockEntryOpen, setStockEntryOpen] = useState(true)
-  const [stockMovementsOpen, setStockMovementsOpen] = useState(true)
+  const [stockEntryOpen, setStockEntryOpen] = useState(false)
+  const [stockMovementsOpen, setStockMovementsOpen] = useState(false)
   const [reconcileBusy, setReconcileBusy] = useState(false)
   const [reconcileApplyBusy, setReconcileApplyBusy] = useState(false)
   const [reconcileResult, setReconcileResult] = useState<StockReservedReconcileResult>({
@@ -184,6 +186,19 @@ export function EstocPanel() {
       return tokens.every((t) => hay.includes(t))
     })
   }, [stockRows, stockListSearch])
+
+  const stockSummary = useMemo(() => {
+    let critical = 0
+    let warning = 0
+    let availableUnits = 0
+    for (const row of stockRows) {
+      const health = getStockHealth(row)
+      if (health === 'critical') critical += 1
+      if (health === 'warning') warning += 1
+      availableUnits += row.quantityAvailable ?? row.quantityOnHand
+    }
+    return { articles: stockRows.length, critical, warning, availableUnits }
+  }, [stockRows])
 
   const handleMovSmartDateChange = useCallback((f: SmartFiltersChange) => {
     if (f.start && f.end) {
@@ -618,6 +633,60 @@ export function EstocPanel() {
           responsable».
         </p>
         ) : null}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resum d’estoc">
+          <div className="rounded-xl border bg-muted/20 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Articles actius</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{stockSummary.articles}</p>
+          </div>
+          <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Sota el mínim</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-destructive">
+              {stockSummary.critical}
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-300/60 bg-amber-500/5 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Risc en 30 dies</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+              {stockSummary.warning}
+            </p>
+          </div>
+          <div className="rounded-xl border bg-muted/20 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Unitats disponibles</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{stockSummary.availableUnits}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className="inline-flex w-fit rounded-lg border bg-muted/40 p-1"
+            role="group"
+            aria-label="Nivell de detall de la vista d’estoc"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={stockViewMode === 'essential' ? 'default' : 'ghost'}
+              aria-pressed={stockViewMode === 'essential'}
+              onClick={() => setStockViewMode('essential')}
+            >
+              Control diari
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={stockViewMode === 'planning' ? 'default' : 'ghost'}
+              aria-pressed={stockViewMode === 'planning'}
+              onClick={() => setStockViewMode('planning')}
+            >
+              Planificació
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {stockViewMode === 'essential'
+              ? 'Mostra només les dades necessàries per decidir què cal reposar.'
+              : 'Inclou demanda teòrica, consum i previsió per planificar compres.'}
+          </p>
+        </div>
         <div className="relative max-w-md">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -649,21 +718,33 @@ export function EstocPanel() {
                   Reservat
                 </TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Disp.</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Pend. teòric</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Disp. després demanda</TableHead>
+                {stockViewMode === 'planning' ? (
+                  <>
+                    <TableHead className={cn(taulaThText, 'text-right')}>Pend. teòric</TableHead>
+                    <TableHead className={cn(taulaThText, 'text-right')}>Disp. després demanda</TableHead>
+                  </>
+                ) : null}
                 <TableHead className={cn(taulaThText, 'text-right')}>Mín.</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Dèficit</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Consum 6m</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Any actual</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Any anterior</TableHead>
-                <TableHead
-                  className={cn(taulaThText, 'text-right')}
-                  title="Mitjana diària calculada des de l'última entrada positiva d'estoc; si no n'hi ha, es calcula sobre els últims 180 dies."
-                >
-                  Mitj./dia
-                </TableHead>
+                {stockViewMode === 'planning' ? (
+                  <>
+                    <TableHead className={cn(taulaThText, 'text-right')}>Consum 6m</TableHead>
+                    <TableHead className={cn(taulaThText, 'text-right')}>Any actual</TableHead>
+                    <TableHead className={cn(taulaThText, 'text-right')}>Any anterior</TableHead>
+                    <TableHead
+                      className={cn(taulaThText, 'text-right')}
+                      title="Mitjana diària calculada des de l'última entrada positiva d'estoc; si no n'hi ha, es calcula sobre els últims 180 dies."
+                    >
+                      Mitj./dia
+                    </TableHead>
+                  </>
+                ) : (
+                  <TableHead className={taulaThText}>Estat</TableHead>
+                )}
                 <TableHead className={cn(taulaThText, 'text-right')}>Dies fins mín.</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Sug. sem.</TableHead>
+                {stockViewMode === 'planning' ? (
+                  <TableHead className={cn(taulaThText, 'text-right')}>Sug. sem.</TableHead>
+                ) : null}
                 <TableHead className={taulaThText}>Magatzem</TableHead>
               </TableRow>
             </TableHeader>
@@ -671,7 +752,7 @@ export function EstocPanel() {
               {stockRows.length > 0 && stockRowsFiltered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={16}
+                    colSpan={stockViewMode === 'planning' ? 16 : 10}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     Cap article coincideix amb la cerca. Proveu altres paraules o buideu el camp.
@@ -704,41 +785,61 @@ export function EstocPanel() {
                   <TableCell className="text-right tabular-nums font-medium">
                     {r.quantityAvailable ?? r.quantityOnHand}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {r.quantityPendingTheoretical ?? 0}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      'text-right tabular-nums font-medium',
-                      (r.quantityAvailableAfterTheoretical ?? 0) < 0 ? 'text-destructive' : undefined
-                    )}
-                  >
-                    {r.quantityAvailableAfterTheoretical ?? (r.quantityAvailable ?? r.quantityOnHand)}
-                  </TableCell>
+                  {stockViewMode === 'planning' ? (
+                    <>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {r.quantityPendingTheoretical ?? 0}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums font-medium',
+                          (r.quantityAvailableAfterTheoretical ?? 0) < 0 ? 'text-destructive' : undefined
+                        )}
+                      >
+                        {r.quantityAvailableAfterTheoretical ?? (r.quantityAvailable ?? r.quantityOnHand)}
+                      </TableCell>
+                    </>
+                  ) : null}
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     {r.minStock ?? '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{r.gapToMin}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.consumption6m}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.annualDeliveredCurrentYear}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.annualDeliveredPreviousYear}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {r.hasConsumptionHistory ? (
-                      <span title={r.avgDailySource === 'since_last_inbound'
-                        ? `Des de l'última entrada (${r.avgDailyWindowDays ?? 0} dies)`
-                        : 'Calculat sobre els últims 180 dies'}>
-                        {r.avgDaily.toFixed(2)}
-                      </span>
-                    ) : '—'}
-                  </TableCell>
+                  {stockViewMode === 'planning' ? (
+                    <>
+                      <TableCell className="text-right tabular-nums">{r.consumption6m}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.annualDeliveredCurrentYear}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.annualDeliveredPreviousYear}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {r.hasConsumptionHistory ? (
+                          <span title={r.avgDailySource === 'since_last_inbound'
+                            ? `Des de l'última entrada (${r.avgDailyWindowDays ?? 0} dies)`
+                            : 'Calculat sobre els últims 180 dies'}>
+                            {r.avgDaily.toFixed(2)}
+                          </span>
+                        ) : '—'}
+                      </TableCell>
+                    </>
+                  ) : (
+                    <TableCell>
+                      {getStockHealth(r) === 'critical' ? (
+                        <Badge variant="destructive">Reposar ara</Badge>
+                      ) : getStockHealth(r) === 'warning' ? (
+                        <Badge variant="warning">Preveure compra</Badge>
+                      ) : (
+                        <Badge variant="success">Correcte</Badge>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right text-sm">
                     {r.atOrBelowMin
                       ? '—'
                       : formatDaysUntilMin(r.daysUntilMin)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
-                    {r.suggestedSemesterQty ?? '—'}
-                  </TableCell>
+                  {stockViewMode === 'planning' ? (
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {r.suggestedSemesterQty ?? '—'}
+                    </TableCell>
+                  ) : null}
                   <TableCell className="text-xs text-muted-foreground">
                     {r.magatzem?.trim() || DEFAULT_DOTACIO_MAGATZEM}
                   </TableCell>

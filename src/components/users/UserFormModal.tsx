@@ -708,20 +708,6 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
               </select>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <Label className="text-sm">Responsable de roba (departament)</Label>
-                <div className="text-xs text-gray-500">
-                  Al mòdul Roba personal pot marcar la recollida del material preparat per al seu
-                  departament.
-                </div>
-              </div>
-              <Switch
-                checked={isDepartmentRobaLead}
-                onCheckedChange={setIsDepartmentRobaLead}
-              />
-            </div>
-
             {canBeTransportLead ? (
               <div className="flex items-center justify-between rounded-xl border p-3">
                 <div>

@@ -4,7 +4,12 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
+import {
+  requireRobaTabView,
+  robaTabForbiddenResponse,
+} from '@/lib/server/robaApiAuth'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 
 const COL = DOTACIO_COLLECTIONS.products
 const WORKERS_COL = DOTACIO_COLLECTIONS.workers
@@ -19,8 +24,9 @@ export type RrhhFilterDepartmentOption = { value: string; label: string }
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const forbidden = requireRoles(auth, ['admin', 'direccio'])
-  if (forbidden) return forbidden.res
+  if (!(await requireRobaTabView(auth, ROBA_SUBMODULE_PATHS.informes))) {
+    return robaTabForbiddenResponse()
+  }
 
   const snap = await db.collection(COL).limit(LIMIT).get()
   const products: RrhhFilterProductOption[] = snap.docs.map((d) => {

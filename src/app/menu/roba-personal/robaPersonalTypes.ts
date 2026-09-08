@@ -11,6 +11,14 @@ export type TabId =
   | 'entregues'
   | 'compres'
 
+export type RobaOperationalSummary = {
+  submitted: number
+  sentToRrhh: number
+  prepared: number
+  readyForDelivery: number
+  disputes: number
+}
+
 export type RobaPersonalRequestNotification = {
   id: string
   type?: string

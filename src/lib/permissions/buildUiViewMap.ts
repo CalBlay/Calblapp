@@ -4,11 +4,6 @@ import { getClientOverrideEffect } from '@/lib/permissions/overrideState'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import { PERM } from '@/lib/permissionKeys'
 
-/**
- * Mòduls que abans s'obrien per vincle `personnel` / regles legacy.
- * Amb `user_access_assignments`, només són visibles amb `allow` explícit a Settings.
- */
-const ASSIGNMENT_EXPLICIT_ALLOW_ONLY_MODULE_PATHS = ['/menu/roba-personal'] as const
 const NO_CHILD_INHERITANCE_MODULE_PATHS = ['/menu/manteniment'] as const
 
 function viewOverrideEffect(
@@ -102,28 +97,5 @@ export function buildUiViewMap(
     isParentExplicitlyDenied: (path) => viewOverrideEffect(assignment, path) === 'deny',
   })
 
-  if (assignment !== null) {
-    enforceExplicitAllowOnlyModules(map, assignment, ASSIGNMENT_EXPLICIT_ALLOW_ONLY_MODULE_PATHS)
-  }
-
   return map
-}
-
-function enforceExplicitAllowOnlyModules(
-  map: Record<string, boolean>,
-  assignment: UserAccessAssignmentDoc,
-  modulePaths: readonly string[]
-): void {
-  for (const modPath of modulePaths) {
-    const mod = MODULES.find((m) => m.path === modPath)
-    if (!mod) continue
-
-    const paths = [mod.path, ...(mod.submodules || []).map((s) => s.path)]
-    const hasExplicitAllow = paths.some((p) => viewOverrideEffect(assignment, p) === 'allow')
-    if (hasExplicitAllow) continue
-
-    for (const p of paths) {
-      map[p] = false
-    }
-  }
 }

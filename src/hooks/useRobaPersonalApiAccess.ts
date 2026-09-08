@@ -14,9 +14,17 @@ type SessionRobaUser = AccessUser & { id?: string }
 /** Alineat amb les APIs `/api/roba-personal/*` (scope de sessió + permís UI de pestanya). */
 export function useRobaPersonalApiAccess() {
   const { data: session, status } = useSession()
-  const { ready: uiPermsReady, canViewPath } = useUiPermissions()
+  const { ready: uiPermsReady, canViewPath, data: uiPermissionData } = useUiPermissions()
 
-  const user = session?.user as SessionRobaUser | undefined
+  const sessionUser = session?.user as SessionRobaUser | undefined
+  const user = sessionUser
+    ? {
+        ...sessionUser,
+        department: uiPermissionData?.profile?.department ?? sessionUser.department,
+        isDepartmentRobaLead:
+          uiPermissionData?.profile?.isDepartmentRobaLead ?? sessionUser.isDepartmentRobaLead,
+      }
+    : undefined
   const isAuth = status === 'authenticated'
   const userId = String(user?.id || '').trim()
 

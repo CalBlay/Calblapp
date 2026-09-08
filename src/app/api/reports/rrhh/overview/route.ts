@@ -4,7 +4,12 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
+import {
+  requireRobaTabView,
+  robaTabForbiddenResponse,
+} from '@/lib/server/robaApiAuth'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import {
   buildRrhhRobaOverview,
   type BuildRrhhOverviewWindow,
@@ -15,8 +20,9 @@ const MAX_RANGE_MS = 366 * 86_400_000
 export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const forbidden = requireRoles(auth, ['admin', 'direccio'])
-  if (forbidden) return forbidden.res
+  if (!(await requireRobaTabView(auth, ROBA_SUBMODULE_PATHS.informes))) {
+    return robaTabForbiddenResponse()
+  }
 
   const { searchParams } = new URL(req.url)
   const fromMsRaw = searchParams.get('fromMs')
