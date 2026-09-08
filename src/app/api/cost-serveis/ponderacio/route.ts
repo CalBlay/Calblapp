@@ -9,10 +9,13 @@ import {
 import {
   isPonderacioDept,
   listServeiWeightRows,
-  syncPonderacioFromServiceTypes,
+  syncPonderacioFromOccurrences,
   updateServeiWeightRow,
   type PonderacioDept,
 } from '@/lib/costServeis/serveiWeights'
+import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
+import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
+import { splitServiceTypeLabels } from '@/lib/serveis/utils'
 
 export const runtime = 'nodejs'
 
@@ -45,7 +48,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ rows })
 }
 
-/** PUT: actualitza pesos d’una fila { id, gestio?, preparacio?, rentat? } */
+/** PUT: actualitza pesos d’una fila { id, dept?, gestio?, preparacio?, rentat? } */
 export async function PUT(req: NextRequest) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
@@ -55,9 +58,11 @@ export async function PUT(req: NextRequest) {
 
   const body = (await req.json().catch(() => null)) as {
     id?: string
+    dept?: string
     gestio?: number
     preparacio?: number
     rentat?: number
+    active?: boolean
   } | null
 
   const id = String(body?.id || '').trim()
@@ -67,9 +72,11 @@ export async function PUT(req: NextRequest) {
 
   try {
     const row = await updateServeiWeightRow(id, {
+      dept: body?.dept && isPonderacioDept(body.dept) ? body.dept : undefined,
       gestio: body?.gestio,
       preparacio: body?.preparacio,
       rentat: body?.rentat,
+      active: typeof body?.active === 'boolean' ? body.active : undefined,
     })
     return NextResponse.json({ row })
   } catch (err) {
@@ -82,7 +89,8 @@ export async function PUT(req: NextRequest) {
 
 /**
  * POST ?from=YYYY-MM-DD&to=YYYY-MM-DD
- * Agafa tipus d’Edició del rang → ensure `serveis` + files de ponderació Logística/Cuina.
+ * Agafa serveis × espai reals d’Edició del rang → crea només les files noves
+ * a ponderacioServeisLogistica / ponderacioServeisCuina (sense trepitjar les existents).
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth()
@@ -101,22 +109,40 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const stageDocs = await queryStageCollectionDocsInDateRange(
-      db,
-      'stage_verd',
-      from,
-      to
-    )
-    const labels = stageDocs.map((doc) =>
-      readServiceType(doc.data() as Record<string, unknown>)
-    )
-    const result = await syncPonderacioFromServiceTypes(labels)
+    const [stageDocs, spaceIndex] = await Promise.all([
+      queryStageCollectionDocsInDateRange(db, 'stage_verd', from, to),
+      loadSpaceOwnershipIndex(),
+    ])
+
+    const occurrences = stageDocs.map((doc) => {
+      const d = doc.data() as Record<string, unknown>
+      const location = String(d.Ubicacio || '')
+      const eventName = String(d.NomEvent || d.summary || '')
+      return {
+        serviceType: readServiceType(d),
+        spaceKind: resolveSpaceKind(spaceIndex, {
+          fincaId: d.FincaId ? String(d.FincaId) : null,
+          fincaCode: d.FincaCode ? String(d.FincaCode) : null,
+          ubicacioCode: d.UbicacioCode ? String(d.UbicacioCode) : null,
+          location,
+          eventName,
+        }),
+      }
+    })
+
+    const result = await syncPonderacioFromOccurrences(occurrences)
     const rows = await listServeiWeightRows({ dept: 'all' })
+    const uniqueParts = [
+      ...new Set(
+        occurrences.flatMap((o) => splitServiceTypeLabels(o.serviceType))
+      ),
+    ]
     return NextResponse.json({
       ...result,
       rows,
       scannedEvents: stageDocs.length,
-      uniqueTypes: [...new Set(labels.filter(Boolean))].length,
+      uniqueTypes: uniqueParts.length,
+      classifiedEvents: occurrences.filter((o) => o.spaceKind).length,
     })
   } catch (err) {
     console.error('[cost-serveis/ponderacio POST]', err)

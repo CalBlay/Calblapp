@@ -17,7 +17,7 @@ const CARD_MAP = {
   },
   'costos-estructura': {
     title: 'Costos estructura',
-    description: 'Import OpsiaFinance per departament i mes',
+    description: 'Opsia: pots, salarial SAP i estructura LN',
     icon: Building2,
     tone: 'violet' as const,
   },

@@ -9,11 +9,13 @@ import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import ExportMenu from '@/components/export/ExportMenu'
+import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import { cn } from '@/lib/utils'
 import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
 } from '@/lib/transportTypes'
+import { MANUAL_LN_OPTIONS, normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
 import {
   invalidateAvailableVehiclesCache,
   useAvailableVehicles,
@@ -77,6 +79,9 @@ export default function DisponibilitatLogisticaPage() {
   const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleAvailability | null>(null)
   const [destination, setDestination] = useState('')
+  const [destinationOther, setDestinationOther] = useState(false)
+  const [fincaId, setFincaId] = useState<string | null>(null)
+  const [ln, setLn] = useState('')
   const [notes, setNotes] = useState('')
   const [conductorId, setConductorId] = useState('')
   const [assignLoading, setAssignLoading] = useState(false)
@@ -134,10 +139,28 @@ export default function DisponibilitatLogisticaPage() {
     [availableConductors]
   )
 
+  const resetAssignForm = () => {
+    setSelectedVehicle(null)
+    setDestination('')
+    setDestinationOther(false)
+    setFincaId(null)
+    setLn('')
+    setNotes('')
+    setConductorId('')
+  }
+
   const handleAssign = async () => {
     if (!selectedVehicle) return
     if (!destination.trim() || !conductorId) {
       setAssignError('La destinació i el conductor són obligatoris.')
+      return
+    }
+    if (!ln.trim()) {
+      setAssignError('La LN és obligatòria (apareixerà a Cost de Serveis → Edició).')
+      return
+    }
+    if (!destinationOther && !fincaId) {
+      setAssignError('Tria una finca de la llista o «Altres» per destinació lliure.')
       return
     }
     setAssignError(null)
@@ -156,8 +179,11 @@ export default function DisponibilitatLogisticaPage() {
         startTime,
         endTime,
         destination: destination.trim(),
+        fincaId: destinationOther ? null : fincaId,
+        ln: normalizeManualLnName(ln.trim()),
         notes,
         department: 'logistica',
+        createCostLine: true,
       }
 
       const res = await fetch('/api/transports/assign', {
@@ -170,10 +196,7 @@ export default function DisponibilitatLogisticaPage() {
         throw new Error(txt || "No s'ha pogut crear l'assignació")
       }
 
-      setSelectedVehicle(null)
-      setDestination('')
-      setNotes('')
-      setConductorId('')
+      resetAssignForm()
       invalidateAvailableVehiclesCache()
       invalidateAvailablePersonnelCache()
       await refetchVehicles(true)
@@ -184,7 +207,13 @@ export default function DisponibilitatLogisticaPage() {
     }
   }
 
-  const canAssign = Boolean(selectedVehicle && destination.trim() && conductorId)
+  const canAssign = Boolean(
+    selectedVehicle &&
+      destination.trim() &&
+      conductorId &&
+      ln.trim() &&
+      (destinationOther || fincaId)
+  )
   const loading = isLoading
   const listEmpty = !loading && !error && filteredVehicles.length === 0
 
@@ -613,7 +642,7 @@ export default function DisponibilitatLogisticaPage() {
                       {format(new Date(date), "d 'de' LLLL yyyy")} · {startTime} - {endTime}
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedVehicle(null)}>
+                  <Button variant="ghost" size="sm" onClick={resetAssignForm}>
                     Cancel·la
                   </Button>
                 </div>
@@ -640,14 +669,80 @@ export default function DisponibilitatLogisticaPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-500">Destinació</label>
-                  <input
-                    type="text"
+                  <label className="text-xs text-slate-500">LN</label>
+                  <select
                     className="w-full rounded border bg-white px-3 py-2 text-sm"
-                    placeholder="On va el vehicle?"
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                  />
+                    value={ln}
+                    onChange={(e) => setLn(e.target.value)}
+                  >
+                    <option value="">Selecciona LN</option>
+                    {MANUAL_LN_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {'code' in o && o.code ? `${o.label} (${o.code})` : o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs text-slate-500">Destinació</label>
+                    {destinationOther ? (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-emerald-700 hover:underline"
+                        onClick={() => {
+                          setDestinationOther(false)
+                          setDestination('')
+                          setFincaId(null)
+                        }}
+                      >
+                        Cercar finca
+                      </button>
+                    ) : null}
+                  </div>
+                  {destinationOther ? (
+                    <>
+                      <input
+                        type="text"
+                        className="w-full rounded border bg-white px-3 py-2 text-sm"
+                        placeholder="Destinació lliure (Altres)"
+                        value={destination}
+                        onChange={(e) => setDestination(e.target.value)}
+                      />
+                      <p className="text-[11px] text-amber-700">
+                        Mode Altres: no vinculat al catàleg de finques.
+                      </p>
+                    </>
+                  ) : (
+                    <SearchFincaInput
+                      value={destination}
+                      allowOther
+                      otherLabel="Altres…"
+                      placeholder="Cerca finca (mín. 2 lletres)…"
+                      onChange={(val) => {
+                        setDestination(val)
+                        if (!val.trim()) setFincaId(null)
+                      }}
+                      onSelectFinca={(finca) => {
+                        if (!finca) {
+                          setFincaId(null)
+                          return
+                        }
+                        setDestinationOther(false)
+                        setFincaId(finca.id)
+                      }}
+                      onSelectOther={() => {
+                        setDestinationOther(true)
+                        setFincaId(null)
+                        setDestination('')
+                      }}
+                    />
+                  )}
+                  <p className="text-[11px] text-slate-500">
+                    Crear el torn també afegeix una línia a Cost de Serveis → Edició per
+                    poder entrar gestió / preparació.
+                  </p>
                 </div>
 
                 <div className="space-y-1">

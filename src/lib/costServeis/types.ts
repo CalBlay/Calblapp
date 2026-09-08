@@ -1,6 +1,7 @@
 /** Tipus del mòdul Cost de serveis (cost operatiu per event). */
 
 import type { TransportType } from '@/lib/transportTypes'
+import type { SpaceKind } from '@/lib/costServeis/spaceOwnership'
 
 export const COST_SERVEIS_DEPARTMENTS = ['logistica', 'serveis', 'cuina'] as const
 export type CostServeisDepartment = (typeof COST_SERVEIS_DEPARTMENTS)[number]
@@ -97,6 +98,8 @@ export type ServiceCostSheet = {
   serviceType: string
   fincaId?: string | null
   fincaCode?: string | null
+  /** Classificació Espais: finca pròpia (`Propi`) o centre extern (`Extern`). */
+  spaceKind?: SpaceKind | null
   numPax: number
   /** Facturació (Import) */
   billing: number
@@ -143,6 +146,8 @@ export type ServiceCostListItem = {
   location: string
   /** Tipus de servei (camp Servei de l’event) */
   serviceType: string
+  /** Classificació Espais: finca pròpia (`Propi`) o centre extern (`Extern`). */
+  spaceKind: SpaceKind | null
   /** Si el tipus està al catàleg Settings → Serveis (cal per ponderar). */
   serviceInCatalog: boolean
   billing: number

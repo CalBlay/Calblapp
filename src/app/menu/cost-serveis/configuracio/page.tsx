@@ -13,8 +13,9 @@ import {
   type ServiceCostConfig,
 } from '@/lib/costServeis/types'
 import type { ServeiWeightRow } from '@/lib/costServeis/serveiWeights'
+import { SPACE_KIND_LABELS, type SpaceKind } from '@/lib/costServeis/spaceOwnership'
+import { SpaceKindBadge } from '../SpaceKindBadge'
 import { TRANSPORT_TYPE_OPTIONS } from '@/lib/transportTypes'
-import { formatDateOnly } from '@/lib/date-format'
 import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -33,7 +34,7 @@ export default function CostServeisConfigPage() {
   const [tab, setTab] = useState<TabId>('general')
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24">
+    <div className="w-full space-y-6 pb-24">
       <ModuleHeader
         title="Configuració"
         subtitle="Tarifes, sortida, combustible i ponderació per tipus de servei"
@@ -103,10 +104,10 @@ function GeneralConfigTab() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="w-full space-y-8">
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-800">Preu hora (€/h)</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:max-w-4xl">
           {COST_SERVEIS_DEPARTMENTS.map((dept) => (
             <label key={dept} className="block text-xs text-slate-600">
               {COST_SERVEIS_DEPT_LABELS[dept]}
@@ -272,6 +273,9 @@ function GeneralConfigTab() {
 function PonderacioTab() {
   const range0 = useMemo(() => currentMonthRange(), [])
   const [dept, setDept] = useState<'logistica' | 'cuina' | 'all'>('logistica')
+  const [spaceFilter, setSpaceFilter] = useState<'all' | SpaceKind>('all')
+  /** Per defecte no es mostren els inactius. */
+  const [showInactive, setShowInactive] = useState(false)
   const [from, setFrom] = useState(range0.from)
   const [to, setTo] = useState(range0.to)
   const [syncing, setSyncing] = useState(false)
@@ -282,7 +286,12 @@ function PonderacioTab() {
     `/api/cost-serveis/ponderacio?dept=${dept}`,
     fetcher
   )
-  const rows = (data?.rows || []) as ServeiWeightRow[]
+  const rows = useMemo(() => {
+    let all = (data?.rows || []) as ServeiWeightRow[]
+    if (!showInactive) all = all.filter((r) => r.active !== false)
+    if (spaceFilter !== 'all') all = all.filter((r) => r.spaceKind === spaceFilter)
+    return all
+  }, [data?.rows, spaceFilter, showInactive])
 
   const syncFromEdicio = async () => {
     setSyncing(true)
@@ -296,7 +305,7 @@ function PonderacioTab() {
       if (!res.ok) throw new Error(json.error || `Error ${res.status}`)
       await mutate()
       setMsg(
-        `Sync: ${json.uniqueTypes ?? 0} tipus · +${json.createdServeis ?? 0} al catàleg · +${json.createdWeightRows ?? 0} files de pes`
+        `Sync: ${json.uniquePairs ?? json.uniqueTypes ?? 0} combinacions · +${json.createdServeis ?? 0} al catàleg · +${json.createdWeightRows ?? 0} files noves`
       )
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Error')
@@ -314,15 +323,48 @@ function PonderacioTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: row.id,
+          dept: row.dept,
           gestio: row.gestio,
           preparacio: row.preparacio,
           rentat: row.rentat,
+          active: row.active,
         }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Error desant')
       await mutate()
-      setMsg(`Pesos desats: ${row.serveiNom} (${COST_SERVEIS_DEPT_LABELS[row.dept]})`)
+      setMsg(
+        `Pesos desats: ${row.serveiNom} · ${SPACE_KIND_LABELS[row.spaceKind]} (${COST_SERVEIS_DEPT_LABELS[row.dept]})`
+      )
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const toggleActive = async (row: ServeiWeightRow) => {
+    setSavingId(row.id)
+    setMsg('')
+    try {
+      const nextActive = row.active === false
+      const res = await fetch('/api/cost-serveis/ponderacio', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: row.id,
+          dept: row.dept,
+          active: nextActive,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Error desant')
+      await mutate()
+      setMsg(
+        nextActive
+          ? `Activat: ${row.serveiNom}`
+          : `Inactivat: ${row.serveiNom}`
+      )
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Error')
     } finally {
@@ -331,11 +373,13 @@ function PonderacioTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-slate-600">
-        Taula progressiva: només els tipus que surten a <strong>Edició</strong>. Es vinculen al
-        catàleg Settings → Serveis (sense duplicar). Logística i Cuina tenen pesos independents.
-        Prep/rentat es multiplicaran per pax en el repartiment.
+    <div className="w-full space-y-6">
+      <p className="max-w-4xl text-sm text-slate-600">
+        Es creen només les combinacions <strong>servei × espai</strong> que surten a
+        Edició (coma = diversos tipus). Si el mateix servei després apareix en l’altre
+        tipus d’espai, s’afegeix aleshores. Logística i Cuina es guarden en col·leccions
+        separades; un cop creat no es trepitja. Prep/rentat × pax; 2+ tipus → suma de
+        coeficients.
       </p>
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 lg:flex-row lg:items-end lg:justify-between">
@@ -351,6 +395,27 @@ function PonderacioTab() {
               <option value="cuina">Cuina</option>
               <option value="all">Tots</option>
             </select>
+          </label>
+          <label className="text-xs text-slate-600">
+            Espai
+            <select
+              className="mt-1 block h-9 rounded-md border border-slate-200 px-2 text-sm"
+              value={spaceFilter}
+              onChange={(e) => setSpaceFilter(e.target.value as typeof spaceFilter)}
+            >
+              <option value="all">Tots</option>
+              <option value="Propi">{SPACE_KIND_LABELS.Propi}</option>
+              <option value="Extern">{SPACE_KIND_LABELS.Extern}</option>
+            </select>
+          </label>
+          <label className="flex cursor-pointer items-end gap-2 pb-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+            />
+            <span>Mostrar inactius</span>
           </label>
           <label className="text-xs text-slate-600">
             Des de
@@ -382,19 +447,24 @@ function PonderacioTab() {
         <p className="text-sm text-slate-500">Carregant…</p>
       ) : rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-          Encara no hi ha files. Tria un període i clica «Carregar tipus des d’Edició».
+          {showInactive
+            ? 'Encara no hi ha files. Tria un període i clica «Carregar tipus des d’Edició».'
+            : 'Cap servei actiu amb aquests filtres. Activa «Mostrar inactius» o carrega tipus des d’Edició.'}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full w-full text-sm">
             <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2">Tipus de servei</th>
+                <th className="px-3 py-2">Espai</th>
                 <th className="px-3 py-2">Dept</th>
                 <th className="px-3 py-2">Gestió</th>
                 <th className="px-3 py-2">Preparació</th>
                 <th className="px-3 py-2">Rentat</th>
-                <th className="px-3 py-2">Actualitzat</th>
+                <th className="px-3 py-2 text-center" title="Servei actiu al càlcul i a la llista">
+                  Actiu
+                </th>
                 <th className="px-3 py-2 text-right"> </th>
               </tr>
             </thead>
@@ -405,6 +475,7 @@ function PonderacioTab() {
                   row={row}
                   busy={savingId === row.id}
                   onSave={saveRow}
+                  onToggleActive={toggleActive}
                 />
               ))}
             </tbody>
@@ -419,10 +490,12 @@ function PonderacioRow({
   row,
   busy,
   onSave,
+  onToggleActive,
 }: {
   row: ServeiWeightRow
   busy: boolean
   onSave: (row: ServeiWeightRow) => void
+  onToggleActive: (row: ServeiWeightRow) => void
 }) {
   const [gestio, setGestio] = useState(row.gestio)
   const [preparacio, setPreparacio] = useState(row.preparacio)
@@ -436,12 +509,23 @@ function PonderacioRow({
 
   const dirty =
     gestio !== row.gestio || preparacio !== row.preparacio || rentat !== row.rentat
+  const isActive = row.active !== false
 
   return (
-    <tr className="border-t border-slate-100">
+    <tr
+      className={cn(
+        'border-t border-slate-100',
+        !isActive && 'bg-slate-50/80 text-slate-500'
+      )}
+    >
       <td className="px-3 py-2">
-        <div className="font-medium text-slate-900">{row.serveiNom}</div>
+        <div className={cn('font-medium', isActive ? 'text-slate-900' : 'text-slate-500')}>
+          {row.serveiNom}
+        </div>
         <div className="font-mono text-[11px] text-slate-400">{row.serveiCodi}</div>
+      </td>
+      <td className="px-3 py-2">
+        <SpaceKindBadge kind={row.spaceKind} compact />
       </td>
       <td className="px-3 py-2 text-slate-700">
         {COST_SERVEIS_DEPT_LABELS[row.dept]}
@@ -451,8 +535,9 @@ function PonderacioRow({
           type="number"
           step="0.1"
           min={0}
-          className="h-9 w-20"
+          className="h-9 w-24"
           value={gestio}
+          disabled={!isActive}
           onChange={(e) => setGestio(Number(e.target.value) || 0)}
         />
       </td>
@@ -461,8 +546,9 @@ function PonderacioRow({
           type="number"
           step="0.1"
           min={0}
-          className="h-9 w-20"
+          className="h-9 w-24"
           value={preparacio}
+          disabled={!isActive}
           onChange={(e) => setPreparacio(Number(e.target.value) || 0)}
         />
       </td>
@@ -471,16 +557,24 @@ function PonderacioRow({
           type="number"
           step="0.1"
           min={0}
-          className="h-9 w-20"
+          className="h-9 w-24"
           value={rentat}
+          disabled={!isActive}
           onChange={(e) => setRentat(Number(e.target.value) || 0)}
         />
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500">
-        {formatDateOnly(row.updatedAt, '—')}
+      <td className="px-3 py-2 text-center">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-slate-300"
+          checked={isActive}
+          disabled={busy}
+          title={isActive ? 'Actiu — desmarca per inactivar' : 'Inactiu — marca per activar'}
+          onChange={() => onToggleActive(row)}
+        />
       </td>
       <td className="px-3 py-2 text-right">
-        {dirty ? (
+        {dirty && isActive ? (
           <Button
             size="sm"
             variant="outline"

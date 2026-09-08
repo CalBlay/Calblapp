@@ -18,7 +18,14 @@ interface Finca {
 interface Props {
   value?: string
   onChange: (val: string) => void
+  /** Retorna la finca triada (o null si es neteja / mode lliure). */
+  onSelectFinca?: (finca: Finca | null) => void
   disabled?: boolean
+  placeholder?: string
+  /** Mostra «Altres» al desplegable per destinacions fora de catàleg. */
+  allowOther?: boolean
+  otherLabel?: string
+  onSelectOther?: () => void
 }
 
 function fold(s: string) {
@@ -37,12 +44,17 @@ function fincaLabel(finca: Finca): string {
 
 /**
  * Cerca intel·ligent de finques (col·lecció `finques`).
- * Només es pot triar un registre de la llista.
+ * Amb `allowOther` es pot marcar destinació lliure (fora de catàleg).
  */
 export default function SearchFincaInput({
   value = '',
   onChange,
+  onSelectFinca,
   disabled = false,
+  placeholder = 'Cerca finca (mín. 2 lletres)…',
+  allowOther = false,
+  otherLabel = 'Altres…',
+  onSelectOther,
 }: Props) {
   const [query, setQuery] = useState(value)
   const [allFincas, setAllFincas] = useState<Finca[]>([])
@@ -117,7 +129,9 @@ export default function SearchFincaInput({
   }, [allFincas, query])
 
   const canShowDropdown =
-    open && query.trim().length >= MIN_QUERY_LENGTH && (loading || loadError || loadedRef.current)
+    open &&
+    (allowOther || query.trim().length >= MIN_QUERY_LENGTH) &&
+    (loading || loadError || loadedRef.current || allowOther)
 
   useEffect(() => {
     if (!canShowDropdown) return
@@ -129,7 +143,18 @@ export default function SearchFincaInput({
     if (!label) return
     selectingRef.current = true
     onChange(label)
+    onSelectFinca?.(finca)
     setQuery(label)
+    setOpen(false)
+    requestAnimationFrame(() => {
+      selectingRef.current = false
+    })
+  }
+
+  const handleSelectOther = () => {
+    selectingRef.current = true
+    onSelectFinca?.(null)
+    onSelectOther?.()
     setOpen(false)
     requestAnimationFrame(() => {
       selectingRef.current = false
@@ -160,6 +185,20 @@ export default function SearchFincaInput({
         onMouseDown={(e) => e.preventDefault()}
         onPointerDown={(e) => e.preventDefault()}
       >
+        {allowOther ? (
+          <div
+            role="option"
+            onPointerDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleSelectOther()
+            }}
+            className="px-3 py-2 text-sm cursor-pointer border-b border-slate-100 transition-colors hover:bg-amber-50"
+          >
+            <div className="font-medium text-amber-800">{otherLabel}</div>
+            <div className="text-xs text-amber-700/80">Destinació lliure (fora de catàleg)</div>
+          </div>
+        ) : null}
         {loading ? (
           <div className="px-3 py-2 text-sm text-gray-500">Carregant finques…</div>
         ) : loadError ? (
@@ -169,6 +208,10 @@ export default function SearchFincaInput({
         ) : allFincas.length === 0 ? (
           <div className="px-3 py-2 text-sm text-gray-500">
             Cap finca disponible a la col·lecció.
+          </div>
+        ) : query.trim().length < MIN_QUERY_LENGTH ? (
+          <div className="px-3 py-2 text-sm text-gray-500">
+            Escriu almenys {MIN_QUERY_LENGTH} lletres per cercar…
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-3 py-2 text-sm text-gray-500">
@@ -210,6 +253,7 @@ export default function SearchFincaInput({
         disabled={disabled}
         onChange={(e) => {
           setQuery(e.target.value)
+          onSelectFinca?.(null)
           setOpen(true)
           requestAnimationFrame(() => updateDropdownPosition())
         }}
@@ -222,7 +266,7 @@ export default function SearchFincaInput({
             setQuery(value || '')
           }, 150)
         }}
-        placeholder="Cerca finca (mín. 2 lletres)…"
+        placeholder={placeholder}
         className="pl-8 w-full text-sm sm:text-base rounded-md border-gray-300 focus:ring-2 focus:ring-blue-500"
       />
 

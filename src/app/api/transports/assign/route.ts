@@ -6,6 +6,11 @@ import {
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { createManualService } from '@/lib/costServeis/manualServices'
+import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
+import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
+import { TRANSPORT_TYPE_LABELS, normalizeTransportType } from '@/lib/transportTypes'
+import { normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
 
 export const runtime = 'nodejs'
 
@@ -28,12 +33,17 @@ type AssignmentInput = {
   conductorId?: string
   conductorName?: string
   destination?: string
+  /** Id de finca (col·lecció finques); buit si destinació «Altres». */
+  fincaId?: string | null
+  ln?: string
   department?: string
   startDate?: string
   startTime?: string
   endDate?: string
   endTime?: string
   notes?: string
+  /** Si false, no crea línia a Cost de Serveis → Edició. */
+  createCostLine?: boolean
 }
 
 type QuadrantConductorRecord = {
@@ -247,13 +257,25 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
+    const destination = String(body.destination || '').trim()
+    const fincaId = body.fincaId ? String(body.fincaId).trim() : ''
+    const ln = normalizeManualLnName(body.ln)
+    const hours = Math.max(
+      0,
+      Math.round(
+        ((cleaned.reqEnd.getTime() - cleaned.reqStart.getTime()) / 3_600_000) * 100
+      ) / 100
+    )
+
     const doc = {
       plate: cleaned.plate,
       vehicleId: body.vehicleId || '',
       vehicleType: body.vehicleType || '',
       conductorId: body.conductorId || '',
       conductorName: body.conductorName || '',
-      destination: body.destination || '',
+      destination,
+      fincaId: fincaId || null,
+      ln,
       department: body.department || '',
       startDate: cleaned.startDate,
       startTime: cleaned.startTime,
@@ -265,12 +287,77 @@ export async function POST(req: NextRequest) {
       createdAt: now,
       updatedAt: now,
       createdBy: auth.user.name || auth.user.email || auth.user.id || 'system',
+      serviceCostManualId: null as string | null,
     }
 
     const ref = await db.collection(COLLECTION).add(doc)
 
+    let manualId: string | null = null
+    const shouldCreateCostLine = body.createCostLine !== false
+    if (shouldCreateCostLine && destination) {
+      try {
+        const ownership = await loadSpaceOwnershipIndex()
+        const spaceKind = resolveSpaceKind(ownership, {
+          fincaId: fincaId || null,
+          location: destination,
+          eventName: destination,
+        })
+        const rawVehicleType = String(body.vehicleType || '').trim()
+        const vehicleType = normalizeTransportType(rawVehicleType) || rawVehicleType
+        const manual = await createManualService(
+          {
+            eventDate: cleaned.startDate,
+            eventName: destination,
+            ln,
+            location: destination,
+            serviceType: 'Intern',
+            dept: 'logistica',
+            spaceKind,
+            fincaId: fincaId || null,
+            origin: 'disponibilitat',
+            transportAssignmentId: ref.id,
+            peopleCount: body.conductorId ? 1 : 0,
+            hours,
+            vehicleCount: 1,
+            vehicleType,
+            autoKm: true,
+            managementHours: 0,
+            preparationHours: 0,
+            washingHours: 0,
+            billing: 0,
+            notes: [
+              body.notes || '',
+              `Vehicle ${cleaned.plate}`,
+              body.conductorName ? `Conductor ${body.conductorName}` : '',
+              vehicleType
+                ? `Tipus ${TRANSPORT_TYPE_LABELS[vehicleType] || vehicleType}`
+                : '',
+              `${cleaned.startTime}–${cleaned.endTime}`,
+            ]
+              .map((s) => String(s).trim())
+              .filter(Boolean)
+              .join(' · '),
+          },
+          auth.user.id
+        )
+        manualId = manual.id
+        await ref.update({ serviceCostManualId: manualId, updatedAt: now })
+        doc.serviceCostManualId = manualId
+      } catch (err) {
+        console.error(
+          '[api/transports/assign POST] service cost manual line failed',
+          err
+        )
+      }
+    }
+
     return NextResponse.json(
-      { ok: true, id: ref.id, assignment: { id: ref.id, ...doc } },
+      {
+        ok: true,
+        id: ref.id,
+        serviceCostManualId: manualId,
+        assignment: { id: ref.id, ...doc },
+      },
       { status: 201 }
     )
   } catch (e) {

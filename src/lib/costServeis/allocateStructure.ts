@@ -1,16 +1,23 @@
 /**
  * Repartiment pots Opsia (gestió / prep / rentat) als events del mes
  * segons ponderació Configuració + pax (prep/rentat).
+ *
+ * - Pesos per tipus de servei × espai (Propi / Extern)
+ * - Si l’event té diversos tipus (separats per coma), se sumen els coeficients
  */
 
-import { matchServeiCatalogId } from '@/lib/serveis/utils'
-import { DEFAULT_SERVEI_COST_WEIGHTS } from '@/lib/serveis/utils'
+import {
+  matchServeiCatalogId,
+  splitServiceTypeLabels,
+  DEFAULT_SERVEI_COST_WEIGHTS,
+} from '@/lib/serveis/utils'
 import type { ServeiWeightRow, PonderacioDept } from '@/lib/costServeis/serveiWeights'
 import { PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import type { OpsiaDeptImport } from '@/lib/costServeis/opsiaFinance'
 import type { ServiceCostSheet } from '@/lib/costServeis/types'
 import { recomputeSheet } from '@/lib/costServeis/calc'
 import type { HourlyRateByDept, FuelConfig } from '@/lib/costServeis/types'
+import type { SpaceKind } from '@/lib/costServeis/spaceOwnership'
 
 export type StructurePots = {
   gestio: number
@@ -28,6 +35,8 @@ export type StructureEventInput = {
   eventId: string
   serviceType: string
   numPax: number
+  /** Classificació Espais; si falta, s’usen pesos per defecte. */
+  spaceKind?: SpaceKind | null
 }
 
 function round2(n: number) {
@@ -56,13 +65,19 @@ export function resolveStructurePots(block?: OpsiaDeptImport | null): StructureP
   return pots
 }
 
-function coefForEvent(
-  serviceType: string,
+function weightKey(serveiId: string, spaceKind: SpaceKind) {
+  return `${serveiId}__${spaceKind}`
+}
+
+function coefForServicePart(
+  serviceLabel: string,
+  spaceKind: SpaceKind | null | undefined,
   catalog: Array<{ id: string; nom: string; codi: string }>,
-  weightsByServeiId: Map<string, ServeiWeightRow>
+  weightsByKey: Map<string, ServeiWeightRow>
 ): { gestio: number; preparacio: number; rentat: number } {
-  const id = matchServeiCatalogId(serviceType, catalog)
-  const row = id ? weightsByServeiId.get(id) : undefined
+  const id = matchServeiCatalogId(serviceLabel, catalog)
+  if (!id || !spaceKind) return { ...DEFAULT_SERVEI_COST_WEIGHTS }
+  const row = weightsByKey.get(weightKey(id, spaceKind))
   if (!row) return { ...DEFAULT_SERVEI_COST_WEIGHTS }
   return {
     gestio: row.gestio,
@@ -72,7 +87,29 @@ function coefForEvent(
 }
 
 /**
- * gestió: coef
+ * Suma els coeficients de tots els tipus de l’event (separats per coma).
+ */
+export function coefForEvent(
+  serviceType: string,
+  spaceKind: SpaceKind | null | undefined,
+  catalog: Array<{ id: string; nom: string; codi: string }>,
+  weightsByKey: Map<string, ServeiWeightRow>
+): { gestio: number; preparacio: number; rentat: number } {
+  const parts = splitServiceTypeLabels(serviceType)
+  if (parts.length === 0) return { ...DEFAULT_SERVEI_COST_WEIGHTS }
+
+  const sum = { gestio: 0, preparacio: 0, rentat: 0 }
+  for (const part of parts) {
+    const c = coefForServicePart(part, spaceKind, catalog, weightsByKey)
+    sum.gestio += c.gestio
+    sum.preparacio += c.preparacio
+    sum.rentat += c.rentat
+  }
+  return sum
+}
+
+/**
+ * gestió: coef (suma de tipus)
  * prep/rentat: coef × max(pax, 1)
  * quota = pot × pes / Σ pesos
  */
@@ -83,14 +120,15 @@ export function allocateStructurePotsToEvents(opts: {
   weightRows: ServeiWeightRow[]
   dept: PonderacioDept
 }): Map<string, StructureQuota> {
-  const weightsByServeiId = new Map<string, ServeiWeightRow>()
+  const weightsByKey = new Map<string, ServeiWeightRow>()
   for (const w of opts.weightRows) {
     if (w.dept !== opts.dept) continue
-    weightsByServeiId.set(w.serveiId, w)
+    if (w.active === false) continue
+    weightsByKey.set(weightKey(w.serveiId, w.spaceKind), w)
   }
 
   const scored = opts.events.map((ev) => {
-    const coef = coefForEvent(ev.serviceType, opts.catalog, weightsByServeiId)
+    const coef = coefForEvent(ev.serviceType, ev.spaceKind, opts.catalog, weightsByKey)
     const pax = Math.max(1, Number(ev.numPax) || 0)
     return {
       eventId: ev.eventId,

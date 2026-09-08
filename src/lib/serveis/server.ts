@@ -4,13 +4,14 @@ import {
   matchServeiCatalogId,
   normalizeServeiCostWeights,
   slugifyServeiCodi,
+  splitServiceTypeLabels,
   DEFAULT_SERVEI_COST_WEIGHTS,
   type ServeiCostWeights,
 } from '@/lib/serveis/utils'
 
 const COL = 'serveis'
 
-export { slugifyServeiCodi, matchServeiCatalogId }
+export { slugifyServeiCodi, matchServeiCatalogId, splitServiceTypeLabels }
 export type { ServeiCostWeights }
 
 export type Servei = {

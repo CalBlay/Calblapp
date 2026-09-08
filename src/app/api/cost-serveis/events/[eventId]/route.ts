@@ -25,6 +25,13 @@ import {
   resolveStructurePots,
 } from '@/lib/costServeis/allocateStructure'
 import { listServeis } from '@/lib/serveis/server'
+import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
+import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
+import {
+  applyManualDeductionsToPots,
+  listManualServicesByDateRange,
+  sumManualPotDeductions,
+} from '@/lib/costServeis/manualServices'
 import {
   isIsoDateDayParam,
   queryStageCollectionDocsInDateRange,
@@ -78,6 +85,7 @@ async function loadEventMeta(eventId: string) {
     eventStartTime: readEventStartTime(d),
     fincaId: d.FincaId ? String(d.FincaId) : null,
     fincaCode: d.FincaCode ? String(d.FincaCode) : null,
+    ubicacioCode: d.UbicacioCode ? String(d.UbicacioCode) : null,
     numPax: Number(d.NumPax ?? 0) || 0,
     billing: Number(d.Import ?? 0) || 0,
   }
@@ -100,11 +108,19 @@ export async function GET(
     return NextResponse.json({ error: 'Esdeveniment no trobat' }, { status: 404 })
   }
 
-  const [existing, config, staffing] = await Promise.all([
+  const [existing, config, staffing, spaceIndex] = await Promise.all([
     getServiceCostSheet(eventId),
     getServiceCostConfig(),
     staffingByCostDeptForEvent(eventId, meta.eventEndTime, meta.eventStartTime),
+    loadSpaceOwnershipIndex(),
   ])
+  const spaceKind = resolveSpaceKind(spaceIndex, {
+    fincaId: meta.fincaId,
+    fincaCode: meta.fincaCode,
+    ubicacioCode: meta.ubicacioCode,
+    location: meta.location,
+    eventName: meta.eventName,
+  })
   const base: ServiceCostSheet = existing || {
     eventId: meta.eventId,
     eventName: meta.eventName,
@@ -114,6 +130,7 @@ export async function GET(
     serviceType: meta.serviceType,
     fincaId: meta.fincaId,
     fincaCode: meta.fincaCode,
+    spaceKind,
     numPax: meta.numPax,
     billing: meta.billing,
     departments: emptyDepartments(),
@@ -133,6 +150,7 @@ export async function GET(
       serviceType: meta.serviceType,
       fincaId: meta.fincaId,
       fincaCode: meta.fincaCode,
+      spaceKind,
       numPax: meta.numPax,
       billing: meta.billing,
     },
@@ -172,11 +190,12 @@ export async function GET(
       const from = `${ym}-01`
       const to = `${ym}-${String(last).padStart(2, '0')}`
       if (isIsoDateDayParam(from) && isIsoDateDayParam(to)) {
-        const [opsia, catalog, weightRows, stageDocs] = await Promise.all([
+        const [opsia, catalog, weightRows, stageDocs, monthManuals] = await Promise.all([
           getOpsiaMonthDoc(y, m),
           listServeis(),
           listServeiWeightRows({ dept: 'all' }),
           queryStageCollectionDocsInDateRange(db, 'stage_verd', from, to),
+          listManualServicesByDateRange(from, to),
         ])
         if (opsia?.departments) {
           const catalogIndex = catalog.map((s) => ({
@@ -184,12 +203,22 @@ export async function GET(
             nom: s.nom,
             codi: s.codi,
           }))
+          const monthDeductions = sumManualPotDeductions(monthManuals).get(ym)
           const monthEvents = stageDocs.map((doc) => {
             const d = doc.data() as Record<string, unknown>
+            const location = String(d.Ubicacio || '')
+            const eventName = String(d.NomEvent || d.summary || '')
             return {
               eventId: doc.id,
               serviceType: readServiceType(d),
               numPax: Number(d.NumPax ?? 0) || 0,
+              spaceKind: resolveSpaceKind(spaceIndex, {
+                fincaId: d.FincaId ? String(d.FincaId) : null,
+                fincaCode: d.FincaCode ? String(d.FincaCode) : null,
+                ubicacioCode: d.UbicacioCode ? String(d.UbicacioCode) : null,
+                location,
+                eventName,
+              }),
             }
           })
           if (!monthEvents.some((e) => e.eventId === meta.eventId)) {
@@ -197,6 +226,7 @@ export async function GET(
               eventId: meta.eventId,
               serviceType: meta.serviceType,
               numPax: meta.numPax,
+              spaceKind,
             })
           }
 
@@ -204,8 +234,8 @@ export async function GET(
             Record<(typeof PONDERACIO_DEPTS)[number], { managementCost: number; preparationCost: number; washingCost: number }>
           > = {}
           for (const dept of PONDERACIO_DEPTS) {
-            const pots = resolveStructurePots(opsia.departments[dept])
-            if (!pots) continue
+            const potsRaw = resolveStructurePots(opsia.departments[dept])
+            if (!potsRaw) continue
             // Conserva valors desats si ja hi ha gestió/prep/rentat > 0
             const prev = sheet.departments[dept]
             if (
@@ -217,6 +247,10 @@ export async function GET(
             ) {
               continue
             }
+            const pots = applyManualDeductionsToPots(
+              potsRaw,
+              monthDeductions?.[dept] || null
+            )
             const quotas = allocateStructurePotsToEvents({
               pots,
               events: monthEvents,
@@ -285,9 +319,10 @@ export async function PUT(
     return NextResponse.json({ error: 'Falten departments' }, { status: 400 })
   }
 
-  const [staffing, config] = await Promise.all([
+  const [staffing, config, spaceIndex] = await Promise.all([
     staffingByCostDeptForEvent(eventId, meta.eventEndTime, meta.eventStartTime),
     getServiceCostConfig(),
+    loadSpaceOwnershipIndex(),
   ])
 
   const sheet: ServiceCostSheet = applyQuadrantStaffing(
@@ -300,6 +335,13 @@ export async function PUT(
       serviceType: meta.serviceType,
       fincaId: meta.fincaId,
       fincaCode: meta.fincaCode,
+      spaceKind: resolveSpaceKind(spaceIndex, {
+        fincaId: meta.fincaId,
+        fincaCode: meta.fincaCode,
+        ubicacioCode: meta.ubicacioCode,
+        location: meta.location,
+        eventName: meta.eventName,
+      }),
       numPax: meta.numPax,
       billing: meta.billing,
       departments: {

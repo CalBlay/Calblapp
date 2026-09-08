@@ -26,6 +26,7 @@ import {
 import { formatDateOnly } from '@/lib/date-format'
 import { TRANSPORT_TYPE_OPTIONS } from '@/lib/transportTypes'
 import { cn } from '@/lib/utils'
+import { SpaceKindBadge } from '../../SpaceKindBadge'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -414,13 +415,19 @@ export default function CostServeisFitxaPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 pb-28">
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-28">
       <ModuleHeader
         title={live.eventName}
         subtitle={`${formatDateOnly(live.eventDate)} · ${live.serviceType || 'Sense tipus'} · ${live.ln || 'Sense LN'} · ${live.location || 'Sense ubicació'}`}
       />
 
-      <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm sm:grid-cols-4">
+      <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm sm:grid-cols-5">
+        <div>
+          <div className="text-xs text-slate-500">Espai</div>
+          <div className="mt-0.5 font-medium">
+            <SpaceKindBadge kind={live.spaceKind} />
+          </div>
+        </div>
         <div>
           <div className="text-xs text-slate-500">Pax</div>
           <div className="font-medium">{live.numPax || '—'}</div>

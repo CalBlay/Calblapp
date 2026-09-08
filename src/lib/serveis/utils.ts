@@ -38,6 +38,24 @@ export function normalizeServeiCostWeights(
   }
 }
 
+/**
+ * Un event pot portar diversos tipus separats per coma
+ * (ex. «Aperitiu,Banquet - Menu 1» → dues línies de ponderació).
+ */
+export function splitServiceTypeLabels(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const part of String(raw || '').split(',')) {
+    const nom = part.trim()
+    if (!nom) continue
+    const key = slugifyServeiCodi(nom)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(nom)
+  }
+  return out
+}
+
 /** Emparella el text Servei de l’event amb un doc del catàleg. */
 export function matchServeiCatalogId(
   serviceLabel: string,
@@ -52,4 +70,14 @@ export function matchServeiCatalogId(
       slugifyServeiCodi(s.nom) === slug
   )
   return hit?.id || null
+}
+
+/** Cert si tots els tipus (separats per coma) són al catàleg. */
+export function allServiceTypesInCatalog(
+  serviceLabel: string,
+  catalog: Array<{ id: string; nom: string; codi: string }>
+): boolean {
+  const parts = splitServiceTypeLabels(serviceLabel)
+  if (parts.length === 0) return false
+  return parts.every((p) => Boolean(matchServeiCatalogId(p, catalog)))
 }

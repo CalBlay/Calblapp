@@ -31,6 +31,18 @@ import {
   type ServiceCostListItem,
 } from '@/lib/costServeis/types'
 import { listServeis, matchServeiCatalogId } from '@/lib/serveis/server'
+import {
+  allServiceTypesInCatalog,
+  splitServiceTypeLabels,
+} from '@/lib/serveis/utils'
+import {
+  applyManualDeductionsToPots,
+  listManualServicesByDateRange,
+  sumManualPotDeductions,
+  type ManualServiceLine,
+} from '@/lib/costServeis/manualServices'
+import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
+import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
 import { getOpsiaMonthDoc } from '@/lib/costServeis/opsiaFinance'
 import { listServeiWeightRows, PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import {
@@ -76,6 +88,7 @@ function emptyDetailByDept(): Record<CostServeisDepartment, ServiceCostDeptSumma
 
 export type BuildCostServeisListResult = {
   items: ServiceCostListItem[]
+  manuals: ManualServiceLine[]
   missingServiceTypes: Array<{ nom: string; count: number }>
   maps: {
     locations: number
@@ -93,12 +106,16 @@ export async function buildCostServeisListItems(
     throw new Error('Paràmetres from/to obligatoris (YYYY-MM-DD)')
   }
 
-  const [stageDocs, sheets, config, serveisCatalog] = await Promise.all([
-    queryStageCollectionDocsInDateRange(db, 'stage_verd', from, to),
-    listServiceCostSheetsByDateRange(from, to),
-    getServiceCostConfig(),
-    listServeis(),
-  ])
+  const [stageDocs, sheets, config, serveisCatalog, spaceIndex, manuals] =
+    await Promise.all([
+      queryStageCollectionDocsInDateRange(db, 'stage_verd', from, to),
+      listServiceCostSheetsByDateRange(from, to),
+      getServiceCostConfig(),
+      listServeis(),
+      loadSpaceOwnershipIndex(),
+      listManualServicesByDateRange(from, to),
+    ])
+  const manualDeductionsByYm = sumManualPotDeductions(manuals)
 
   const sheetById = new Map(sheets.map((s) => [s.eventId, s]))
   const catalogIndex = serveisCatalog.map((s) => ({
@@ -293,6 +310,13 @@ export async function buildCostServeisListItems(
         billing > 0 ? Math.round((total / billing) * 10000) / 10000 : null
 
       const serviceType = readServiceType(d)
+      const spaceKind = resolveSpaceKind(spaceIndex, {
+        fincaId: d.FincaId ? String(d.FincaId) : null,
+        fincaCode: d.FincaCode ? String(d.FincaCode) : null,
+        ubicacioCode: d.UbicacioCode ? String(d.UbicacioCode) : null,
+        location,
+        eventName,
+      })
       return {
         eventId: doc.id,
         eventName,
@@ -300,7 +324,8 @@ export async function buildCostServeisListItems(
         ln: String(d.LN || ''),
         location,
         serviceType,
-        serviceInCatalog: Boolean(matchServeiCatalogId(serviceType, catalogIndex)),
+        spaceKind,
+        serviceInCatalog: allServiceTypesInCatalog(serviceType, catalogIndex),
         billing,
         numPax: Number(d.NumPax ?? 0) || 0,
         hasSheet: Boolean(sheet),
@@ -331,8 +356,12 @@ export async function buildCostServeisListItems(
     if (!opsia?.departments) continue
 
     for (const dept of PONDERACIO_DEPTS) {
-      const pots = resolveStructurePots(opsia.departments[dept])
-      if (!pots) continue
+      const potsRaw = resolveStructurePots(opsia.departments[dept])
+      if (!potsRaw) continue
+      const pots = applyManualDeductionsToPots(
+        potsRaw,
+        manualDeductionsByYm.get(ym)?.[dept] || null
+      )
 
       const quotas = allocateStructurePotsToEvents({
         pots,
@@ -340,6 +369,7 @@ export async function buildCostServeisListItems(
           eventId: g.eventId,
           serviceType: g.serviceType,
           numPax: g.numPax,
+          spaceKind: g.spaceKind,
         })),
         catalog: catalogIndex,
         weightRows,
@@ -386,9 +416,15 @@ export async function buildCostServeisListItems(
 
   const missingByType = new Map<string, number>()
   for (const row of items) {
-    if (row.serviceInCatalog) continue
-    const key = String(row.serviceType || '').trim() || '(sense tipus)'
-    missingByType.set(key, (missingByType.get(key) || 0) + 1)
+    const parts = splitServiceTypeLabels(row.serviceType)
+    if (parts.length === 0) {
+      missingByType.set('(sense tipus)', (missingByType.get('(sense tipus)') || 0) + 1)
+      continue
+    }
+    for (const part of parts) {
+      if (matchServeiCatalogId(part, catalogIndex)) continue
+      missingByType.set(part, (missingByType.get(part) || 0) + 1)
+    }
   }
   const missingServiceTypes = Array.from(missingByType.entries())
     .map(([nom, count]) => ({ nom, count }))
@@ -396,6 +432,7 @@ export async function buildCostServeisListItems(
 
   return {
     items,
+    manuals,
     missingServiceTypes,
     maps: {
       locations: uniqueKeys.length,

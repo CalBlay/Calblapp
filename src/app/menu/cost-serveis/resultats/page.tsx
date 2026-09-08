@@ -16,9 +16,11 @@ import type {
   ResultatsItemRow,
   ResultatsMetrics,
 } from '@/lib/costServeis/resultatsAggregate'
+import PeTab from '@/app/menu/cost-serveis/resultats/PeTab'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+type MainTab = 'analisi' | 'pe'
 type ViewMode = 'individual' | 'service' | 'location' | 'month'
 
 type SortKey =
@@ -103,9 +105,11 @@ function SortTh({
 }
 
 export default function CostServeisResultatsPage() {
+  const [mainTab, setMainTab] = useState<MainTab>('analisi')
   const [ym, setYm] = useState(currentYearMonth())
   const [fromCustom, setFromCustom] = useState('')
   const [toCustom, setToCustom] = useState('')
+  const [peYear, setPeYear] = useState(() => new Date().getFullYear())
   const [view, setView] = useState<ViewMode>('service')
   const [sortKey, setSortKey] = useState<SortKey>('marginPct')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -118,7 +122,9 @@ export default function CostServeisResultatsPage() {
   }, [ym, fromCustom, toCustom])
 
   const { data, isLoading, error } = useSWR(
-    `/api/cost-serveis/resultats?from=${from}&to=${to}`,
+    mainTab === 'analisi'
+      ? `/api/cost-serveis/resultats?from=${from}&to=${to}`
+      : null,
     fetcher
   )
 
@@ -188,12 +194,49 @@ export default function CostServeisResultatsPage() {
   }, [view, byServiceType])
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24">
+    <div className="w-full space-y-6 pb-24">
       <ModuleHeader
         title="Resultats"
-        subtitle="Quins serveis deixen millor marge (controller / comitè / comercial)"
+        subtitle="Marge operatiu i PE comercial (servei × propi/extern)"
       />
 
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <Button
+          type="button"
+          size="sm"
+          variant={mainTab === 'analisi' ? 'default' : 'outline'}
+          onClick={() => setMainTab('analisi')}
+        >
+          Anàlisi
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mainTab === 'pe' ? 'default' : 'outline'}
+          onClick={() => setMainTab('pe')}
+        >
+          PE
+        </Button>
+      </div>
+
+      {mainTab === 'pe' ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <label className={cn(corporateFilterLabelClass, 'block')}>
+            Any
+            <Input
+              type="number"
+              className={cn(corporateFilterFieldClass, 'mt-1 w-28')}
+              value={peYear}
+              onChange={(e) =>
+                setPeYear(Number(e.target.value) || new Date().getFullYear())
+              }
+            />
+          </label>
+          <div className="text-xs text-slate-500 pb-2">
+            Mitjanes de tot l’any (els mesos es calculen al darrere)
+          </div>
+        </div>
+      ) : (
       <div className="flex flex-wrap items-end gap-3">
         <label className={cn(corporateFilterLabelClass, 'block')}>
           Mes ràpid
@@ -230,7 +273,12 @@ export default function CostServeisResultatsPage() {
           {from} → {to}
         </div>
       </div>
+      )}
 
+      {mainTab === 'pe' ? (
+        <PeTab year={peYear} />
+      ) : (
+        <>
       <div className="flex flex-wrap gap-2">
         {VIEW_OPTIONS.map((opt) => (
           <Button
@@ -524,6 +572,8 @@ export default function CostServeisResultatsPage() {
               </table>
             )}
           </div>
+        </>
+      )}
         </>
       )}
     </div>
