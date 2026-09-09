@@ -8,7 +8,7 @@ import { Paperclip } from 'lucide-react'
 import { MotionDiv } from '@/lib/lazyMotion'
 
 type Props = {
-  collection: 'stage_verd' | 'stage_taronja' | 'stage_taronja'
+  collection: 'stage_verd' | 'stage_taronja' | 'stage_groc'
   docId: string
   disabled?: boolean
   fieldBase?: string

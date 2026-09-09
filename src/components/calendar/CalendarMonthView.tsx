@@ -8,6 +8,7 @@ import CalendarNewEventModal from './CalendarNewEventModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
 import { dealsForDay } from '@/lib/calendarDealDates'
+import { CALENDAR_CANCELLED_CARD_CLASS } from '@/lib/calendar/calendarCancellation'
 import {
   CALENDAR_BADGE_TEXT,
   CALENDAR_DAY_HEADER,
@@ -331,7 +332,7 @@ export default function CalendarMonthView({
                             flex items-center ${isSingleDay ? 'justify-start' : 'justify-center'} gap-2
                             rounded-md border
                             ${CALENDAR_EVENT_TEXT}
-                            ${colorByLN(span.ev.LN)}
+                            ${span.ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : colorByLN(span.ev.LN)}
                           `}
                           style={{
                             gridColumn: `${span.startIdx + 1} / ${span.endIdx + 2}`,
@@ -339,13 +340,18 @@ export default function CalendarMonthView({
                           }}
                         >
                           <span
-                            className={`h-2 w-2 rounded-full ${dotColorByCollection(span.ev.collection)}`}
+                            className={`h-2 w-2 rounded-full ${span.ev.cancelled ? 'bg-red-700' : dotColorByCollection(span.ev.collection)}`}
                           />
                           <span
                             className={`truncate ${isSingleDay ? 'text-left' : 'text-center'} flex-1`}
                           >
                             {span.ev.NomEvent}
                           </span>
+                          {span.ev.cancelled && (
+                            <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                              CANCEL·LAT
+                            </span>
+                          )}
                           {badge && (
                             <span
                               className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
@@ -457,13 +463,18 @@ function MoreEventsPopup({
                       flex min-h-11 items-center gap-2
                       truncate rounded-md border px-2 py-2
                       ${CALENDAR_EVENT_TEXT}
-                      ${colorByLN(ev.LN)}
+                      ${ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : colorByLN(ev.LN)}
                     `}
                   >
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(ev.collection)}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : dotColorByCollection(ev.collection)}`}
                     />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
+                    {ev.cancelled && (
+                      <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        CANCEL·LAT
+                      </span>
+                    )}
                     {badge && (
                       <span
                         className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}

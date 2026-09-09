@@ -39,6 +39,9 @@ type Props = {
   recipientCandidates: CalendarRecipientCandidate[]
   eventLN?: string
   canManageMailGroups?: boolean
+  mode?: 'documents' | 'cancellation'
+  eventDate?: string
+  eventLocation?: string
 }
 
 export default function CalendarSendDocumentsDialog({
@@ -52,7 +55,11 @@ export default function CalendarSendDocumentsDialog({
   recipientCandidates,
   eventLN,
   canManageMailGroups = false,
+  mode = 'documents',
+  eventDate,
+  eventLocation,
 }: Props) {
+  const isCancellation = mode === 'cancellation'
   const [loadingRecipients, setLoadingRecipients] = useState(false)
   const [sending, setSending] = useState(false)
   const [recipientList, setRecipientList] = useState<ResolvedRecipient[]>([])
@@ -70,13 +77,28 @@ export default function CalendarSendDocumentsDialog({
   const defaultSubject = useMemo(() => {
     const title = String(eventTitle || '').trim() || 'Esdeveniment'
     const code = String(eventCode || '').trim()
+    if (isCancellation) {
+      return code ? `CANCEL·LAT · ${title} (${code})` : `CANCEL·LAT · ${title}`
+    }
     return code ? `Documents · ${title} (${code})` : `Documents · ${title}`
-  }, [eventCode, eventTitle])
+  }, [eventCode, eventTitle, isCancellation])
 
   const defaultMessage = useMemo(() => {
     const title = String(eventTitle || '').trim() || 'l’esdeveniment'
+    if (isCancellation) {
+      const details = [
+        eventDate ? `Data: ${eventDate}` : '',
+        eventLocation ? `Ubicació: ${eventLocation}` : '',
+      ].filter(Boolean)
+      return [
+        `Us informem que l’esdeveniment «${title}» ha estat cancel·lat.`,
+        ...details,
+        '',
+        'Si us plau, tingueu en compte aquesta cancel·lació en la planificació.',
+      ].join('\n')
+    }
     return `Us adjunto la documentació relativa a l’esdeveniment «${title}».`
-  }, [eventTitle])
+  }, [eventDate, eventLocation, eventTitle, isCancellation])
 
   useEffect(() => {
     if (!open) return
@@ -85,10 +107,10 @@ export default function CalendarSendDocumentsDialog({
     setManualEmail('')
     setRecipientList([])
     setSelectedRecipientKeys([])
-    setResolvedFiles(files)
-    setSelectedFileKeys(files.map((file) => file.key))
+    setResolvedFiles(isCancellation ? [] : files)
+    setSelectedFileKeys(isCancellation ? [] : files.map((file) => file.key))
     setSelectedGroupId('')
-  }, [open, defaultMessage, defaultSubject, files])
+  }, [open, defaultMessage, defaultSubject, files, isCancellation])
 
   useEffect(() => {
     if (!open) return
@@ -117,7 +139,7 @@ export default function CalendarSendDocumentsDialog({
   }, [open, eventLN])
 
   useEffect(() => {
-    if (!open || files.length === 0) return
+    if (!open || isCancellation || files.length === 0) return
 
     let active = true
     const load = async () => {
@@ -147,7 +169,7 @@ export default function CalendarSendDocumentsDialog({
     return () => {
       active = false
     }
-  }, [open, files])
+  }, [open, files, isCancellation])
 
   useEffect(() => {
     if (!open) return
@@ -288,13 +310,19 @@ export default function CalendarSendDocumentsDialog({
     setManualEmail('')
   }
 
-  const canSend = selectedRecipients.length > 0 && selectedFiles.length > 0 && Boolean(subject.trim())
+  const canSend =
+    selectedRecipients.length > 0 &&
+    (isCancellation || selectedFiles.length > 0) &&
+    Boolean(subject.trim())
 
   const handleSend = async () => {
     if (!canSend) return
     setSending(true)
     try {
-      const res = await fetch(`/api/calendar/manual/${eventId}/email`, {
+      const endpoint = isCancellation
+        ? `/api/calendar/manual/${eventId}/cancellation-email`
+        : `/api/calendar/manual/${eventId}/email`
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -305,18 +333,26 @@ export default function CalendarSendDocumentsDialog({
             name: item.name,
             email: item.email,
           })),
-          files: selectedFiles.map((file) => ({
-            key: file.key,
-            url: file.url,
-            name: displayCalendarFileName(file),
-          })),
+          ...(isCancellation
+            ? {}
+            : {
+                files: selectedFiles.map((file) => ({
+                  key: file.key,
+                  url: file.url,
+                  name: displayCalendarFileName(file),
+                })),
+              }),
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(String(data?.error || 'No s’ha pogut enviar el correu'))
       }
-      alert('Correu enviat correctament des d’Outlook.')
+      alert(
+        isCancellation
+          ? 'Avís de cancel·lació enviat correctament des d’Outlook.'
+          : 'Correu enviat correctament des d’Outlook.'
+      )
       onOpenChange(false)
     } catch (err) {
       console.error('Error enviant documents:', err)
@@ -332,10 +368,12 @@ export default function CalendarSendDocumentsDialog({
         <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
             <Mail className="h-4 w-4" />
-            Enviar documents per correu
+            {isCancellation ? 'Enviar avís de cancel·lació' : 'Enviar documents per correu'}
           </DialogTitle>
           <p className="text-sm text-slate-500">
-            S’enviarà des del vostre compte Outlook amb els fitxers adjunts.
+            {isCancellation
+              ? 'S’enviarà des del vostre compte Outlook als destinataris o grups seleccionats.'
+              : 'S’enviarà des del vostre compte Outlook amb els fitxers adjunts.'}
           </p>
         </DialogHeader>
 
@@ -354,7 +392,7 @@ export default function CalendarSendDocumentsDialog({
             />
           </div>
 
-          <div className="space-y-2">
+          {!isCancellation && <div className="space-y-2">
             <div>
               <Label>Documents a adjuntar</Label>
               <p className="mt-1 text-xs text-slate-500">
@@ -395,7 +433,7 @@ export default function CalendarSendDocumentsDialog({
                 })
               )}
             </div>
-          </div>
+          </div>}
 
           <div className="space-y-3">
             <div className="space-y-2">
@@ -519,8 +557,13 @@ export default function CalendarSendDocumentsDialog({
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <div className="text-sm text-slate-500">
             {selectedRecipients.length} destinatari
-            {selectedRecipients.length === 1 ? '' : 's'} · {selectedFiles.length} document
-            {selectedFiles.length === 1 ? '' : 's'}
+            {selectedRecipients.length === 1 ? '' : 's'}
+            {!isCancellation && (
+              <>
+                {' · '}{selectedFiles.length} document
+                {selectedFiles.length === 1 ? '' : 's'}
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

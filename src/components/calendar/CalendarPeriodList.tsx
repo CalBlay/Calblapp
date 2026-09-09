@@ -7,6 +7,10 @@ import { Input } from '@/components/ui/input'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
 import { CALENDAR_EVENT_TEXT } from '@/lib/calendarTypography'
+import {
+  CALENDAR_CANCELLED_CARD_CLASS,
+  CALENDAR_CANCELLED_ROW_CLASS,
+} from '@/lib/calendar/calendarCancellation'
 
 type Props = {
   deals: Deal[]
@@ -109,7 +113,9 @@ export default function CalendarPeriodList({
                   type="button"
                   onClick={() => onSelectDeal?.(deal)}
                   className={`w-full rounded-xl border px-3 py-3 text-left transition-colors active:bg-slate-50 ${
-                    selected
+                    deal.cancelled
+                      ? CALENDAR_CANCELLED_CARD_CLASS
+                      : selected
                       ? 'border-blue-300 bg-blue-50'
                       : 'border-slate-200 bg-white shadow-sm'
                   }`}
@@ -129,7 +135,9 @@ export default function CalendarPeriodList({
                       </span>
                     )}
                   </div>
-                  <p className={`line-clamp-2 ${CALENDAR_EVENT_TEXT}`}>{deal.NomEvent || '—'}</p>
+                  <p className={`line-clamp-2 ${CALENDAR_EVENT_TEXT}`}>
+                    {deal.cancelled ? 'CANCEL·LAT · ' : ''}{deal.NomEvent || '—'}
+                  </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${colorByLN(deal.LN)}`}
@@ -177,7 +185,11 @@ export default function CalendarPeriodList({
                   key={deal.id}
                   onClick={() => onSelectDeal?.(deal)}
                   className={`cursor-pointer border-b transition-colors hover:bg-slate-50 ${
-                    selected ? 'bg-blue-50 hover:bg-blue-50' : ''
+                    deal.cancelled
+                      ? CALENDAR_CANCELLED_ROW_CLASS
+                      : selected
+                        ? 'bg-blue-50 hover:bg-blue-50'
+                        : ''
                   }`}
                 >
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
@@ -186,7 +198,9 @@ export default function CalendarPeriodList({
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
                     {formatDate(deal.DataFi || deal.DataInici)}
                   </td>
-                  <td className={`px-3 py-2 ${CALENDAR_EVENT_TEXT}`}>{deal.NomEvent || '—'}</td>
+                  <td className={`px-3 py-2 ${CALENDAR_EVENT_TEXT}`}>
+                    {deal.cancelled ? 'CANCEL·LAT · ' : ''}{deal.NomEvent || '—'}
+                  </td>
                   <td className="hidden px-3 py-2 lg:table-cell">
                     <span
                       className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${colorByLN(deal.LN)}`}

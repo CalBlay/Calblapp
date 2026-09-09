@@ -26,6 +26,10 @@ export interface Deal {
   codeConfirmed?: boolean
   codeMatchScore?: number | null
   codeStatus?: 'confirmed' | 'review' | 'missing'
+  cancelled?: boolean
+  cancelledAt?: string
+  cancelledByName?: string
+  cancellationNoticeSentAt?: string
   files?: { key: string; url: string; name?: string; source?: string }[]
 }
 
@@ -195,6 +199,14 @@ export function useCalendarData(filters?: {
           codeConfirmed,
           codeMatchScore,
           codeStatus,
+          cancelled: ev.cancelled === true,
+          cancelledAt: typeof ev.cancelledAt === 'string' ? ev.cancelledAt : undefined,
+          cancelledByName:
+            typeof ev.cancelledByName === 'string' ? ev.cancelledByName : undefined,
+          cancellationNoticeSentAt:
+            typeof ev.cancellationNoticeSentAt === 'string'
+              ? ev.cancellationNoticeSentAt
+              : undefined,
           origen: (ev.origen === 'manual' || ev.origen === 'firestore' || ev.origen === 'zoho'
             ? ev.origen
             : 'zoho') as Deal['origen'],

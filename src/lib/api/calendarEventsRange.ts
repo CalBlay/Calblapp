@@ -137,6 +137,14 @@ export async function computeCalendarEventsInRange(
         stageGroup: d.StageGroup || d.stageGroup || '',
         HoraInici: d.HoraInici || d.horaInici || '',
         HoraFi: d.HoraFi || d.horaFi || '',
+        cancelled: d.cancelled === true,
+        cancelledAt: typeof d.cancelledAt === 'string' ? d.cancelledAt : '',
+        cancelledByName:
+          typeof d.cancelledByName === 'string' ? d.cancelledByName : '',
+        cancellationNoticeSentAt:
+          typeof d.cancellationNoticeSentAt === 'string'
+            ? d.cancellationNoticeSentAt
+            : '',
       })
     }
   }

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import { CALENDAR_CANCELLED_CARD_CLASS } from '@/lib/calendar/calendarCancellation'
 import {
   CALENDAR_BADGE_TEXT,
   CALENDAR_EVENT_TEXT,
@@ -218,7 +219,7 @@ export default function CalendarWeekView({
                         ring-1 ring-inset ring-slate-200
                         flex items-center gap-2
                         ${CALENDAR_EVENT_TEXT}
-                        ${colorByLN(span.ev.LN)}
+                        ${span.ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : colorByLN(span.ev.LN)}
                       `}
                       style={{
                         gridColumn: `${span.startIdx + 1} / ${span.endIdx + 2}`,
@@ -227,10 +228,15 @@ export default function CalendarWeekView({
                         transform: 'translateZ(0)',
                       }}
                     >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(span.ev.collection)}`} />
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : dotColorByCollection(span.ev.collection)}`} />
                       <span className="min-w-0 flex-1 text-left leading-tight line-clamp-2">
                         {span.ev.NomEvent}
                       </span>
+                      {span.ev.cancelled && (
+                        <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          CANCEL·LAT
+                        </span>
+                      )}
                       {badge && (
                         <span
                           className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
@@ -322,11 +328,16 @@ function MoreEventsPopup({
                 trigger={
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className={`flex items-center gap-2 truncate rounded-md ring-1 ring-inset ring-slate-200 bg-white px-2 py-1 ${CALENDAR_EVENT_TEXT}`}
+                    className={`flex items-center gap-2 truncate rounded-md px-2 py-1 ${CALENDAR_EVENT_TEXT} ${ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : 'bg-white ring-1 ring-inset ring-slate-200'}`}
                     style={{ transform: 'translateZ(0)' }}
                   >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(ev.collection)}`} />
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : dotColorByCollection(ev.collection)}`} />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
+                    {ev.cancelled && (
+                      <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        CANCEL·LAT
+                      </span>
+                    )}
                     {badge && (
                       <span
                         className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}

@@ -631,6 +631,7 @@ export default function CalendarPage() {
         Pax: deal.NumPax == null ? '' : String(deal.NumPax),
         Codi: deal.code || '',
         'Estat codi': deal.codeStatus || '',
+        Cancel·lat: deal.cancelled ? 'Sí' : 'No',
         Origen: deal.origen || '',
         Observacions: deal.ObservacionsZoho || '',
       })),

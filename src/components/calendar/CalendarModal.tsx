@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
-import { ExternalLink, Loader2, Mail, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, Loader2, Mail, RotateCcw, Trash2 } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
@@ -197,6 +197,9 @@ export default function CalendarModal({
     Array<{ key: string; url: string; name?: string; source?: string }>
   >([])
   const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
+  const [sendCancellationOpen, setSendCancellationOpen] = useState(false)
+  const [updatingCancellation, setUpdatingCancellation] = useState(false)
+  const [cancelled, setCancelled] = useState(deal.cancelled === true)
   const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null)
   const [multiDay, setMultiDay] = useState(false)
 
@@ -259,7 +262,6 @@ export default function CalendarModal({
     if (!permsReady) return true
     return uiActions[PERM.action(calendarPath, 'manual:delete')] === true
   }, [permsReady, uiActions])
-
   const canEdit = useMemo(() => {
     if (!permsReady) return baseCanEdit
     if (uiEdit[calendarPath] === false) return false
@@ -291,6 +293,10 @@ export default function CalendarModal({
     if (!permsReady) return false
     return uiActions[CALENDAR_PERM.manageMailGroups] === true
   }, [permsReady, uiActions])
+  const canCancelEvent =
+    !readonly && permsReady && uiActions[CALENDAR_PERM.cancelEvent] === true
+  const canSendCancellation =
+    permsReady && uiActions[CALENDAR_PERM.sendCancellation] === true
   const canSendDocuments = canSendEmail && files.length > 0
   const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
   const canDeleteEvent = canEdit && canDeleteManual && !isProductionOperationalWorker
@@ -383,8 +389,8 @@ export default function CalendarModal({
     }
   }, [isActive, comercialPool.length])
 
-  // Col·lecció: sempre guardem a stage_verd (segons decisió)
-  const COLLECTION = 'stage_verd' as const
+  // Conservem la col·lecció real de l'esdeveniment.
+  const COLLECTION = deal.collection || 'stage_verd'
 
   // 📝 Observacions Zoho (read-only)
   const ObservacionsZoho = useMemo(() => {
@@ -494,7 +500,8 @@ export default function CalendarModal({
     setInitialData(next)
     setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
-  }, [dealRecord])
+    setCancelled(deal.cancelled === true)
+  }, [dealRecord, deal.cancelled])
 
   // 🔄 Quan canviï el deal, carregar directament els adjunts estructurats
   useEffect(() => {
@@ -611,7 +618,37 @@ export default function CalendarModal({
     }
   }
 
-  // 🗑️ Elimina TOT l’esdeveniment
+  // 🔁 Restaura canvis locals no desats
+  const handleCancellationChange = async (nextCancelled: boolean) => {
+    if (!canCancelEvent || updatingCancellation) return
+    const question = nextCancelled
+      ? 'Vols cancel·lar aquest esdeveniment? No s\'eliminarà.'
+      : 'Vols reactivar aquest esdeveniment?'
+    if (!confirm(question)) return
+
+    try {
+      setUpdatingCancellation(true)
+      const res = await fetch(`/api/calendar/manual/${deal.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collection: COLLECTION, cancelled: nextCancelled }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(String(data?.error || 'No s\'ha pogut actualitzar'))
+
+      setCancelled(nextCancelled)
+      document.dispatchEvent(new CustomEvent('calendar:reload'))
+      onSaved?.()
+      if (nextCancelled && canSendCancellation) setSendCancellationOpen(true)
+    } catch (error) {
+      console.error('Error actualitzant la cancel·lació:', error)
+      alert(error instanceof Error ? error.message : 'No s\'ha pogut actualitzar la cancel·lació.')
+    } finally {
+      setUpdatingCancellation(false)
+    }
+  }
+
+  // Elimina definitivament l'esdeveniment
   const handleDeleteEvent = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (!canDeleteEvent) return
@@ -633,7 +670,6 @@ export default function CalendarModal({
     }
   }
 
-  // 🔁 Restaura canvis locals no desats
   const handleRestore = (e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (!canEdit) return
@@ -664,6 +700,23 @@ export default function CalendarModal({
 
   const body = (
         <div className="space-y-3 text-sm text-gray-700">
+          {cancelled && (
+            <div className="rounded-md border border-red-500 bg-red-100 p-3 text-red-950">
+              <div className="flex items-center gap-2 font-semibold">
+                <Ban className="h-4 w-4" />
+                Esdeveniment cancel·lat
+              </div>
+              {(deal.cancelledAt || deal.cancelledByName) && (
+                <p className="mt-1 text-xs text-red-800">
+                  {deal.cancelledAt
+                    ? new Date(deal.cancelledAt).toLocaleString('ca-ES')
+                    : ''}
+                  {deal.cancelledAt && deal.cancelledByName ? ' · ' : ''}
+                  {deal.cancelledByName || ''}
+                </p>
+              )}
+            </div>
+          )}
         
 
           {/* 📝 Observacions Zoho */}
@@ -1023,6 +1076,35 @@ export default function CalendarModal({
 
   const footer = (
         <div className="flex flex-col gap-2">
+          {canCancelEvent && (
+            <Button
+              type="button"
+              variant={cancelled ? 'outline' : 'destructive'}
+              className="w-full"
+              disabled={updatingCancellation}
+              onClick={() => void handleCancellationChange(!cancelled)}
+            >
+              {updatingCancellation ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : cancelled ? (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              ) : (
+                <Ban className="mr-2 h-4 w-4" />
+              )}
+              {cancelled ? 'Reactivar esdeveniment' : 'Cancel·lar esdeveniment'}
+            </Button>
+          )}
+          {cancelled && canSendCancellation && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => setSendCancellationOpen(true)}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Enviar avís de cancel·lació
+            </Button>
+          )}
           {canSave && (
             <>
               <Button onClick={handleSave} className="w-full">
@@ -1033,16 +1115,17 @@ export default function CalendarModal({
                   🔄 Restaurar
                 </Button>
               )}
-              {canDeleteEvent && (
-                <Button
-                  onClick={handleDeleteEvent}
-                  variant="default"
-                  className="bg-red-600 hover:bg-red-700 text-white w-full"
-                >
-                  🗑️ Eliminar esdeveniment
-                </Button>
-              )}
             </>
+          )}
+          {canDeleteEvent && (
+            <Button
+              type="button"
+              onClick={handleDeleteEvent}
+              variant="default"
+              className="w-full bg-red-600 text-white hover:bg-red-700"
+            >
+              🗑️ Eliminar esdeveniment
+            </Button>
           )}
 
           {!canSave && (
@@ -1068,10 +1151,29 @@ export default function CalendarModal({
     />
   )
 
+  const sendCancellationDialog = (
+    <CalendarSendDocumentsDialog
+      open={sendCancellationOpen}
+      onOpenChange={setSendCancellationOpen}
+      mode="cancellation"
+      eventId={deal.id}
+      collection={COLLECTION}
+      eventTitle={editData.NomEvent}
+      eventCode={editData.code}
+      eventDate={editData.DataInici}
+      eventLocation={editData.Ubicacio}
+      files={[]}
+      recipientCandidates={emailRecipientCandidates}
+      eventLN={editData.LN}
+      canManageMailGroups={canManageMailGroups}
+    />
+  )
+
   if (embedded) {
     return (
       <>
         {sendDocumentsDialog}
+        {sendCancellationDialog}
       <div className="flex h-full min-h-0 w-full flex-col bg-white">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
           <div className="min-w-0">
@@ -1109,6 +1211,7 @@ export default function CalendarModal({
   return (
     <>
       {sendDocumentsDialog}
+      {sendCancellationDialog}
 
       <Dialog modal={false} open={open} onOpenChange={setOpen}>
       {trigger ? (
@@ -1137,5 +1240,3 @@ export default function CalendarModal({
     </>
   )
 }
-
-

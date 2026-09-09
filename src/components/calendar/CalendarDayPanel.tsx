@@ -7,6 +7,7 @@ import { Plus } from 'lucide-react'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
 import { dealsForDay } from '@/lib/calendarDealDates'
+import { CALENDAR_CANCELLED_CARD_CLASS } from '@/lib/calendar/calendarCancellation'
 import { CALENDAR_BADGE_TEXT, CALENDAR_EVENT_TEXT } from '@/lib/calendarTypography'
 import CalendarNewEventModal from './CalendarNewEventModal'
 import { Button } from '@/components/ui/button'
@@ -93,7 +94,9 @@ export default function CalendarDayPanel({
                     type="button"
                     onClick={() => onSelectDeal(deal)}
                     className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                      selected
+                      deal.cancelled
+                        ? CALENDAR_CANCELLED_CARD_CLASS
+                        : selected
                         ? 'border-blue-300 bg-blue-50'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
@@ -110,6 +113,11 @@ export default function CalendarDayPanel({
                       <span className={`min-w-0 flex-1 truncate ${CALENDAR_EVENT_TEXT}`}>
                         {deal.NomEvent}
                       </span>
+                      {deal.cancelled && (
+                        <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          CANCEL·LAT
+                        </span>
+                      )}
                       {badge && (
                         <span
                           className={`shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}

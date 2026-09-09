@@ -61,6 +61,10 @@ export default function CalendarLegend({
             <span>{st.label}</span>
           </div>
         ))}
+        <div className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-red-700" />
+          <span>Cancel·lat</span>
+        </div>
       </div>
 
       {showCodeStatus && (
