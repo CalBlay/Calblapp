@@ -305,9 +305,12 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
 <html lang="ca">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(titleSafe)}</title>
     <style>
-      body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px 24px 32px; color: #111; font-size: 12px; line-height: 1.45; }
+      *, *::before, *::after { box-sizing: border-box; }
+      html { width: 100%; }
+      body { width: auto; min-width: 0; font-family: 'Segoe UI', Arial, sans-serif; margin: 20px 24px 32px; color: #111; font-size: 12px; line-height: 1.45; }
       .calblay-print-brand {
         display: flex;
         align-items: center;
@@ -362,20 +365,31 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
       .event-block h3 { font-size: 13px; margin: 0 0 4px; }
       .muted { color: #52525b; font-weight: normal; }
       .event-meta { margin: 0 0 8px; color: #52525b; font-size: 11px; }
-      table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 4px; }
-      th, td { border: 1px solid #d4d4d8; padding: 5px 6px; vertical-align: top; text-align: left; }
+      table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 10px; margin-bottom: 4px; }
+      th, td { min-width: 0; border: 1px solid #d4d4d8; padding: 5px 6px; vertical-align: top; text-align: left; overflow-wrap: anywhere; word-break: normal; }
+      th:nth-child(1) { width: 9%; }
+      th:nth-child(2) { width: 8%; }
+      th:nth-child(3) { width: 7%; }
+      th:nth-child(4) { width: 7%; }
+      th:nth-child(5) { width: 12%; }
+      th:nth-child(6), th:nth-child(7) { width: 28.5%; }
       th { background: #f4f4f5; font-weight: 600; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; break-inside: avoid; }
       tr:nth-child(even) td { background: #fafafa; }
-      td.wrap { max-width: 220px; word-break: break-word; }
+      td.wrap { word-break: break-word; }
       .meeting-comment-row td { background: #f0f9ff !important; border-top: 0; padding: 8px 10px 10px; color: #1e293b; }
       .meeting-comment-row strong { display: block; margin-bottom: 3px; color: #0369a1; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
       .meeting-comment-row div { white-space: normal; word-break: break-word; font-size: 10.5px; line-height: 1.45; }
       .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e4e4e7; font-size: 10px; color: #71717a; }
       .empty { padding: 16px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; color: #78350f; }
+      @page { size: A4 landscape; margin: 12mm; }
       @media print {
-        body { margin: 12mm; }
+        html, body { width: auto !important; min-width: 0 !important; max-width: none !important; }
+        body { margin: 0; font-size: 12px; zoom: 1; }
+        table { width: 100% !important; max-width: 100% !important; }
+        .calblay-print-brand { page-break-inside: avoid; break-inside: avoid; }
+        .day-block h2, .event-block h3, .event-meta { page-break-after: avoid; break-after: avoid-page; }
         .attendance { page-break-inside: avoid; break-inside: avoid; }
       }
     </style>

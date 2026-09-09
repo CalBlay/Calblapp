@@ -57,3 +57,18 @@ test('meeting comment uses a full-width row below the incident', () => {
   assert.match(html, /<tr class="meeting-comment-row"><td colspan="7">/)
   assert.doesNotMatch(html, /<th>Comentari de la reunió<\/th>/)
 })
+
+test('print layout keeps the preview scale and paginates on A4 landscape', () => {
+  const html = buildIncidentsMeetingMinutesHtml({
+    incidents: [],
+    filters: { from: '2026-09-01', to: '2026-09-02' },
+    meetingNotes: '',
+    generatedAtIso: '2026-09-02T10:00:00.000Z',
+  })
+
+  assert.match(html, /<meta name="viewport" content="width=device-width, initial-scale=1" \/>/)
+  assert.match(html, /@page \{ size: A4 landscape; margin: 12mm; \}/)
+  assert.match(html, /table-layout: fixed/)
+  assert.match(html, /overflow-wrap: anywhere/)
+  assert.match(html, /body \{ margin: 0; font-size: 12px; zoom: 1; \}/)
+})
