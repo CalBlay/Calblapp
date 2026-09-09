@@ -491,6 +491,7 @@ function FixosLnTab() {
                       <tr className="border-b border-slate-200 bg-slate-50">
                         <th className={thClass}>LN</th>
                         <th className={thClass}>Codi</th>
+                        <th className={thClass}>Mètode</th>
                         <th className={cn(thClass, 'text-right')}>Cost salarial</th>
                       </tr>
                     </thead>
@@ -580,8 +581,24 @@ function EstructuraLnTab() {
       }
       const n = Object.keys(json.month?.byLn || {}).length
       const estat = json.month?.execucioEstat || ''
+      const pendingTotals = Object.values(
+        json.month?.byLn || {}
+      ).filter(
+        (rawRow) => {
+          const row = rawRow as {
+            personalTotalLn?: number | null
+            personalIndirecteMode?: string
+            personalIndirecteFixConfigurat?: number | null
+          }
+          return row.personalIndirecteMode === 'FIX_DEPARTAMENTS'
+            ? row.personalIndirecteFixConfigurat == null
+            : row.personalTotalLn == null
+        }
+      ).length
       setSyncMsg(
-        `Sincronitzat ${syncYm} · ${n} LN · personal indirecte net (${estat})`
+        pendingTotals > 0
+          ? `Sincronitzat ${syncYm}, però Opsia encara no envia el total de personal de ${pendingTotals} LN; no es calcularà cap pot incorrecte.`
+          : `Sincronitzat ${syncYm} · ${n} LN · personal indirecte net (${estat})`
       )
       await mutate()
     } catch (e) {
@@ -594,10 +611,11 @@ function EstructuraLnTab() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600">
-        <strong>Cost fix indirecte de personal</strong> per LN (repartiment SC per
-        departament), <strong>excloent només</strong> els depts de Logística i Cuina
-        Central. Ex.: Restaurants (import fix admin/RRHH/…) no es redueix amb el %
-        global de L+C. Compres i gestió: més endavant.
+        <strong>Cost fix indirecte de personal</strong> per LN: total de personal
+        del compte d’Opsia menys el fix directe de la LN i menys el personal de
+        Logística/Cuina ja inclòs al cost operatiu. Només el resultat es reparteix
+        entre tots els esdeveniments de la LN. Quan Opsia té «Import fix total»,
+        s’aplica directament aquell import mensual sense recalcular-lo.
       </p>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -632,7 +650,8 @@ function EstructuraLnTab() {
       {!configured ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           Configura <code className="text-xs">OPSIA_FINANCE_BASE_URL</code> i{' '}
-          <code className="text-xs">OPSIA_FINANCE_API_KEY</code>. Cal desplegar{' '}
+          <code className="text-xs">OPSIA_FINANCE_API_KEY</code> o{' '}
+          <code className="text-xs">OPSIA_EXTERNAL_API_KEY</code>. Cal desplegar{' '}
           <code className="text-xs">/api/external/cost-estructura-ln</code>.
         </p>
       ) : null}
@@ -649,8 +668,11 @@ function EstructuraLnTab() {
         <div className="space-y-6">
           {byMonth.map(([ym, monthRows]) => {
             const meta = metaByYm.get(ym)
+            const missingTotals = monthRows.filter(
+              (row) => row.personalIndirecteCalculat == null
+            ).length
             const totalNet = monthRows.reduce(
-              (s, r) => s + (r.personalImputatNet || 0),
+              (s, r) => s + (r.personalIndirecteCalculat || 0),
               0
             )
             const totalExclos = monthRows.reduce(
@@ -669,8 +691,12 @@ function EstructuraLnTab() {
                     ) : null}
                   </h2>
                   <span className="text-sm text-slate-600">
-                    Total personal net:{' '}
-                    <strong>{fmtEuro(totalNet)}</strong>
+                    Total fix indirecte calculat:{' '}
+                    <strong>
+                      {missingTotals > 0
+                        ? `Incomplet · ${missingTotals} LN pendents d'Opsia`
+                        : fmtEuro(totalNet)}
+                    </strong>
                     <span className="ml-2 text-slate-400">
                       (exclòs L+C per dept {fmtEuro(totalExclos)})
                     </span>
@@ -682,18 +708,20 @@ function EstructuraLnTab() {
                       <tr className="border-b border-slate-200 bg-slate-50">
                         <th className={thClass}>LN</th>
                         <th className={thClass}>Codi</th>
+                        <th className={thClass}>Mètode</th>
                         <th className={cn(thClass, 'text-right')}>
-                          Cost fix indirecte personal
+                          Total personal Opsia
                         </th>
+                        <th className={cn(thClass, 'text-right')}>
+                          Fix configurat Opsia
+                        </th>
+                        <th className={cn(thClass, 'text-right')}>Fix directe</th>
                         <th className={cn(thClass, 'text-right')}>Exclòs L+C</th>
-                        <th className={cn(thClass, 'text-right')}>Personal brut</th>
+                        <th className={cn(thClass, 'text-right')}>Fix indirecte</th>
                       </tr>
                     </thead>
                     <tbody>
                       {monthRows.map((row) => {
-                        const personalBrut =
-                          (row.personalImputatNet || 0) +
-                          (row.personalExclosLogisticaCuina || 0)
                         return (
                           <tr
                             key={`${row.ym}-${row.lnCodi}`}
@@ -708,14 +736,33 @@ function EstructuraLnTab() {
                             >
                               {row.lnCodi}
                             </td>
+                            <td className={tdClass}>
+                              {row.personalIndirecteMode === 'FIX_DEPARTAMENTS'
+                                ? 'Fix mensual Opsia'
+                                : 'Residual de la LN'}
+                            </td>
                             <td className={cn(tdClass, 'text-right font-medium')}>
-                              {fmtEuro(row.personalImputatNet)}
+                              {row.personalTotalLn == null
+                                ? "Pendent d'Opsia"
+                                : fmtEuro(row.personalTotalLn)}
+                            </td>
+                            <td className={cn(tdClass, 'text-right text-slate-500')}>
+                              {row.personalIndirecteFixConfigurat == null
+                                ? '—'
+                                : fmtEuro(row.personalIndirecteFixConfigurat)}
+                            </td>
+                            <td className={cn(tdClass, 'text-right text-slate-500')}>
+                              {row.fixedDirecte == null
+                                ? 'No importat'
+                                : fmtEuro(row.fixedDirecte)}
                             </td>
                             <td className={cn(tdClass, 'text-right text-slate-500')}>
                               {fmtEuro(row.personalExclosLogisticaCuina)}
                             </td>
                             <td className={cn(tdClass, 'text-right text-slate-500')}>
-                              {fmtEuro(personalBrut)}
+                              {row.personalIndirecteCalculat == null
+                                ? 'No calculat'
+                                : fmtEuro(row.personalIndirecteCalculat)}
                             </td>
                           </tr>
                         )

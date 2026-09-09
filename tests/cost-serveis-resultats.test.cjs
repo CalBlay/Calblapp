@@ -1,0 +1,101 @@
+const assert = require('node:assert/strict')
+const { test } = require('node:test')
+
+const { metricsFromParts } = require('../src/lib/costServeis/resultatsAggregate')
+const {
+  allocateCostPool,
+  calculateIndirectPersonnelPool,
+} = require('../src/lib/costServeis/fixedCostMath')
+
+test('indirect personnel subtracts direct and logistics/kitchen from the Opsia LN total', () => {
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: 339888.5,
+      fixedDirect: 41251.58,
+      logisticsKitchen: 224971.9,
+    }),
+    73665.02
+  )
+})
+
+test('indirect personnel is unavailable when Opsia does not provide the LN total', () => {
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: null,
+      fixedDirect: 41251.58,
+      logisticsKitchen: 224971.9,
+    }),
+    null
+  )
+})
+
+test('configured monthly fixed amounts from Opsia are exported unchanged', () => {
+  for (const configuredFixed of [20000, 15000, 5000]) {
+    assert.equal(
+      calculateIndirectPersonnelPool({
+        personalTotalLn: 999999,
+        fixedDirect: 367053.66,
+        logisticsKitchen: 9230.77,
+        mode: 'FIX_DEPARTAMENTS',
+        configuredFixed,
+      }),
+      configuredFixed
+    )
+  }
+})
+
+test('indirect pool is shared by every event, including zero billing', () => {
+  const events = [
+    { id: 'a', billing: 100 },
+    { id: 'b', billing: 0 },
+    { id: 'c' },
+  ]
+  const result = allocateCostPool(events, 100, () => 1)
+
+  assert.equal(result.get(events[0]), 33.33)
+  assert.equal(result.get(events[1]), 33.33)
+  assert.equal(result.get(events[2]), 33.34)
+  assert.equal([...result.values()].reduce((sum, value) => sum + value, 0), 100)
+})
+
+test('resultats exposes every cost layer and the pots consolidation', () => {
+  const row = metricsFromParts({
+    eventCount: 1,
+    numPax: 100,
+    billing: 1000,
+    operationalCost: 300,
+    theoreticalPurchaseCost: 200,
+    theoreticalManagementCost: 100,
+    fixedDirect: 80,
+    fixedIndirect: 70,
+    fixedDirectNormalized: 60,
+    fixedIndirectNormalized: 50,
+  })
+
+  assert.equal(row.contributionMargin, 700)
+  assert.equal(row.marginAfterDirect, 620)
+  assert.equal(row.potsFullCost, 650)
+  assert.equal(row.potsFullMargin, 350)
+  assert.equal(row.potsFullMarginPct, 0.35)
+  assert.equal(row.normalizedPotsFullCost, 610)
+  assert.equal(row.normalizedPotsFullMargin, 390)
+})
+
+test('management consolidation replaces indirect pots to avoid double counting', () => {
+  const row = metricsFromParts({
+    eventCount: 1,
+    numPax: 0,
+    billing: 1000,
+    operationalCost: 300,
+    theoreticalPurchaseCost: 200,
+    theoreticalManagementCost: 100,
+    fixedDirect: 80,
+    fixedIndirect: 70,
+    fixedDirectNormalized: 0,
+    fixedIndirectNormalized: 0,
+  })
+
+  assert.equal(row.managementFullCost, 680)
+  assert.equal(row.managementFullMargin, 320)
+  assert.equal(row.managementFullMarginPct, 0.32)
+})

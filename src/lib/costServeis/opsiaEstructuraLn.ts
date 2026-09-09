@@ -38,12 +38,38 @@ function normalizeRow(
       ? estat
       : 'SENSE_DADES'
 
+  const compatibleRaw = raw as Partial<OpsiaEstructuraLnRow> & {
+    personalTotal?: number
+    costPersonalLn?: number
+  }
+  const personalTotalRaw =
+    compatibleRaw.personalTotalLn ??
+    compatibleRaw.personalTotal ??
+    compatibleRaw.costPersonalLn
+  const personalTotalLn =
+    personalTotalRaw == null || !Number.isFinite(Number(personalTotalRaw))
+      ? null
+      : round2(Math.max(0, Number(personalTotalRaw)))
+  const personalIndirecteMode =
+    compatibleRaw.personalIndirecteMode === 'FIX_DEPARTAMENTS'
+      ? 'FIX_DEPARTAMENTS'
+      : 'RESIDUAL_LN'
+  const personalIndirecteFixRaw = compatibleRaw.personalIndirecteFixConfigurat
+  const personalIndirecteFixConfigurat =
+    personalIndirecteFixRaw == null ||
+    !Number.isFinite(Number(personalIndirecteFixRaw))
+      ? null
+      : round2(Math.max(0, Number(personalIndirecteFixRaw)))
+
   return {
     lnCodi: String(raw.lnCodi || '').toUpperCase(),
     lnNom: String(raw.lnNom || raw.lnCodi || ''),
     vista: 'gestio',
     compresImputades: round2(Number(raw.compresImputades) || 0),
     personalImputat: round2(Number(raw.personalImputat) || 0),
+    personalTotalLn,
+    personalIndirecteMode,
+    personalIndirecteFixConfigurat,
     personalExclosLogisticaCuina: round2(Number(raw.personalExclosLogisticaCuina) || 0),
     personalImputatNet: round2(Number(raw.personalImputatNet) || 0),
     gestioImputada: round2(Number(raw.gestioImputada) || 0),
@@ -158,7 +184,20 @@ export async function syncOpsiaEstructuraLnMonth(opts: {
 
   const byLn: Record<string, OpsiaEstructuraLnRow> = {}
   for (const row of api.lines) {
-    byLn[row.lnCodi] = row
+    const previous = prev?.byLn?.[row.lnCodi]
+    byLn[row.lnCodi] = {
+      ...row,
+      personalTotalLn:
+        row.personalTotalLn == null && previous?.personalTotalLn != null
+          ? previous.personalTotalLn
+          : row.personalTotalLn,
+      personalIndirecteFixConfigurat:
+        row.personalIndirecteMode === 'FIX_DEPARTAMENTS' &&
+        row.personalIndirecteFixConfigurat == null &&
+        previous?.personalIndirecteFixConfigurat != null
+          ? previous.personalIndirecteFixConfigurat
+          : row.personalIndirecteFixConfigurat,
+    }
   }
 
   const doc: OpsiaEstructuraLnMonthDoc = {
@@ -195,6 +234,15 @@ export function flattenEstructuraLnMonthsToRows(
         estructuraNeta: ln.estructuraNeta,
         estructuraCentral: ln.estructuraCentral,
         personalImputatNet: ln.personalImputatNet,
+        personalTotalLn: ln.personalTotalLn ?? null,
+        personalIndirecteMode:
+          ln.personalIndirecteMode === 'FIX_DEPARTAMENTS'
+            ? 'FIX_DEPARTAMENTS'
+            : 'RESIDUAL_LN',
+        personalIndirecteFixConfigurat:
+          ln.personalIndirecteFixConfigurat ?? null,
+        fixedDirecte: null,
+        personalIndirecteCalculat: null,
         personalExclosLogisticaCuina: ln.personalExclosLogisticaCuina,
         gestioImputada: ln.gestioImputada,
         compresImputades: ln.compresImputades,

@@ -57,7 +57,11 @@ export function getOpsiaFinanceConfig(): {
   const baseUrl = String(process.env.OPSIA_FINANCE_BASE_URL || '')
     .trim()
     .replace(/\/$/, '')
-  const apiKey = String(process.env.OPSIA_FINANCE_API_KEY || '').trim()
+  // OpsiaFinance anomena aquesta mateixa credencial OPSIA_EXTERNAL_API_KEY.
+  // Mantenim el nom antic per compatibilitat amb desplegaments existents.
+  const apiKey = String(
+    process.env.OPSIA_FINANCE_API_KEY || process.env.OPSIA_EXTERNAL_API_KEY || ''
+  ).trim()
   return { baseUrl, apiKey, configured: Boolean(baseUrl && apiKey) }
 }
 

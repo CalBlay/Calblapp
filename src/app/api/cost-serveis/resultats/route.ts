@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { canViewUiPath } from '@/lib/server/permissions'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import { buildCostServeisListItems } from '@/lib/costServeis/buildListItems'
+import { allocateResultatsFixedCosts } from '@/lib/costServeis/resultatsFixedCosts'
+import type { ResultatsCostItem } from '@/lib/costServeis/resultatsAggregate'
 import {
   groupByLocation,
   groupByMonth,
@@ -14,6 +16,15 @@ import {
 export const runtime = 'nodejs'
 
 const MODULE_PATH = '/menu/cost-serveis'
+
+function fullMonthRange(from: string, to: string) {
+  const [toYear, toMonth] = to.slice(0, 7).split('-').map(Number)
+  const lastDay = new Date(Date.UTC(toYear, toMonth, 0)).getUTCDate()
+  return {
+    from: `${from.slice(0, 7)}-01`,
+    to: `${to.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth()
@@ -34,7 +45,34 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { items } = await buildCostServeisListItems(from, to)
+    // Calcular sempre contra tots els events dels mesos complets evita que la
+    // quota d'un event canviï quan l'usuari filtra només alguns dies.
+    const monthRange = fullMonthRange(from, to)
+    const { items: monthlyItems } = await buildCostServeisListItems(
+      monthRange.from,
+      monthRange.to
+    )
+    const fixed = await allocateResultatsFixedCosts({
+      monthlyItems,
+      fromYm: monthRange.from.slice(0, 7),
+      toYm: monthRange.to.slice(0, 7),
+    })
+    const items = monthlyItems
+      .filter((item) => item.eventDate >= from && item.eventDate <= to)
+      .map((item) => ({
+        ...item,
+        ...(fixed.byEventId.get(item.eventId) || {
+          fixedDirect: 0,
+          fixedIndirect: 0,
+          fixedDirectNormalized: 0,
+          fixedIndirectNormalized: 0,
+          purchasePct: 0,
+          managementPct: 0,
+          theoreticalPurchaseCost: 0,
+          theoreticalManagementCost: 0,
+          pctSource: 'none' as const,
+        }),
+      })) satisfies ResultatsCostItem[]
     return NextResponse.json({
       from,
       to,
@@ -43,6 +81,8 @@ export async function GET(req: NextRequest) {
       byServiceType: groupByServiceType(items),
       byLocation: groupByLocation(items),
       byMonth: groupByMonth(items),
+      fixedCostAudit: fixed.audit,
+      fixedCostCoverage: fixed.coverage,
     })
   } catch (err) {
     console.error('[cost-serveis/resultats]', err)

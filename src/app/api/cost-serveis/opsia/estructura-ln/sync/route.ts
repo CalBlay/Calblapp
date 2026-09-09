@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'OpsiaFinance no configurat (OPSIA_FINANCE_BASE_URL / API_KEY)',
+          'OpsiaFinance no configurat (OPSIA_FINANCE_BASE_URL / OPSIA_FINANCE_API_KEY o OPSIA_EXTERNAL_API_KEY)',
       },
       { status: 503 }
     )

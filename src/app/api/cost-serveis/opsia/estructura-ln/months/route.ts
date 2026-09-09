@@ -6,6 +6,8 @@ import {
   flattenEstructuraLnMonthsToRows,
   listOpsiaEstructuraLnMonthDocs,
 } from '@/lib/costServeis/opsiaEstructuraLn'
+import { listOpsiaFixedLnMonthDocs } from '@/lib/costServeis/opsiaFixedLn'
+import { calculateIndirectPersonnelPool } from '@/lib/costServeis/fixedCostMath'
 
 export const runtime = 'nodejs'
 
@@ -33,8 +35,28 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const docs = await listOpsiaEstructuraLnMonthDocs({ fromYm: from, toYm: to })
-    const rows = flattenEstructuraLnMonthsToRows(docs)
+    const [docs, fixedDocs] = await Promise.all([
+      listOpsiaEstructuraLnMonthDocs({ fromYm: from, toYm: to }),
+      listOpsiaFixedLnMonthDocs({ fromYm: from, toYm: to }),
+    ])
+    const fixedByYm = new Map(fixedDocs.map((doc) => [doc.ym, doc]))
+    const rows = flattenEstructuraLnMonthsToRows(docs).map((row) => {
+      const fixedRow = fixedByYm.get(row.ym)?.byLn?.[row.lnCodi]
+      const fixedDirecte = fixedRow
+        ? Math.max(0, Number(fixedRow.costSalarial) || 0)
+        : null
+      return {
+        ...row,
+        fixedDirecte,
+        personalIndirecteCalculat: calculateIndirectPersonnelPool({
+          personalTotalLn: row.personalTotalLn,
+          fixedDirect: fixedDirecte,
+          logisticsKitchen: row.personalExclosLogisticaCuina,
+          mode: row.personalIndirecteMode,
+          configuredFixed: row.personalIndirecteFixConfigurat,
+        }),
+      }
+    })
     const { configured } = getOpsiaFinanceConfig()
     return NextResponse.json({
       from,

@@ -12,12 +12,14 @@ import {
   DEFAULT_SERVEI_COST_WEIGHTS,
 } from '@/lib/serveis/utils'
 import type { ServeiWeightRow, PonderacioDept } from '@/lib/costServeis/serveiWeights'
-import { PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import type { OpsiaDeptImport } from '@/lib/costServeis/opsiaFinance'
 import type { ServiceCostSheet } from '@/lib/costServeis/types'
 import { recomputeSheet } from '@/lib/costServeis/calc'
 import type { HourlyRateByDept, FuelConfig } from '@/lib/costServeis/types'
 import type { SpaceKind } from '@/lib/costServeis/spaceOwnership'
+
+// Manté aquest mòdul de càlcul client-safe: serveiWeights també carrega Firestore.
+const PONDERACIO_DEPTS: readonly PonderacioDept[] = ['logistica', 'cuina']
 
 export type StructurePots = {
   gestio: number

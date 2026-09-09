@@ -96,6 +96,9 @@ export function resolveOpsiaLnCodi(
   const upper = raw.toUpperCase()
   if (byLn[upper]) return upper
 
+  // A CalBlapp aquesta LN es diu Agenda; a OpsiaFinance es diu CENTRAL.
+  if (fold(raw) === 'agenda' && byLn.LN00000) return 'LN00000'
+
   const f = fold(normalizeManualLnName(raw) || raw)
   if (!f) return null
 

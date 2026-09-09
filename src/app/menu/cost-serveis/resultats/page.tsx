@@ -16,6 +16,10 @@ import type {
   ResultatsItemRow,
   ResultatsMetrics,
 } from '@/lib/costServeis/resultatsAggregate'
+import type {
+  FixedCostAuditRow,
+  FixedCostCoverage,
+} from '@/lib/costServeis/resultatsFixedCosts'
 import PeTab from '@/app/menu/cost-serveis/resultats/PeTab'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -23,8 +27,10 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 const EMPTY_RESULTATS_ITEMS: ResultatsItemRow[] = []
 const EMPTY_RESULTATS_GROUPS: ResultatsGroupRow[] = []
 
-type MainTab = 'analisi' | 'pe'
+type MainTab = 'analisi' | 'fixos' | 'pe'
 type ViewMode = 'individual' | 'service' | 'location' | 'month'
+type FixedBasis = 'monthly' | 'normalized'
+type ConsolidationMode = 'pots' | 'pctGestio'
 
 type SortKey =
   | 'label'
@@ -107,6 +113,307 @@ function SortTh({
   )
 }
 
+type FixedDisplayRow = ResultatsItemRow | ResultatsGroupRow
+
+function isItemRow(row: FixedDisplayRow): row is ResultatsItemRow {
+  return 'eventId' in row
+}
+
+function fixedValues(
+  row: FixedDisplayRow,
+  basis: FixedBasis,
+  mode: ConsolidationMode
+) {
+  const direct =
+    basis === 'monthly' ? row.fixedDirect : row.fixedDirectNormalized
+  const indirect =
+    basis === 'monthly' ? row.fixedIndirect : row.fixedIndirectNormalized
+  const total =
+    mode === 'pots'
+      ? row.operationalCost + row.theoreticalPurchaseCost + direct + indirect
+      : row.operationalCost +
+        row.theoreticalPurchaseCost +
+        row.theoreticalManagementCost +
+        direct
+  const margin = row.billing - total
+  return {
+    direct,
+    indirect,
+    total,
+    margin,
+    marginPct: row.billing > 0 ? margin / row.billing : null,
+  }
+}
+
+function StatusLabel({
+  status,
+}: {
+  status: FixedCostAuditRow['directStatus'] | FixedCostAuditRow['indirectStatus']
+}) {
+  const labels = {
+    ok: 'Correcte',
+    missing_month: 'Falta mes',
+    missing_ln: 'Falta LN',
+    missing_base: 'Falta total Opsia',
+    no_driver: 'Sense base',
+  }
+  const ok = status === 'ok'
+  return (
+    <span className={cn('text-xs', ok ? 'text-emerald-700' : 'font-medium text-amber-700')}>
+      {labels[status]}
+    </span>
+  )
+}
+
+function FixedCostsPanel({
+  summary,
+  items,
+  groups,
+  view,
+  basis,
+  mode,
+  audit,
+  coverage,
+  onBasis,
+  onMode,
+}: {
+  summary: ResultatsMetrics
+  items: ResultatsItemRow[]
+  groups: ResultatsGroupRow[]
+  view: ViewMode
+  basis: FixedBasis
+  mode: ConsolidationMode
+  audit: FixedCostAuditRow[]
+  coverage: FixedCostCoverage | null
+  onBasis: (basis: FixedBasis) => void
+  onMode: (mode: ConsolidationMode) => void
+}) {
+  const rows: FixedDisplayRow[] = view === 'individual' ? items : groups
+  const totals = fixedValues(summary as FixedDisplayRow, basis, mode)
+  const directTotal =
+    basis === 'monthly' ? summary.fixedDirect : summary.fixedDirectNormalized
+  const indirectTotal =
+    basis === 'monthly' ? summary.fixedIndirect : summary.fixedIndirectNormalized
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={basis === 'monthly' ? 'default' : 'outline'}
+          onClick={() => onBasis('monthly')}
+        >
+          Real mensual
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={basis === 'normalized' ? 'default' : 'outline'}
+          onClick={() => onBasis('normalized')}
+        >
+          Anual normalitzat
+        </Button>
+        <span className="mx-1 border-l border-slate-200" />
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === 'pots' ? 'default' : 'outline'}
+          onClick={() => onMode('pots')}
+        >
+          Consolidat per pots
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === 'pctGestio' ? 'default' : 'outline'}
+          onClick={() => onMode('pctGestio')}
+        >
+          Consolidat amb % gestió
+        </Button>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        {mode === 'pots'
+          ? 'Suma variable + compres teòriques + fix directe + fix indirecte. El fix indirecte és el total de personal Opsia menys el fix directe i menys L+C operatiu; es reparteix entre tots els events del mes i LN.'
+          : 'Suma variable + compres teòriques + gestió teòrica + fix directe. El fix indirecte es mostra però no se suma per evitar doble comptatge.'}
+        {basis === 'normalized' && coverage
+          ? ` Normalització: ${coverage.normalizedYears
+              .map(
+                (row) =>
+                  `${row.year} (${row.directMonths} mesos directes / ${row.indirectMonths} indirectes)`
+              )
+              .join(', ')}.`
+          : ''}
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+        <KpiCard label="Cost variable" value={fmtEuro(summary.operationalCost)} />
+        <KpiCard label="Compres teòriques" value={fmtEuro(summary.theoreticalPurchaseCost)} />
+        <KpiCard label="Gestió teòrica" value={fmtEuro(summary.theoreticalManagementCost)} />
+        <KpiCard label="Fix directe" value={fmtEuro(directTotal)} />
+        <KpiCard label="Fix indirecte" value={fmtEuro(indirectTotal)} />
+        <KpiCard label="Cost consolidat" value={fmtEuro(totals.total)} />
+        <KpiCard label="Resultat consolidat" value={fmtEuro(totals.margin)} />
+      </div>
+
+      {coverage &&
+      (coverage.monthsMissingDirect.length > 0 ||
+        coverage.monthsMissingIndirect.length > 0 ||
+        coverage.yearsMissingPercentages.length > 0) ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Dades incompletes.
+          {coverage.monthsMissingDirect.length > 0
+            ? ` Fix directe pendent: ${coverage.monthsMissingDirect.join(', ')}.`
+            : ''}
+          {coverage.monthsMissingIndirect.length > 0
+            ? ` Fix indirecte pendent: ${coverage.monthsMissingIndirect.join(', ')}.`
+            : ''}
+          {coverage.yearsMissingPercentages.length > 0
+            ? ` Percentatges pendents: ${coverage.yearsMissingPercentages.join(', ')}.`
+            : ''}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-[1280px] text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">{view === 'individual' ? 'Esdeveniment' : 'Agrupació'}</th>
+              {view === 'individual' ? <th className="px-3 py-2">LN</th> : null}
+              <th className="px-3 py-2 text-right">Facturació</th>
+              <th className="px-3 py-2 text-right">Variable</th>
+              <th className="px-3 py-2 text-right">Compres %</th>
+              <th className="px-3 py-2 text-right">Gestió %</th>
+              <th className="px-3 py-2 text-right">Fix directe</th>
+              <th className="px-3 py-2 text-right">Fix indirecte</th>
+              <th className="px-3 py-2 text-right">Cost consolidat</th>
+              <th className="px-3 py-2 text-right">Resultat</th>
+              <th className="px-3 py-2 text-right">% resultat</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const values = fixedValues(row, basis, mode)
+              return (
+                <tr
+                  key={isItemRow(row) ? row.eventId : row.key}
+                  className="border-t border-slate-100"
+                >
+                  <td className="px-3 py-2">
+                    {isItemRow(row) ? (
+                      <Link
+                        href={`/menu/cost-serveis/edicio/${row.eventId}`}
+                        className="text-cyan-700 hover:underline"
+                      >
+                        {row.eventDate} · {row.eventName}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{row.label}</span>
+                    )}
+                  </td>
+                  {isItemRow(row) ? (
+                    <td className="px-3 py-2 font-medium text-slate-700">
+                      {row.ln || 'Sense LN'}
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.billing)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.operationalCost)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {fmtEuro(row.theoreticalPurchaseCost)}
+                    <span className="ml-1 text-[10px] text-slate-400">{fmtPct(row.purchasePct)}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {fmtEuro(row.theoreticalManagementCost)}
+                    <span className="ml-1 text-[10px] text-slate-400">{fmtPct(row.managementPct)}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(values.direct)}</td>
+                  <td className={cn('px-3 py-2 text-right tabular-nums', mode === 'pctGestio' && 'text-slate-400')}>
+                    {fmtEuro(values.indirect)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">{fmtEuro(values.total)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmtEuro(values.margin)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtPct(values.marginPct)}</td>
+                </tr>
+              )
+            })}
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={view === 'individual' ? 11 : 10}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
+                  Cap esdeveniment en aquest període.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      <details className="rounded-xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-800">
+          Auditoria del repartiment mensual
+        </summary>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Mes</th>
+                <th className="px-3 py-2">LN</th>
+                <th className="px-3 py-2 text-right">Events</th>
+                <th className="px-3 py-2 text-right">Facturació LN</th>
+                <th className="px-3 py-2 text-right">Pot directe</th>
+                <th className="px-3 py-2 text-right">Directe repartit</th>
+                <th className="px-3 py-2">Estat directe</th>
+                <th className="px-3 py-2">Mètode indirecte</th>
+                <th className="px-3 py-2 text-right">Personal total Opsia</th>
+                <th className="px-3 py-2 text-right">Fix configurat Opsia</th>
+                <th className="px-3 py-2 text-right">L+C operatiu</th>
+                <th className="px-3 py-2 text-right">Pot indirecte</th>
+                <th className="px-3 py-2 text-right">Indirecte repartit</th>
+                <th className="px-3 py-2">Estat indirecte</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audit.map((row) => (
+                <tr key={row.key} className="border-t border-slate-100">
+                  <td className="px-3 py-2">{row.ym}</td>
+                  <td className="px-3 py-2">{row.ln}</td>
+                  <td className="px-3 py-2 text-right">{row.eventCount}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.billing)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.fixedDirectPool)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.fixedDirectAllocated)}</td>
+                  <td className="px-3 py-2"><StatusLabel status={row.directStatus} /></td>
+                  <td className="px-3 py-2">
+                    {row.fixedIndirectMode === 'FIX_DEPARTAMENTS'
+                      ? 'Fix mensual Opsia'
+                      : 'Residual LN'}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {row.personalTotalLn == null ? '—' : fmtEuro(row.personalTotalLn)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {row.fixedIndirectConfigured == null
+                      ? '—'
+                      : fmtEuro(row.fixedIndirectConfigured)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {fmtEuro(row.fixedIndirectExcludedOperational)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.fixedIndirectPool)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(row.fixedIndirectAllocated)}</td>
+                  <td className="px-3 py-2"><StatusLabel status={row.indirectStatus} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  )
+}
+
 export default function CostServeisResultatsPage() {
   const [mainTab, setMainTab] = useState<MainTab>('analisi')
   const [ym, setYm] = useState(currentYearMonth())
@@ -114,6 +421,9 @@ export default function CostServeisResultatsPage() {
   const [toCustom, setToCustom] = useState('')
   const [peYear, setPeYear] = useState(() => new Date().getFullYear())
   const [view, setView] = useState<ViewMode>('service')
+  const [fixedBasis, setFixedBasis] = useState<FixedBasis>('monthly')
+  const [consolidationMode, setConsolidationMode] =
+    useState<ConsolidationMode>('pots')
   const [sortKey, setSortKey] = useState<SortKey>('marginPct')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -125,7 +435,7 @@ export default function CostServeisResultatsPage() {
   }, [ym, fromCustom, toCustom])
 
   const { data, isLoading, error } = useSWR(
-    mainTab === 'analisi'
+    mainTab !== 'pe'
       ? `/api/cost-serveis/resultats?from=${from}&to=${to}`
       : null,
     fetcher
@@ -139,6 +449,10 @@ export default function CostServeisResultatsPage() {
     (data?.byLocation as ResultatsGroupRow[] | undefined) ?? EMPTY_RESULTATS_GROUPS
   const byMonth =
     (data?.byMonth as ResultatsGroupRow[] | undefined) ?? EMPTY_RESULTATS_GROUPS
+  const fixedCostAudit =
+    (data?.fixedCostAudit as FixedCostAuditRow[] | undefined) ?? []
+  const fixedCostCoverage =
+    (data?.fixedCostCoverage as FixedCostCoverage | undefined) ?? null
 
   const onSort = (k: SortKey) => {
     if (sortKey === k) {
@@ -162,8 +476,19 @@ export default function CostServeisResultatsPage() {
     const mul = sortDir === 'asc' ? 1 : -1
     rows.sort((a, b) => {
       if (sortKey === 'label') return mul * a.label.localeCompare(b.label, 'ca')
-      const av = a[sortKey as keyof ResultatsGroupRow]
-      const bv = b[sortKey as keyof ResultatsGroupRow]
+      const metric = (row: ResultatsGroupRow) => {
+        if (sortKey === 'cost') return row.operationalCost
+        if (sortKey === 'margin') return row.contributionMargin
+        if (sortKey === 'marginPct') {
+          return row.billing > 0 ? row.contributionMargin / row.billing : null
+        }
+        if (sortKey === 'costPct') {
+          return row.billing > 0 ? row.operationalCost / row.billing : null
+        }
+        return row[sortKey as keyof ResultatsGroupRow]
+      }
+      const av = metric(a)
+      const bv = metric(b)
       const an = typeof av === 'number' ? av : av == null ? -Infinity : Number(av)
       const bn = typeof bv === 'number' ? bv : bv == null ? -Infinity : Number(bv)
       if (an !== bn) return mul * (an - bn)
@@ -181,8 +506,19 @@ export default function CostServeisResultatsPage() {
         const kb = sortKey === 'eventDate' ? b.eventDate : b.eventName
         return mul * ka.localeCompare(kb, 'ca')
       }
-      const av = a[sortKey as keyof ResultatsItemRow]
-      const bv = b[sortKey as keyof ResultatsItemRow]
+      const metric = (row: ResultatsItemRow) => {
+        if (sortKey === 'cost') return row.operationalCost
+        if (sortKey === 'margin') return row.contributionMargin
+        if (sortKey === 'marginPct') {
+          return row.billing > 0 ? row.contributionMargin / row.billing : null
+        }
+        if (sortKey === 'costPct') {
+          return row.billing > 0 ? row.operationalCost / row.billing : null
+        }
+        return row[sortKey as keyof ResultatsItemRow]
+      }
+      const av = metric(a)
+      const bv = metric(b)
       const an = typeof av === 'number' ? av : av == null ? -Infinity : Number(av)
       const bn = typeof bv === 'number' ? bv : bv == null ? -Infinity : Number(bv)
       if (an !== bn) return mul * (an - bn)
@@ -193,7 +529,12 @@ export default function CostServeisResultatsPage() {
 
   const topBottom = useMemo(() => {
     if (view !== 'service' || byServiceType.length === 0) return null
-    const withMargin = byServiceType.filter((r) => r.marginPct != null)
+    const withMargin = byServiceType
+      .filter((r) => r.billing > 0)
+      .sort(
+        (a, b) =>
+          b.contributionMargin / b.billing - a.contributionMargin / a.billing
+      )
     const best = withMargin.slice(0, 3)
     const worst = [...withMargin].reverse().slice(0, 3)
     return { best, worst }
@@ -214,6 +555,14 @@ export default function CostServeisResultatsPage() {
           onClick={() => setMainTab('analisi')}
         >
           Anàlisi
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mainTab === 'fixos' ? 'default' : 'outline'}
+          onClick={() => setMainTab('fixos')}
+        >
+          Fixos i consolidat
         </Button>
         <Button
           type="button"
@@ -283,6 +632,50 @@ export default function CostServeisResultatsPage() {
 
       {mainTab === 'pe' ? (
         <PeTab year={peYear} />
+      ) : mainTab === 'fixos' ? (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {VIEW_OPTIONS.map((opt) => (
+              <Button
+                key={opt.id}
+                type="button"
+                size="sm"
+                variant={view === opt.id ? 'default' : 'outline'}
+                onClick={() => setView(opt.id)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          {isLoading ? (
+            <p className="text-sm text-slate-500">Carregant…</p>
+          ) : error || data?.error ? (
+            <p className="text-sm text-red-600">
+              {data?.error || 'Error carregant dades'}
+            </p>
+          ) : !summary ? (
+            <p className="text-sm text-slate-500">Sense dades.</p>
+          ) : (
+            <FixedCostsPanel
+              summary={summary}
+              items={items}
+              groups={
+                view === 'service'
+                  ? byServiceType
+                  : view === 'location'
+                    ? byLocation
+                    : byMonth
+              }
+              view={view}
+              basis={fixedBasis}
+              mode={consolidationMode}
+              audit={fixedCostAudit}
+              coverage={fixedCostCoverage}
+              onBasis={setFixedBasis}
+              onMode={setConsolidationMode}
+            />
+          )}
+        </>
       ) : (
         <>
       <div className="flex flex-wrap gap-2">
@@ -314,10 +707,24 @@ export default function CostServeisResultatsPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <KpiCard label="Events" value={String(summary.eventCount)} />
             <KpiCard label="Facturació" value={fmtEuro(summary.billing)} />
-            <KpiCard label="Cost" value={fmtEuro(summary.cost)} />
-            <KpiCard label="Marge" value={fmtEuro(summary.margin)} />
-            <KpiCard label="% marge" value={fmtPct(summary.marginPct)} />
-            <KpiCard label="% cost operatiu" value={fmtPct(summary.costPct)} />
+            <KpiCard label="Cost variable" value={fmtEuro(summary.operationalCost)} />
+            <KpiCard label="Marge contribució" value={fmtEuro(summary.contributionMargin)} />
+            <KpiCard
+              label="% marge contribució"
+              value={fmtPct(
+                summary.billing > 0
+                  ? summary.contributionMargin / summary.billing
+                  : null
+              )}
+            />
+            <KpiCard
+              label="% cost variable"
+              value={fmtPct(
+                summary.billing > 0
+                  ? summary.operationalCost / summary.billing
+                  : null
+              )}
+            />
           </div>
 
           {topBottom ? (
@@ -330,7 +737,9 @@ export default function CostServeisResultatsPage() {
                   {topBottom.best.map((r) => (
                     <li key={r.key} className="flex justify-between gap-2">
                       <span className="truncate">{r.label}</span>
-                      <span className="tabular-nums text-emerald-800">{fmtPct(r.marginPct)}</span>
+                      <span className="tabular-nums text-emerald-800">
+                        {fmtPct(r.billing > 0 ? r.contributionMargin / r.billing : null)}
+                      </span>
                     </li>
                   ))}
                   {topBottom.best.length === 0 ? (
@@ -346,7 +755,9 @@ export default function CostServeisResultatsPage() {
                   {topBottom.worst.map((r) => (
                     <li key={r.key} className="flex justify-between gap-2">
                       <span className="truncate">{r.label}</span>
-                      <span className="tabular-nums text-amber-900">{fmtPct(r.marginPct)}</span>
+                      <span className="tabular-nums text-amber-900">
+                        {fmtPct(r.billing > 0 ? r.contributionMargin / r.billing : null)}
+                      </span>
                     </li>
                   ))}
                   {topBottom.worst.length === 0 ? (
@@ -387,7 +798,7 @@ export default function CostServeisResultatsPage() {
                       className="text-right"
                     />
                     <SortTh
-                      label="Cost"
+                      label="Cost variable"
                       sortKey="cost"
                       active={sortKey}
                       dir={sortDir}
@@ -395,7 +806,7 @@ export default function CostServeisResultatsPage() {
                       className="text-right"
                     />
                     <SortTh
-                      label="Marge"
+                      label="Marge contribució"
                       sortKey="margin"
                       active={sortKey}
                       dir={sortDir}
@@ -445,16 +856,22 @@ export default function CostServeisResultatsPage() {
                         {fmtEuro(row.billing)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtEuro(row.cost)}
+                        {fmtEuro(row.operationalCost)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium">
-                        {fmtEuro(row.margin)}
+                        {fmtEuro(row.contributionMargin)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtPct(row.marginPct)}
+                        {fmtPct(
+                          row.billing > 0
+                            ? row.contributionMargin / row.billing
+                            : null
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtPct(row.costPct)}
+                        {fmtPct(
+                          row.billing > 0 ? row.operationalCost / row.billing : null
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -509,7 +926,7 @@ export default function CostServeisResultatsPage() {
                       className="text-right"
                     />
                     <SortTh
-                      label="Cost"
+                      label="Cost variable"
                       sortKey="cost"
                       active={sortKey}
                       dir={sortDir}
@@ -517,7 +934,7 @@ export default function CostServeisResultatsPage() {
                       className="text-right"
                     />
                     <SortTh
-                      label="Marge"
+                      label="Marge contribució"
                       sortKey="margin"
                       active={sortKey}
                       dir={sortDir}
@@ -554,16 +971,22 @@ export default function CostServeisResultatsPage() {
                         {fmtEuro(row.billing)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtEuro(row.cost)}
+                        {fmtEuro(row.operationalCost)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium">
-                        {fmtEuro(row.margin)}
+                        {fmtEuro(row.contributionMargin)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtPct(row.marginPct)}
+                        {fmtPct(
+                          row.billing > 0
+                            ? row.contributionMargin / row.billing
+                            : null
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmtPct(row.costPct)}
+                        {fmtPct(
+                          row.billing > 0 ? row.operationalCost / row.billing : null
+                        )}
                       </td>
                     </tr>
                   ))}
