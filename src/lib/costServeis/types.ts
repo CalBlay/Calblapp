@@ -38,6 +38,14 @@ export type FuelConfig = {
     Record<string, VehicleFuelRate>
 }
 
+export type ServiceCostConfig = {
+  hourlyRates: HourlyRateByDept
+  departures: DepartureByDept
+  fuel: FuelConfig
+  updatedAt?: string
+  updatedBy?: string
+}
+
 /** Ús d’un vehicle dins d’un bloc de dept. */
 export type VehicleTripLine = {
   id: string

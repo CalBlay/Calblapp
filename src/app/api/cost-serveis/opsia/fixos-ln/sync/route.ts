@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/server/apiAuth'
+import { requireAuth, type AuthenticatedApiUser } from '@/lib/server/apiAuth'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { getOpsiaFinanceConfig } from '@/lib/costServeis/opsiaFinance'
 import {
@@ -17,11 +17,7 @@ const EDIT_PATHS = [
   `${MODULE_PATH}/costos-estructura`,
 ]
 
-async function canSyncOpsia(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-}) {
+async function canSyncOpsia(user: AuthenticatedApiUser) {
   for (const path of EDIT_PATHS) {
     if (await canEditUiPath({ user, path })) return true
   }

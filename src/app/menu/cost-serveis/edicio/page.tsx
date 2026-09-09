@@ -47,6 +47,9 @@ import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+const EMPTY_SERVICE_COST_ITEMS: ServiceCostListItem[] = []
+const EMPTY_MANUAL_SERVICES: ManualServiceLine[] = []
+
 const fmtEuro = (n: number, digits = 0) =>
   n.toLocaleString('ca-ES', {
     style: 'currency',
@@ -251,8 +254,10 @@ export default function CostServeisEdicioPage() {
   )
   const { data: configData } = useSWR('/api/cost-serveis/config', fetcher)
   const serviceConfig = (configData?.config || null) as ServiceCostConfig | null
-  const items = (data?.items || []) as ServiceCostListItem[]
-  const manuals = (data?.manuals || []) as ManualServiceLine[]
+  const items =
+    (data?.items as ServiceCostListItem[] | undefined) ?? EMPTY_SERVICE_COST_ITEMS
+  const manuals =
+    (data?.manuals as ManualServiceLine[] | undefined) ?? EMPTY_MANUAL_SERVICES
   const missingServiceTypes = (data?.missingServiceTypes || []) as Array<{
     nom: string
     count: number
@@ -1397,4 +1402,3 @@ function ManualServiceDialog({
     </Dialog>
   )
 }
-

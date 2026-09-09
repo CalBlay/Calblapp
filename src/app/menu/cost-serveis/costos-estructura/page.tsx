@@ -34,6 +34,19 @@ const POT_LABELS: Record<string, string> = {
 
 type TabId = 'estructura' | 'fixos-ln' | 'estructura-ln' | 'pct-anual'
 
+type OpsiaEstructuraMonthMeta = {
+  ym: string
+  execucioEstat?: string
+  logisticaCuinaPersonal?: number
+  personalCentralSap?: number
+  ratioLogisticaCuina?: number
+}
+
+const EMPTY_STRUCTURE_ROWS: OpsiaStructureRow[] = []
+const EMPTY_FIXED_LN_ROWS: OpsiaFixedLnTableRow[] = []
+const EMPTY_ESTRUCTURA_LN_ROWS: OpsiaEstructuraLnTableRow[] = []
+const EMPTY_ESTRUCTURA_MONTHS: OpsiaEstructuraMonthMeta[] = []
+
 function currentYearMonth() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -154,7 +167,7 @@ function EstructuraTab() {
     fetcher
   )
 
-  const rows = (data?.rows || []) as OpsiaStructureRow[]
+  const rows = (data?.rows as OpsiaStructureRow[] | undefined) ?? EMPTY_STRUCTURE_ROWS
   const configured = Boolean(data?.configured)
   const showAllDepts = effectiveDept === 'all'
 
@@ -364,7 +377,8 @@ function FixosLnTab() {
     fetcher
   )
 
-  const rows = (data?.rows || []) as OpsiaFixedLnTableRow[]
+  const rows =
+    (data?.rows as OpsiaFixedLnTableRow[] | undefined) ?? EMPTY_FIXED_LN_ROWS
   const configured = Boolean(data?.configured)
 
   const byMonth = useMemo(() => {
@@ -523,14 +537,12 @@ function EstructuraLnTab() {
     fetcher
   )
 
-  const rows = (data?.rows || []) as OpsiaEstructuraLnTableRow[]
-  const months = (data?.months || []) as Array<{
-    ym: string
-    execucioEstat?: string
-    logisticaCuinaPersonal?: number
-    personalCentralSap?: number
-    ratioLogisticaCuina?: number
-  }>
+  const rows =
+    (data?.rows as OpsiaEstructuraLnTableRow[] | undefined) ??
+    EMPTY_ESTRUCTURA_LN_ROWS
+  const months =
+    (data?.months as OpsiaEstructuraMonthMeta[] | undefined) ??
+    EMPTY_ESTRUCTURA_MONTHS
   const configured = Boolean(data?.configured)
 
   const metaByYm = useMemo(() => {

@@ -330,7 +330,7 @@ export default function CostServeisFitxaPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { data: session } = useSession()
-  const eventId = params.eventId
+  const eventId = params?.eventId ?? ''
   const { data, isLoading, mutate } = useSWR(
     eventId ? `/api/cost-serveis/events/${eventId}` : null,
     fetcher
@@ -344,7 +344,7 @@ export default function CostServeisFitxaPage() {
   const focusDept = resolveCostDepartmentFilter({
     role: session?.user?.role,
     department: session?.user?.department,
-    requested: searchParams.get('dept'),
+    requested: searchParams?.get('dept'),
   })
 
   const visibleDepts = useMemo(() => {

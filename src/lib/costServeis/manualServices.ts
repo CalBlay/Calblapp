@@ -498,7 +498,7 @@ export async function createManualService(
     createdAt: new Date().toISOString(),
   }
   const ref = await db.collection(SERVICE_COST_MANUAL_COL).add(payload)
-  return mapDoc(ref.id, payload, n(payload.hourlyRateUsed) || undefined)
+  return mapDoc(ref.id, payload, n(payload['hourlyRateUsed']) || undefined)
 }
 
 export async function updateManualService(

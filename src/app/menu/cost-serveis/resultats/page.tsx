@@ -20,6 +20,9 @@ import PeTab from '@/app/menu/cost-serveis/resultats/PeTab'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+const EMPTY_RESULTATS_ITEMS: ResultatsItemRow[] = []
+const EMPTY_RESULTATS_GROUPS: ResultatsGroupRow[] = []
+
 type MainTab = 'analisi' | 'pe'
 type ViewMode = 'individual' | 'service' | 'location' | 'month'
 
@@ -129,10 +132,13 @@ export default function CostServeisResultatsPage() {
   )
 
   const summary = (data?.summary || null) as ResultatsMetrics | null
-  const items = (data?.items || []) as ResultatsItemRow[]
-  const byServiceType = (data?.byServiceType || []) as ResultatsGroupRow[]
-  const byLocation = (data?.byLocation || []) as ResultatsGroupRow[]
-  const byMonth = (data?.byMonth || []) as ResultatsGroupRow[]
+  const items = (data?.items as ResultatsItemRow[] | undefined) ?? EMPTY_RESULTATS_ITEMS
+  const byServiceType =
+    (data?.byServiceType as ResultatsGroupRow[] | undefined) ?? EMPTY_RESULTATS_GROUPS
+  const byLocation =
+    (data?.byLocation as ResultatsGroupRow[] | undefined) ?? EMPTY_RESULTATS_GROUPS
+  const byMonth =
+    (data?.byMonth as ResultatsGroupRow[] | undefined) ?? EMPTY_RESULTATS_GROUPS
 
   const onSort = (k: SortKey) => {
     if (sortKey === k) {
