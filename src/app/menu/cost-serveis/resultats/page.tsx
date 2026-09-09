@@ -30,7 +30,6 @@ const EMPTY_RESULTATS_GROUPS: ResultatsGroupRow[] = []
 type MainTab = 'analisi' | 'fixos' | 'pe'
 type ViewMode = 'individual' | 'service' | 'location' | 'month'
 type FixedBasis = 'monthly' | 'normalized'
-type ConsolidationMode = 'pots' | 'pctGestio'
 
 type SortKey =
   | 'label'
@@ -121,20 +120,18 @@ function isItemRow(row: FixedDisplayRow): row is ResultatsItemRow {
 
 function fixedValues(
   row: FixedDisplayRow,
-  basis: FixedBasis,
-  mode: ConsolidationMode
+  basis: FixedBasis
 ) {
   const direct =
     basis === 'monthly' ? row.fixedDirect : row.fixedDirectNormalized
   const indirect =
     basis === 'monthly' ? row.fixedIndirect : row.fixedIndirectNormalized
   const total =
-    mode === 'pots'
-      ? row.operationalCost + row.theoreticalPurchaseCost + direct + indirect
-      : row.operationalCost +
-        row.theoreticalPurchaseCost +
-        row.theoreticalManagementCost +
-        direct
+    row.operationalCost +
+    row.theoreticalPurchaseCost +
+    row.theoreticalManagementCost +
+    direct +
+    indirect
   const margin = row.billing - total
   return {
     direct,
@@ -171,25 +168,21 @@ function FixedCostsPanel({
   groups,
   view,
   basis,
-  mode,
   audit,
   coverage,
   onBasis,
-  onMode,
 }: {
   summary: ResultatsMetrics
   items: ResultatsItemRow[]
   groups: ResultatsGroupRow[]
   view: ViewMode
   basis: FixedBasis
-  mode: ConsolidationMode
   audit: FixedCostAuditRow[]
   coverage: FixedCostCoverage | null
   onBasis: (basis: FixedBasis) => void
-  onMode: (mode: ConsolidationMode) => void
 }) {
   const rows: FixedDisplayRow[] = view === 'individual' ? items : groups
-  const totals = fixedValues(summary as FixedDisplayRow, basis, mode)
+  const totals = fixedValues(summary as FixedDisplayRow, basis)
   const directTotal =
     basis === 'monthly' ? summary.fixedDirect : summary.fixedDirectNormalized
   const indirectTotal =
@@ -214,29 +207,12 @@ function FixedCostsPanel({
         >
           Anual normalitzat
         </Button>
-        <span className="mx-1 border-l border-slate-200" />
-        <Button
-          type="button"
-          size="sm"
-          variant={mode === 'pots' ? 'default' : 'outline'}
-          onClick={() => onMode('pots')}
-        >
-          Consolidat per pots
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={mode === 'pctGestio' ? 'default' : 'outline'}
-          onClick={() => onMode('pctGestio')}
-        >
-          Consolidat amb % gestió
-        </Button>
       </div>
 
       <p className="text-xs text-slate-500">
-        {mode === 'pots'
-          ? 'Suma variable + compres teòriques + fix directe + fix indirecte. El fix indirecte és el total de personal Opsia menys el fix directe i menys L+C operatiu; es reparteix entre tots els events del mes i LN.'
-          : 'Suma variable + compres teòriques + gestió teòrica + fix directe. El fix indirecte es mostra però no se suma per evitar doble comptatge.'}
+        Suma variable + compres teòriques + gestió teòrica + fix directe + fix
+        indirecte. La gestió cobreix despeses d’estructura no salarials; el fix
+        indirecte correspon al personal indirecte i, per tant, tots dos se sumen.
         {basis === 'normalized' && coverage
           ? ` Normalització: ${coverage.normalizedYears
               .map(
@@ -294,7 +270,7 @@ function FixedCostsPanel({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const values = fixedValues(row, basis, mode)
+              const values = fixedValues(row, basis)
               return (
                 <tr
                   key={isItemRow(row) ? row.eventId : row.key}
@@ -328,7 +304,7 @@ function FixedCostsPanel({
                     <span className="ml-1 text-[10px] text-slate-400">{fmtPct(row.managementPct)}</span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmtEuro(values.direct)}</td>
-                  <td className={cn('px-3 py-2 text-right tabular-nums', mode === 'pctGestio' && 'text-slate-400')}>
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {fmtEuro(values.indirect)}
                   </td>
                   <td className="px-3 py-2 text-right font-medium tabular-nums">{fmtEuro(values.total)}</td>
@@ -422,8 +398,6 @@ export default function CostServeisResultatsPage() {
   const [peYear, setPeYear] = useState(() => new Date().getFullYear())
   const [view, setView] = useState<ViewMode>('service')
   const [fixedBasis, setFixedBasis] = useState<FixedBasis>('monthly')
-  const [consolidationMode, setConsolidationMode] =
-    useState<ConsolidationMode>('pots')
   const [sortKey, setSortKey] = useState<SortKey>('marginPct')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -668,11 +642,9 @@ export default function CostServeisResultatsPage() {
               }
               view={view}
               basis={fixedBasis}
-              mode={consolidationMode}
               audit={fixedCostAudit}
               coverage={fixedCostCoverage}
               onBasis={setFixedBasis}
-              onMode={setConsolidationMode}
             />
           )}
         </>

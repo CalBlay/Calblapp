@@ -6,9 +6,8 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { buildCostServeisListItems } from '@/lib/costServeis/buildListItems'
 import type { ServiceCostListItem } from '@/lib/costServeis/types'
-import { listOpsiaFixedLnMonthDocs } from '@/lib/costServeis/opsiaFixedLn'
-import { listOpsiaEstructuraLnMonthDocs } from '@/lib/costServeis/opsiaEstructuraLn'
 import { getOpsiaPctAnualDoc } from '@/lib/costServeis/opsiaPctAnual'
+import { allocateResultatsFixedCosts } from '@/lib/costServeis/resultatsFixedCosts'
 import { normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
 import { splitServiceTypeLabels } from '@/lib/serveis/utils'
 import type { SpaceKind } from '@/lib/costServeis/spaceOwnership'
@@ -17,6 +16,7 @@ import { resolveOpsiaLnCodi } from '@/lib/costServeis/peSeed'
 import { listServeiWeightRows } from '@/lib/costServeis/serveiWeights'
 import {
   SERVICE_COST_PE_BUCKETS_COL,
+  PE_CALCULATION_VERSION,
   type PeBucketDoc,
   type PeBucketMetaDoc,
   type PeLookupResponse,
@@ -66,10 +66,6 @@ function yearDateRange(year: number): { from: string; to: string } {
   return { from: `${year}-01-01`, to: `${year}-12-31` }
 }
 
-function monthsInYear(year: number): string[] {
-  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
-}
-
 type Agg = {
   ln: string
   serviceType: string
@@ -78,7 +74,9 @@ type Agg = {
   cvOperatiu: number
   numPax: number
   eventCount: number
-  /** billing per mes — per imputar fixos */
+  fixedDirectNormalized: number
+  fixedIndirectNormalized: number
+  /** Facturació mensual, per deixar traça dels mesos que formen la mitjana. */
   billingByYm: Map<string, number>
 }
 
@@ -159,6 +157,11 @@ export async function recomputePeBucketsForYear(opts: {
   const { year, userId } = opts
   const { from, to } = yearDateRange(year)
   const { items } = await buildCostServeisListItems(from, to)
+  const fixedCosts = await allocateResultatsFixedCosts({
+    monthlyItems: items,
+    fromYm: `${year}-01`,
+    toYm: `${year}-12`,
+  })
 
   let skippedNoSpace = 0
   const aggs = new Map<string, Agg>()
@@ -168,7 +171,10 @@ export async function recomputePeBucketsForYear(opts: {
       skippedNoSpace += 1
       continue
     }
-    for (const row of expandItem(item)) {
+    const expanded = expandItem(item)
+    const partShare = expanded.length > 0 ? 1 / expanded.length : 0
+    const eventFixed = fixedCosts.byEventId.get(item.eventId)
+    for (const row of expanded) {
       const key = aggKey(row.ln, row.serviceType, row.spaceKind)
       let a = aggs.get(key)
       if (!a) {
@@ -180,6 +186,8 @@ export async function recomputePeBucketsForYear(opts: {
           cvOperatiu: 0,
           numPax: 0,
           eventCount: 0,
+          fixedDirectNormalized: 0,
+          fixedIndirectNormalized: 0,
           billingByYm: new Map(),
         }
         aggs.set(key, a)
@@ -187,7 +195,11 @@ export async function recomputePeBucketsForYear(opts: {
       a.billing += row.billing
       a.cvOperatiu += row.cvOperatiu
       a.numPax += row.numPax
-      a.eventCount += 1 / serviceParts(item.serviceType).length
+      a.eventCount += partShare
+      a.fixedDirectNormalized +=
+        (eventFixed?.fixedDirectNormalized || 0) * partShare
+      a.fixedIndirectNormalized +=
+        (eventFixed?.fixedIndirectNormalized || 0) * partShare
       a.billingByYm.set(
         row.ym,
         (a.billingByYm.get(row.ym) || 0) + row.billing
@@ -195,35 +207,8 @@ export async function recomputePeBucketsForYear(opts: {
     }
   }
 
-  // Facturació total per LN × mes (per quota d’imputació)
-  const factLnByYm = new Map<string, number>()
-  for (const item of items) {
-    const ln = normalizeManualLnName(item.ln) || item.ln?.trim() || 'Sense LN'
-    const ym = item.eventDate.slice(0, 7)
-    const k = `${fold(ln)}||${ym}`
-    factLnByYm.set(k, (factLnByYm.get(k) || 0) + (item.billing || 0))
-  }
-
-  const yms = monthsInYear(year)
-  const fromYm = `${year}-01`
-  const toYm = `${year}-12`
-  const [fixedDocs, estructuraDocs] = await Promise.all([
-    listOpsiaFixedLnMonthDocs({ fromYm, toYm }),
-    listOpsiaEstructuraLnMonthDocs({ fromYm, toYm }),
-  ])
-  const fixedByYm = new Map(fixedDocs.map((d) => [d.ym, d]))
-  const estByYm = new Map(estructuraDocs.map((d) => [d.ym, d]))
-
-  const monthsMissingFixed = yms.filter((ym) => {
-    const hasEvents = items.some((i) => i.eventDate.startsWith(ym) && (i.billing || 0) > 0)
-    return hasEvents && !fixedByYm.has(ym)
-  })
-  const monthsMissingEstructura = yms.filter((ym) => {
-    const hasEvents = items.some((i) => i.eventDate.startsWith(ym) && (i.billing || 0) > 0)
-    return hasEvents && !estByYm.has(ym)
-  })
-
-  const monthsUsed = new Set<string>()
+  const monthsMissingFixed = fixedCosts.coverage.monthsMissingDirect
+  const monthsMissingEstructura = fixedCosts.coverage.monthsMissingIndirect
   const computedAt = new Date().toISOString()
   const buckets: PeBucketDoc[] = []
 
@@ -234,35 +219,12 @@ export async function recomputePeBucketsForYear(opts: {
   >()
 
   for (const a of aggs.values()) {
-    let fixDirecte = 0
-    let fixIndirecte = 0
-    let opsiaLnCodi: string | null = null
-
-    for (const [ym, factB] of a.billingByYm) {
-      if (!(factB > 0)) continue
-      const factLn = factLnByYm.get(`${fold(a.ln)}||${ym}`) || 0
-      if (!(factLn > 0)) continue
-      const quota = factB / factLn
-      monthsUsed.add(ym)
-
-      const fixedDoc = fixedByYm.get(ym)
-      if (fixedDoc?.byLn) {
-        const codi = resolveOpsiaLnCodi(fixedDoc.byLn, a.ln)
-        if (codi) {
-          opsiaLnCodi = opsiaLnCodi || codi
-          fixDirecte += (Number(fixedDoc.byLn[codi]?.costSalarial) || 0) * quota
-        }
-      }
-      const estDoc = estByYm.get(ym)
-      if (estDoc?.byLn) {
-        const codi = resolveOpsiaLnCodi(estDoc.byLn, a.ln)
-        if (codi) {
-          opsiaLnCodi = opsiaLnCodi || codi
-          fixIndirecte +=
-            (Number(estDoc.byLn[codi]?.estructuraNeta) || 0) * quota
-        }
-      }
-    }
+    // PE d'un esdeveniment teòric: mitjana anual normalitzada del perfil,
+    // amb el mateix repartiment que Resultats (directe ponderat, indirecte per event).
+    const fixDirecte =
+      a.eventCount > 0 ? a.fixedDirectNormalized / a.eventCount : 0
+    const fixIndirecte =
+      a.eventCount > 0 ? a.fixedIndirectNormalized / a.eventCount : 0
 
     let pct = pctCache.get(fold(a.ln))
     if (!pct) {
@@ -287,6 +249,7 @@ export async function recomputePeBucketsForYear(opts: {
     const id = peBucketDocId(year, a.ln, a.serviceType, a.spaceKind)
     const doc: PeBucketDoc = {
       id,
+      calculationVersion: PE_CALCULATION_VERSION,
       year,
       ln: a.ln,
       serviceType: a.serviceType,
@@ -307,7 +270,7 @@ export async function recomputePeBucketsForYear(opts: {
       peEuro: pe.peEuro,
       status: pe.status,
       headline: pe.headline,
-      opsiaLnCodi: opsiaLnCodi || pct.opsiaLnCodi,
+      opsiaLnCodi: pct.opsiaLnCodi,
       pctSource: pct.source,
       monthsUsed: [...a.billingByYm.keys()].sort(),
       computedAt,
@@ -353,6 +316,7 @@ export async function recomputePeBucketsForYear(opts: {
 
   const meta: PeBucketMetaDoc = {
     id: metaDocId(year),
+    calculationVersion: PE_CALCULATION_VERSION,
     year,
     bucketCount: buckets.length,
     eventCount: items.length,
@@ -525,6 +489,16 @@ export async function lookupPe(opts: {
       bucket: null,
       error:
         'No hi ha PE precalculat per aquesta combinació. Recalcula l’any o tria un altre perfil.',
+    }
+  }
+
+  if (bucket.calculationVersion !== PE_CALCULATION_VERSION) {
+    return {
+      year,
+      meta,
+      options,
+      bucket: null,
+      error: `El PE desat és d'una fórmula anterior. Prem «Recalcular ${year}».`,
     }
   }
 

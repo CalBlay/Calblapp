@@ -4,6 +4,7 @@ import type { SpaceKind } from '@/lib/costServeis/spaceOwnership'
 import type { PeStatus } from '@/lib/costServeis/peCalc'
 
 export const SERVICE_COST_PE_BUCKETS_COL = 'serviceCostPeBuckets'
+export const PE_CALCULATION_VERSION = 2
 
 export type PeBucketKey = {
   year: number
@@ -14,6 +15,7 @@ export type PeBucketKey = {
 
 export type PeBucketDoc = PeBucketKey & {
   id: string
+  calculationVersion?: number
   /** Totals del període de càlcul (any). */
   billing: number
   cvOperatiu: number
@@ -24,7 +26,9 @@ export type PeBucketDoc = PeBucketKey & {
   cvOperatiuPerPax: number | null
   pctCompres: number
   pctGestio: number
+  /** Cost fix directe normalitzat per un esdeveniment d'aquest perfil. */
   fixDirecte: number
+  /** Cost fix indirecte normalitzat per un esdeveniment d'aquest perfil. */
   fixIndirecte: number
   fixos: number
   margePerPax: number | null
@@ -40,6 +44,7 @@ export type PeBucketDoc = PeBucketKey & {
 
 export type PeBucketMetaDoc = {
   id: string
+  calculationVersion?: number
   year: number
   bucketCount: number
   eventCount: number

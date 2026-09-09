@@ -74,14 +74,14 @@ test('resultats exposes every cost layer and the pots consolidation', () => {
 
   assert.equal(row.contributionMargin, 700)
   assert.equal(row.marginAfterDirect, 620)
-  assert.equal(row.potsFullCost, 650)
-  assert.equal(row.potsFullMargin, 350)
-  assert.equal(row.potsFullMarginPct, 0.35)
-  assert.equal(row.normalizedPotsFullCost, 610)
-  assert.equal(row.normalizedPotsFullMargin, 390)
+  assert.equal(row.potsFullCost, 750)
+  assert.equal(row.potsFullMargin, 250)
+  assert.equal(row.potsFullMarginPct, 0.25)
+  assert.equal(row.normalizedPotsFullCost, 710)
+  assert.equal(row.normalizedPotsFullMargin, 290)
 })
 
-test('management consolidation replaces indirect pots to avoid double counting', () => {
+test('management cost and fixed indirect personnel coexist in the consolidation', () => {
   const row = metricsFromParts({
     eventCount: 1,
     numPax: 0,
@@ -95,7 +95,7 @@ test('management consolidation replaces indirect pots to avoid double counting',
     fixedIndirectNormalized: 0,
   })
 
-  assert.equal(row.managementFullCost, 680)
-  assert.equal(row.managementFullMargin, 320)
-  assert.equal(row.managementFullMarginPct, 0.32)
+  assert.equal(row.managementFullCost, 750)
+  assert.equal(row.managementFullMargin, 250)
+  assert.equal(row.managementFullMarginPct, 0.25)
 })

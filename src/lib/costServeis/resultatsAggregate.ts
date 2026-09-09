@@ -92,19 +92,25 @@ export function metricsFromParts(parts: {
   const contributionMargin = round2(billing - operationalCost)
   const marginAfterDirect = round2(contributionMargin - fixedDirect)
   const potsFullCost = round2(
-    operationalCost + theoreticalPurchaseCost + fixedDirect + fixedIndirect
+    operationalCost +
+      theoreticalPurchaseCost +
+      theoreticalManagementCost +
+      fixedDirect +
+      fixedIndirect
   )
   const potsFullMargin = round2(billing - potsFullCost)
   const managementFullCost = round2(
     operationalCost +
       theoreticalPurchaseCost +
       theoreticalManagementCost +
-      fixedDirect
+      fixedDirect +
+      fixedIndirect
   )
   const managementFullMargin = round2(billing - managementFullCost)
   const normalizedPotsFullCost = round2(
     operationalCost +
       theoreticalPurchaseCost +
+      theoreticalManagementCost +
       fixedDirectNormalized +
       fixedIndirectNormalized
   )

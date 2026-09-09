@@ -12,13 +12,13 @@ export type PeInputs = {
   cvOperatiu: number
   /** Food cost — ratio 0–1. */
   pctCompres: number
-  /** % Gestió Opsia — ratio 0–1 (només entra si mode = pctGestio). */
+  /** % Gestió Opsia — ratio 0–1. */
   pctGestio: number
   /** Fix salarial imputat al bucket (€). */
   fixDirecte: number
   /** Personal indirecte imputat (€). */
   fixIndirecte: number
-  /** Mode A = pots; Mode B = % Gestió al MC% (sense fix indirecte a la fórmula). */
+  /** Conservat per compatibilitat; la fórmula completa sempre aplica totes les capes. */
   mode: PeMode
   /** Pax del bucket. */
   numPax?: number
@@ -45,7 +45,7 @@ export type PeResult = {
   preuMitjaPax: number | null
   /** Cost variable operatiu per pax (€). */
   cvOperatiuPerPax: number | null
-  /** Compres (+ gestió si mode B) per pax (€). */
+  /** Compres + gestió per pax (€). */
   cvPctPerPax: number | null
   /** Cost variable total per pax (€). */
   costVariablePerPax: number | null
@@ -93,23 +93,13 @@ export function peFromInputs(raw: PeInputs): PeResult {
   const pctGestio = clampRatio(Number(raw.pctGestio) || 0)
   const fixDirecte = Math.max(0, Number(raw.fixDirecte) || 0)
   const fixIndirecte = Math.max(0, Number(raw.fixIndirecte) || 0)
-  const mode: PeMode = raw.mode === 'pctGestio' ? 'pctGestio' : 'pots'
   const numPax = Math.max(0, Number(raw.numPax) || 0)
 
   const warnings: string[] = []
   const cvOperatiuPct = billing > 0 ? round4(cvOperatiu / billing) : null
-  const pctGestioInFormula = mode === 'pctGestio' ? pctGestio : 0
+  const pctGestioInFormula = pctGestio
   const pctCompresInFormula = pctCompres
-  const fixos =
-    mode === 'pctGestio'
-      ? round2(fixDirecte)
-      : round2(fixDirecte + fixIndirecte)
-
-  if (mode === 'pctGestio' && fixIndirecte > 0) {
-    warnings.push(
-      'Mode % Gestió: el fix indirecte no entra a la fórmula (evita doble comptatge).'
-    )
-  }
+  const fixos = round2(fixDirecte + fixIndirecte)
 
   let preuMitjaPax: number | null = null
   if (raw.preuMitjaPax != null && Number(raw.preuMitjaPax) > 0) {
@@ -220,12 +210,10 @@ export function peFromInputs(raw: PeInputs): PeResult {
   }
 }
 
-/** Converteix % emmagatzemat com 18.5 → ratio 0.185. */
+/** Converteix punts percentuals Opsia (18,5 = 18,5%) a ratio (0,185). */
 export function pctPointsToRatio(points: number | null | undefined): number {
   if (points == null || !Number.isFinite(Number(points))) return 0
-  const n = Number(points)
-  if (n > 0 && n <= 1.5) return clampRatio(n)
-  return clampRatio(n / 100)
+  return clampRatio(Number(points) / 100)
 }
 
 export function ratioToPctPoints(ratio: number): number {

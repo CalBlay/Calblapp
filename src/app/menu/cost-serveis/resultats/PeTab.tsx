@@ -18,7 +18,11 @@ import {
   SPACE_KIND_LABELS,
   type SpaceKind,
 } from '@/lib/costServeis/spaceOwnership'
-import type { PeBucketDoc, PeLookupResponse } from '@/lib/costServeis/peBucketTypes'
+import {
+  PE_CALCULATION_VERSION,
+  type PeBucketDoc,
+  type PeLookupResponse,
+} from '@/lib/costServeis/peBucketTypes'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -26,18 +30,36 @@ function round2(n: number) {
   return Math.round(n * 100) / 100
 }
 
-function margePerPax(preu: number, cvOp: number, pctCompres: number): number {
-  return preu - (cvOp + preu * pctCompres)
+function fmtEuro(n: number) {
+  return n.toLocaleString('ca-ES', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 2,
+  })
+}
+
+function fmtPct(n: number) {
+  return `${(n * 100).toLocaleString('ca-ES', { maximumFractionDigits: 2 })}%`
+}
+
+function margePerPax(
+  preu: number,
+  cvOp: number,
+  pctCompres: number,
+  pctGestio: number
+): number {
+  return preu - (cvOp + preu * (pctCompres + pctGestio))
 }
 
 function paxAtPe(
   preu: number,
   fixos: number,
   cvOp: number,
-  pctCompres: number
+  pctCompres: number,
+  pctGestio: number
 ): number | null {
   if (!(preu > 0) || !(fixos > 0)) return null
-  const m = margePerPax(preu, cvOp, pctCompres)
+  const m = margePerPax(preu, cvOp, pctCompres, pctGestio)
   if (!(m > 0)) return null
   return round2(fixos / m)
 }
@@ -46,25 +68,39 @@ function preuAtPe(
   pax: number,
   fixos: number,
   cvOp: number,
-  pctCompres: number
+  pctCompres: number,
+  pctGestio: number
 ): number | null {
   if (!(pax > 0) || !(fixos > 0)) return null
-  const denom = 1 - pctCompres
+  const denom = 1 - pctCompres - pctGestio
   if (!(denom > 0)) return null
   return round2((fixos / pax + cvOp) / denom)
 }
 
-type Costs = { cvOp: number; pctCompres: number; fixos: number }
+type Costs = {
+  cvOp: number
+  pctCompres: number
+  pctGestio: number
+  fixDirecte: number
+  fixIndirecte: number
+  fixos: number
+}
 type Fields = { preu: number; pax: number; facturacio: number }
 
 function solveFromPreu(preu: number, c: Costs): Fields | null {
-  const pax = paxAtPe(preu, c.fixos, c.cvOp, c.pctCompres)
+  const pax = paxAtPe(preu, c.fixos, c.cvOp, c.pctCompres, c.pctGestio)
   if (pax == null) return null
   return { preu: round2(preu), pax, facturacio: round2(preu * pax) }
 }
 
 function solveFromPax(pax: number, c: Costs): Fields | null {
-  const preu = preuAtPe(pax, c.fixos, c.cvOp, c.pctCompres)
+  const preu = preuAtPe(
+    pax,
+    c.fixos,
+    c.cvOp,
+    c.pctCompres,
+    c.pctGestio
+  )
   if (preu == null) return null
   return { preu, pax: round2(pax), facturacio: round2(preu * pax) }
 }
@@ -76,7 +112,7 @@ function solveFromFact(
 ): Fields | null {
   if (!(fact > 0) || !(c.fixos > 0)) return null
   const mc = c.fixos / fact
-  const denom = 1 - c.pctCompres - mc
+  const denom = 1 - c.pctCompres - c.pctGestio - mc
   if (!(denom > 0) || !(mc > 0 && mc < 1)) {
     if (!(preuHint > 0)) return null
     return solveFromPax(round2(fact / preuHint), c)
@@ -93,6 +129,9 @@ function initFromBucket(b: PeBucketDoc): {
   const costs: Costs = {
     cvOp: Math.max(0, b.cvOperatiuPerPax ?? 0),
     pctCompres: Math.max(0, b.pctCompres ?? 0),
+    pctGestio: Math.max(0, b.pctGestio ?? 0),
+    fixDirecte: Math.max(0, b.fixDirecte ?? 0),
+    fixIndirecte: Math.max(0, b.fixIndirecte ?? 0),
     fixos: Math.max(0, b.fixos ?? 0),
   }
   const preuSeed = b.preuMitjaPax && b.preuMitjaPax > 0 ? b.preuMitjaPax : 0
@@ -263,7 +302,8 @@ export default function PeTab({ year }: { year: number }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-600">
           1) LN → 2) Centre → 3) Servei actiu. Després els 3 números al{' '}
-          <strong>PE = 0</strong>.
+          <strong>PE = 0</strong>. Els costos parteixen de la mitjana anual
+          normalitzada d’un esdeveniment d’aquest perfil.
         </p>
         <Button
           type="button"
@@ -276,9 +316,11 @@ export default function PeTab({ year }: { year: number }) {
         </Button>
       </div>
 
-      {!meta?.computedAt ? (
+      {!meta?.computedAt || meta.calculationVersion !== PE_CALCULATION_VERSION ? (
         <p className="text-xs text-amber-700">
-          Encara no hi ha mitjanes de {year}. Prem «Recalcular {year}».
+          {meta?.computedAt
+            ? `La fórmula desada és anterior. Prem «Recalcular ${year}».`
+            : `Encara no hi ha mitjanes de ${year}. Prem «Recalcular ${year}».`}
         </p>
       ) : null}
 
@@ -409,6 +451,38 @@ export default function PeTab({ year }: { year: number }) {
               PE = 0: canvia un camp i els altres s’ajusten.
             </p>
           )}
+
+          <div className="border-t border-slate-200 pt-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Components aplicats a un esdeveniment teòric
+            </p>
+            <dl className="grid grid-cols-2 gap-x-5 gap-y-2 text-sm">
+              <dt className="text-slate-500">Variable operatiu / pax</dt>
+              <dd className="text-right font-medium tabular-nums">
+                {fmtEuro(costs.cvOp)}
+              </dd>
+              <dt className="text-slate-500">Compres teòriques</dt>
+              <dd className="text-right font-medium tabular-nums">
+                {fmtPct(costs.pctCompres)}
+              </dd>
+              <dt className="text-slate-500">Gestió teòrica</dt>
+              <dd className="text-right font-medium tabular-nums">
+                {fmtPct(costs.pctGestio)}
+              </dd>
+              <dt className="text-slate-500">Fix directe / esdeveniment</dt>
+              <dd className="text-right font-medium tabular-nums">
+                {fmtEuro(costs.fixDirecte)}
+              </dd>
+              <dt className="text-slate-500">Fix indirecte / esdeveniment</dt>
+              <dd className="text-right font-medium tabular-nums">
+                {fmtEuro(costs.fixIndirecte)}
+              </dd>
+              <dt className="font-medium text-slate-700">Total fix a cobrir</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {fmtEuro(costs.fixos)}
+              </dd>
+            </dl>
+          </div>
         </div>
       ) : ready ? (
         <p className="text-sm text-slate-500">Sense dades per aquest perfil.</p>
