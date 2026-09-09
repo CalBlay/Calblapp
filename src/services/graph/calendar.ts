@@ -121,6 +121,7 @@ type CreateIncidentActionDeadlineEventInput = {
   assigneeEmail: string
   actionTitle: string
   incidentNumber?: string | null
+  startDate?: string | null
   deadline: string
   department?: string | null
 }
@@ -1009,6 +1010,11 @@ export async function createIncidentActionDeadlineCalendarEvent(
 
   const incidentLabel = String(input.incidentNumber || '').trim() || 'Incidència'
   const accessToken = await getAccessToken()
+  const requestedStartDate = String(input.startDate || '').trim()
+  const startDate =
+    /^\d{4}-\d{2}-\d{2}$/.test(requestedStartDate) && requestedStartDate <= deadline
+      ? requestedStartDate
+      : deadline
   const endDate = addOneDay(deadline)
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
@@ -1025,7 +1031,7 @@ export async function createIncidentActionDeadlineCalendarEvent(
           content: buildIncidentActionDeadlineEventHtml(input),
         },
         start: {
-          dateTime: `${deadline}T00:00:00`,
+          dateTime: `${startDate}T00:00:00`,
           timeZone: 'Europe/Madrid',
         },
         end: {

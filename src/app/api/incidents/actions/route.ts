@@ -129,6 +129,7 @@ export async function POST(req: Request) {
           assignedToId,
           assignedToName,
           dueAtIso,
+          createdAtIso: now.toDate().toISOString(),
           department: String(body.department || '').trim(),
           createdById: user.id,
           notifyAssignment: true,

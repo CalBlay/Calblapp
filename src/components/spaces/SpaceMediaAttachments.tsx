@@ -105,6 +105,14 @@ export default function SpaceMediaAttachments({
     if (!canEdit) return
 
     const handlePaste = (event: ClipboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+      ) {
+        return
+      }
+
       const items = event.clipboardData?.items
       if (!items?.length) return
 

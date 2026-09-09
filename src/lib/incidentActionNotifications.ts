@@ -68,15 +68,21 @@ async function resolveAssigneeUser(params: {
   return findUserByName(name)
 }
 
-function dueIsoToDeadlineDate(iso: string | null | undefined): string {
+function isoToBarcelonaCalendarDate(iso: string | null | undefined): string {
   if (!iso) return ''
+  const normalized = iso.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized
   const ms = Date.parse(iso)
   if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ms))
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || ''
+  return `${read('year')}-${read('month')}-${read('day')}`
 }
 
 async function notifyIncidentActionAssigned(params: {
@@ -122,6 +128,7 @@ export type IncidentActionAssigneeSideEffectsParams = {
   assignedToId?: string | null
   assignedToName?: string | null
   dueAtIso?: string | null
+  createdAtIso?: string | null
   department?: string | null
   createdById?: string | null
   previousOutlookEventId?: string | null
@@ -133,7 +140,8 @@ export async function handleIncidentActionAssigneeSideEffects(
   params: IncidentActionAssigneeSideEffectsParams
 ): Promise<{ outlookEventId?: string; outlookEmail?: string }> {
   const assignee = await resolveAssigneeUser(params)
-  const deadline = dueIsoToDeadlineDate(params.dueAtIso)
+  const deadline = isoToBarcelonaCalendarDate(params.dueAtIso)
+  const startDate = isoToBarcelonaCalendarDate(params.createdAtIso)
 
   const prevId = String(params.previousOutlookEventId || '').trim()
   const prevEmail = String(params.previousOutlookEmail || '').trim()
@@ -154,6 +162,7 @@ export async function handleIncidentActionAssigneeSideEffects(
         assigneeEmail: assignee.email,
         actionTitle: params.actionTitle,
         incidentNumber: params.incidentNumber,
+        startDate,
         deadline,
         department: params.department,
       })

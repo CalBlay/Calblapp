@@ -63,6 +63,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     const actionTitle = String(snap.get('title') || '').trim()
     const storedDepartment = String(snap.get('department') || '').trim()
     const createdById = String(snap.get('createdById') || '').trim()
+    const createdAtIso = tsToIso(snap.get('createdAt'))
 
     let assigneeChanged = false
     let dueChanged = false
@@ -152,6 +153,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
           assignedToId: nextAssignedToId,
           assignedToName: nextAssignedToName,
           dueAtIso: nextDueIso,
+          createdAtIso,
           department: nextDepartment,
           createdById,
           previousOutlookEventId: storedOutlookEventId,
