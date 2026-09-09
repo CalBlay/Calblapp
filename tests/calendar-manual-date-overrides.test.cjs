@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const { test } = require('node:test')
 
 const {
@@ -71,4 +73,34 @@ test('moving a one-day event marks its normalized DataFi as changed', () => {
     }),
     true
   )
+})
+
+test('Zoho writes re-read the latest calendar document transactionally', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/zoho/sync.ts'),
+    'utf8'
+  )
+
+  assert.match(source, /commitStageDealsPreservingLatestManualChanges/)
+  assert.match(source, /firestore\.runTransaction/)
+  assert.match(source, /tx\.getAll\(\.\.\.refs\)/)
+  assert.match(
+    source,
+    /preserveLocalCalendarChanges\(dataToSave, latestData\)/
+  )
+})
+
+test('manual calendar edits are also recorded atomically', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/app/api/calendar/manual/[id]/route.ts'),
+    'utf8'
+  )
+
+  const putRoute = source.match(
+    /export\s+async\s+function\s+PUT\b[\s\S]*?(?=export\s+async\s+function\s+DELETE\b)/
+  )?.[0] || ''
+
+  assert.match(putRoute, /db\.runTransaction/)
+  assert.match(putRoute, /tx\.get\(docRef\)/)
+  assert.match(putRoute, /tx\.set\(/)
 })

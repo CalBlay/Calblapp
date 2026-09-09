@@ -45,14 +45,16 @@ function preserveLocalCalendarChanges(
     }
   }
 
-  for (const field of [
-    'code',
-    'codeSource',
-    'codeConfirmed',
-    'manualOverrides',
-    'manualUpdatedAt',
-  ]) {
+  for (const field of ['code', 'codeSource', 'codeConfirmed']) {
     if (existing[field] !== undefined && out[field] === undefined) {
+      out[field] = existing[field]
+    }
+  }
+
+  // Aquests camps nomes els escriu l'edicio manual. La sync no pot substituir
+  // una versio mes nova amb la copia que havia llegit a l'inici del proces.
+  for (const field of ['manualOverrides', 'manualUpdatedAt']) {
+    if (existing[field] !== undefined) {
       out[field] = existing[field]
     }
   }
@@ -369,6 +371,45 @@ type ManualReplacementMap = Map<
   { createdAt: string; mergedFromManualId: string }
 >
 
+type StageDealToWrite = {
+  collection: 'stage_verd' | 'stage_groc' | 'stage_taronja'
+  deal: NormalizedDeal
+  dataToSave: Record<string, unknown>
+}
+
+const STAGE_TRANSACTION_WRITES = 40
+
+/**
+ * Confirma els canvis de Zoho contra la versio mes recent de Firestore.
+ *
+ * La sincronitzacio pot tardar prou (especialment amb adjunts) perque un usuari
+ * editi el calendari despres de la lectura inicial. Fer aquesta ultima lectura
+ * dins la mateixa transaccio evita que una escriptura de Zoho feta amb dades
+ * obsoletes sobreescrigui una modificacio manual concurrent.
+ */
+async function commitStageDealsPreservingLatestManualChanges(
+  writes: StageDealToWrite[]
+): Promise<void> {
+  if (writes.length === 0) return
+
+  await firestore.runTransaction(async (tx) => {
+    const refs = writes.map(({ collection, deal }) =>
+      firestore.collection(collection).doc(deal.idZoho)
+    )
+    const latestSnapshots = await tx.getAll(...refs)
+
+    writes.forEach(({ dataToSave }, index) => {
+      const latest = latestSnapshots[index]
+      const latestData = latest.exists ? latest.data() : undefined
+      tx.set(
+        refs[index],
+        preserveLocalCalendarChanges(dataToSave, latestData),
+        { merge: true }
+      )
+    })
+  })
+}
+
 async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   const snap = await firestore.collection(collection).get()
   return new Map(snap.docs.map((doc) => [doc.id, doc]))
@@ -584,14 +625,13 @@ async function syncStageCollections({
       }))
     )
 
-  let batchVerd = firestore.batch()
-  let batchVerdCount = 0
+  let pendingVerd: StageDealToWrite[] = []
 
   const flushVerd = async () => {
-    if (batchVerdCount === 0) return
-    await batchVerd.commit()
-    batchVerd = firestore.batch()
-    batchVerdCount = 0
+    if (pendingVerd.length === 0) return
+    const writes = pendingVerd
+    pendingVerd = []
+    await commitStageDealsPreservingLatestManualChanges(writes)
   }
 
   const verdDeals = normalized.filter((deal) => deal.collection === 'verd')
@@ -600,10 +640,8 @@ async function syncStageCollections({
       verdDeals.slice(offset, offset + ZOHO_SYNC_CONCURRENCY)
     )
     for (const { deal, dataToSave } of builtDeals) {
-      const ref = firestore.collection('stage_verd').doc(deal.idZoho)
-      batchVerd.set(ref, dataToSave, { merge: true })
-      batchVerdCount += 1
-      if (batchVerdCount >= MAX_BATCH_WRITES) {
+      pendingVerd.push({ collection: 'stage_verd', deal, dataToSave })
+      if (pendingVerd.length >= STAGE_TRANSACTION_WRITES) {
         await flushVerd()
       }
     }
@@ -612,14 +650,15 @@ async function syncStageCollections({
   await flushVerd()
   console.info(`stage_verd actualitzat: ${idsVerd.size} deals`)
 
-  let batchOthers = firestore.batch()
-  let batchOthersCount = 0
+  let pendingOthers: StageDealToWrite[] = []
+  let wroteOthers = false
 
   const flushOthers = async () => {
-    if (batchOthersCount === 0) return
-    await batchOthers.commit()
-    batchOthers = firestore.batch()
-    batchOthersCount = 0
+    if (pendingOthers.length === 0) return
+    const writes = pendingOthers
+    pendingOthers = []
+    await commitStageDealsPreservingLatestManualChanges(writes)
+    wroteOthers = true
   }
 
   const otherDeals = normalized.filter(
@@ -633,18 +672,16 @@ async function syncStageCollections({
     )
     for (const { deal, dataToSave } of builtDeals) {
       const collection = deal.collection === 'groc' ? 'stage_groc' : 'stage_taronja'
-      const ref = firestore.collection(collection).doc(deal.idZoho)
-      batchOthers.set(ref, dataToSave, { merge: true })
-      batchOthersCount += 1
+      pendingOthers.push({ collection, deal, dataToSave })
 
-      if (batchOthersCount >= MAX_BATCH_WRITES) {
+      if (pendingOthers.length >= STAGE_TRANSACTION_WRITES) {
         await flushOthers()
       }
     }
   }
 
-  if (batchOthersCount > 0) {
-    await flushOthers()
+  await flushOthers()
+  if (wroteOthers) {
     console.info('Groc/taronja escrits respectant la prioritat de verd')
   } else {
     console.info('Cap actualitzacio groc/taronja en aquest sync')

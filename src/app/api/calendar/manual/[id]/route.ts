@@ -127,43 +127,46 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const docRef = db.collection(collection).doc(id)
     const now = new Date().toISOString()
-    let codeMeta: Record<string, unknown> = {}
-    const snap = await docRef.get()
-    const previous = snap.exists ? snap.data() || {} : {}
-    const manualOverrides: Record<string, true> = {
-      ...((previous.manualOverrides && typeof previous.manualOverrides === 'object'
-        ? previous.manualOverrides
-        : {}) as Record<string, true>),
-    }
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(docRef)
+      const previous = snap.exists ? snap.data() || {} : {}
+      const manualOverrides: Record<string, true> = {
+        ...((previous.manualOverrides && typeof previous.manualOverrides === 'object'
+          ? previous.manualOverrides
+          : {}) as Record<string, true>),
+      }
+      let codeMeta: Record<string, unknown> = {}
 
-    if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
-      const prevCode = String(snap.get('code') || '').trim()
-      const nextCode = String(safeData.code || '').trim()
-      if (prevCode !== nextCode) {
-        codeMeta = {
-          codeSource: 'manual',
-          codeConfirmed: Boolean(nextCode),
+      if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
+        const prevCode = String(previous.code || '').trim()
+        const nextCode = String(safeData.code || '').trim()
+        if (prevCode !== nextCode) {
+          codeMeta = {
+            codeSource: 'manual',
+            codeConfirmed: Boolean(nextCode),
+          }
         }
       }
-    }
 
-    for (const [field, value] of Object.entries(safeData)) {
-      if (!CALENDAR_MANUAL_OVERRIDE_FIELDS.has(field)) continue
-      if (isManualOverrideChange(field, value, previous)) {
-        manualOverrides[field] = true
+      for (const [field, value] of Object.entries(safeData)) {
+        if (!CALENDAR_MANUAL_OVERRIDE_FIELDS.has(field)) continue
+        if (isManualOverrideChange(field, value, previous)) {
+          manualOverrides[field] = true
+        }
       }
-    }
 
-    await docRef.set(
-      {
-        ...safeData,
-        ...codeMeta,
-        manualOverrides,
-        manualUpdatedAt: now,
-        updatedAt: now,
-      },
-      { merge: true }
-    )
+      tx.set(
+        docRef,
+        {
+          ...safeData,
+          ...codeMeta,
+          manualOverrides,
+          manualUpdatedAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      )
+    })
 
     console.log(`✅ Esdeveniment ${id} actualitzat correctament a ${collection}`)
     return NextResponse.json({ ok: true })
