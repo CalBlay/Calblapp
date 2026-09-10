@@ -29,4 +29,8 @@ test('ticket Ops stays active while planned and closes with the ticket', () => {
   assert.equal(isTicketOpsActive({ workflowStage: 'planner_queue', status: 'en_curs' }), true)
   assert.equal(isTicketOpsActive({ workflowStage: 'resolved_planner', status: 'fet' }), false)
   assert.equal(isTicketOpsActive({ workflowStage: 'tickets_inbox', externalized: true }), false)
+  assert.equal(isTicketOpsActive({ workflowStage: 'Resolved_Admin', status: 'assignat' }), false)
+  assert.equal(isTicketOpsActive({ workflowStage: 'closed', status: 'nou' }), false)
+  assert.equal(isTicketOpsActive({ workflowStage: 'tickets_inbox', status: 'Validat' }), false)
+  assert.equal(isTicketOpsActive({}), true)
 })
