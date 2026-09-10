@@ -53,7 +53,11 @@ function preserveLocalCalendarChanges(
 
   // Aquests camps nomes els escriu l'edicio manual. La sync no pot substituir
   // una versio mes nova amb la copia que havia llegit a l'inici del proces.
-  for (const field of ['manualOverrides', 'manualUpdatedAt']) {
+  for (const field of [
+    'manualOverrides',
+    'manualOverrideValues',
+    'manualUpdatedAt',
+  ]) {
     if (existing[field] !== undefined) {
       out[field] = existing[field]
     }
@@ -483,10 +487,13 @@ async function buildStageDataToSave({
 
   addAttachmentStats(totals, zohoAttachments.stats)
 
+  const now = new Date().toISOString()
   return applyManualCreatedAtPreserve(
     {
       ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
       ...zohoAttachments.fields,
+      lastWriteSource: 'zoho-sync',
+      lastWriteAt: now,
     },
     deal.idZoho,
     manualReplacements,

@@ -13,6 +13,7 @@ import {
 import {
   CALENDAR_MANUAL_OVERRIDE_FIELDS,
   isManualOverrideChange,
+  readManualOverrideValues,
 } from '@/lib/calendar/manualOverrides'
 
 function accessUserFromSession(user: {
@@ -135,6 +136,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           ? previous.manualOverrides
           : {}) as Record<string, true>),
       }
+      const manualOverrideValues: Record<string, unknown> = {
+        ...readManualOverrideValues(previous),
+      }
       let codeMeta: Record<string, unknown> = {}
 
       if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
@@ -153,6 +157,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         if (isManualOverrideChange(field, value, previous)) {
           manualOverrides[field] = true
         }
+        if (manualOverrides[field] === true) {
+          manualOverrideValues[field] = value
+        }
       }
 
       tx.set(
@@ -161,8 +168,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           ...safeData,
           ...codeMeta,
           manualOverrides,
+          manualOverrideValues,
           manualUpdatedAt: now,
           updatedAt: now,
+          lastWriteSource: 'calendar-modal',
+          lastWriteAt: now,
         },
         { merge: true }
       )

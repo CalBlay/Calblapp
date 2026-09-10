@@ -4,6 +4,7 @@ import { getToken } from 'next-auth/jwt'
 import type { JWT } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { CALENDAR_MANUAL_OVERRIDE_FIELDS } from '@/lib/calendar/manualOverrides'
 
 // “La Bíblia” §3 Rols i Permisos — només Admin o Producció poden editar
 
@@ -26,10 +27,27 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Falten camps' }, { status: 400 })
     }
 
+    const protectedFields = Object.keys(payload).filter((field) =>
+      CALENDAR_MANUAL_OVERRIDE_FIELDS.has(field)
+    )
+    if (protectedFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Els camps de calendari s'han d'editar des del modal: ${protectedFields.join(', ')}`,
+        },
+        { status: 400 }
+      )
+    }
+
     // Si es canvia responsableName i hi ha code, cal reflectir-ho a quadrantsServeis
     // però la font principal és stage_verd: primer actualitzem stage_verd
     const ref = db.collection('stage_verd').doc(id)
-    await ref.update(payload)
+    const now = new Date().toISOString()
+    await ref.update({
+      ...payload,
+      lastWriteSource: 'pissarra',
+      lastWriteAt: now,
+    })
 
     // opcional: sincronitzar responsable a quadrantsServeis si arriba
     if (Object.prototype.hasOwnProperty.call(payload, 'responsableName')) {

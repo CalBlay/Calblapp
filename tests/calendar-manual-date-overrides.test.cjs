@@ -26,6 +26,27 @@ test('Zoho sync preserves manually overridden event dates', () => {
   })
 })
 
+test('stored manual values survive an unsafe overwrite from another module', () => {
+  const existing = {
+    NomEvent: 'CALZEDONIA / 15/09/26 / 60',
+    DataFi: '2026-09-16',
+    manualOverrides: { NomEvent: true, DataFi: true },
+    manualOverrideValues: {
+      NomEvent: 'CALZEDONIA',
+      DataFi: '2026-09-15',
+    },
+  }
+  const incoming = {
+    NomEvent: 'CALZEDONIA / 15/09/26 / 60',
+    DataFi: '2026-09-16',
+  }
+
+  assert.deepEqual(preserveManualCalendarOverrides(incoming, existing), {
+    NomEvent: 'CALZEDONIA',
+    DataFi: '2026-09-15',
+  })
+})
+
 test('Zoho sync still updates dates that were not changed manually', () => {
   const existing = {
     DataInici: '2026-09-12',
@@ -103,4 +124,22 @@ test('manual calendar edits are also recorded atomically', () => {
   assert.match(putRoute, /db\.runTransaction/)
   assert.match(putRoute, /tx\.get\(docRef\)/)
   assert.match(putRoute, /tx\.set\(/)
+  assert.match(putRoute, /manualOverrideValues/)
+  assert.match(putRoute, /lastWriteSource:\s*'calendar-modal'/)
+})
+
+test('auxiliary calendar writers are guarded and identify their source', () => {
+  const logistics = fs.readFileSync(
+    path.join(__dirname, '../src/app/api/logistics/update/route.ts'),
+    'utf8'
+  )
+  const board = fs.readFileSync(
+    path.join(__dirname, '../src/app/api/pissarra/update/route.ts'),
+    'utf8'
+  )
+
+  assert.match(logistics, /manualOverrideValues\.\$\{field\}/)
+  assert.match(logistics, /lastWriteSource\s*=\s*'logistics'/)
+  assert.match(board, /CALENDAR_MANUAL_OVERRIDE_FIELDS\.has\(field\)/)
+  assert.match(board, /lastWriteSource:\s*'pissarra'/)
 })

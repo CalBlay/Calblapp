@@ -41,6 +41,15 @@ function targetCollection(item: UpdateItem) {
     : 'stage_verd'
 }
 
+function protectManualField(
+  updateFields: Record<string, string | number | null | boolean>,
+  field: string,
+  value: string | number | null
+) {
+  updateFields[`manualOverrides.${field}`] = true
+  updateFields[`manualOverrideValues.${field}`] = value
+}
+
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth()
@@ -99,6 +108,9 @@ export async function POST(req: NextRequest) {
         if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
           updateFields.ParentEventCode = value
         }
+        if (targetCollection(item) === 'stage_verd') {
+          protectManualField(updateFields, 'code', value)
+        }
       }
 
       if (item.NomEvent !== undefined) {
@@ -107,10 +119,17 @@ export async function POST(req: NextRequest) {
         if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
           updateFields.ParentEventName = value
         }
+        if (targetCollection(item) === 'stage_verd') {
+          protectManualField(updateFields, 'NomEvent', value)
+        }
       }
 
       if (item.Ubicacio !== undefined) {
-        updateFields.Ubicacio = trimOrEmpty(item.Ubicacio)
+        const value = trimOrEmpty(item.Ubicacio)
+        updateFields.Ubicacio = value
+        if (targetCollection(item) === 'stage_verd') {
+          protectManualField(updateFields, 'Ubicacio', value)
+        }
       }
 
       if (item.DataInici !== undefined) {
@@ -123,6 +142,10 @@ export async function POST(req: NextRequest) {
         }
         updateFields.DataInici = value
         updateFields.DataFi = value
+        if (targetCollection(item) === 'stage_verd') {
+          protectManualField(updateFields, 'DataInici', value)
+          protectManualField(updateFields, 'DataFi', value)
+        }
         if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
           updateFields.ServiceDate = value
         }
@@ -132,6 +155,9 @@ export async function POST(req: NextRequest) {
         const value = trimOrEmpty(item.NumPax)
         if (!value) {
           updateFields.NumPax = null
+          if (targetCollection(item) === 'stage_verd') {
+            protectManualField(updateFields, 'NumPax', null)
+          }
         } else {
           const parsed = Number(value)
           if (!Number.isFinite(parsed) || parsed < 0) {
@@ -141,6 +167,9 @@ export async function POST(req: NextRequest) {
             )
           }
           updateFields.NumPax = parsed
+          if (targetCollection(item) === 'stage_verd') {
+            protectManualField(updateFields, 'NumPax', parsed)
+          }
         }
       }
 
@@ -184,7 +213,10 @@ export async function POST(req: NextRequest) {
 
         batch.set(db.collection('stage_verd').doc(createdId), payload)
       } else {
-        updateFields.updatedAt = new Date().toISOString()
+        const now = new Date().toISOString()
+        updateFields.updatedAt = now
+        updateFields.lastWriteAt = now
+        updateFields.lastWriteSource = 'logistics'
         batch.update(db.collection(targetCollection(item)).doc(id), updateFields)
       }
 
