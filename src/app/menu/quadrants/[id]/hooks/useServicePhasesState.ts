@@ -17,6 +17,7 @@ import {
   createEmptyRoleLine,
   ensureGroupRoleLines,
   getPrimaryServiceRoleLines,
+  resizeServiceGroupWorkerSlots,
   syncGroupFromRoleLines,
 } from '../lib/serviceGroupRoleLines'
 import { hydrateServiceGroupsFromDraft } from '../lib/hydrateServiceGroupsFromDraft'
@@ -166,8 +167,10 @@ export function useServicePhasesState({
       needsDriver: seed.needsDriver ?? false,
       driverId: seed.driverId || '',
     }
-    const roleLines = seed.roleLines?.length ? seed.roleLines : [createEmptyRoleLine(base, 'conductor')]
-    return syncGroupFromRoleLines(base, roleLines)
+    if (seed.roleLines?.length) return syncGroupFromRoleLines(base, seed.roleLines)
+
+    const withConductor = syncGroupFromRoleLines(base, [createEmptyRoleLine(base, 'conductor')])
+    return resizeServiceGroupWorkerSlots(withConductor, base.workers)
   }, [defaultMeetingPoint, defaultServiceDate, endTime, startTime])
 
   const createServicePhaseGroups = useCallback(
@@ -369,8 +372,10 @@ export function useServicePhasesState({
     (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
       return selectedServiceGroups.map((group, index) => {
         const roleLines = ensureGroupRoleLines(group)
+        const staffSlotLines = roleLines.filter(
+          (line) => line.role === 'treballador' || line.role === 'jamonero'
+        )
         const {
-          filled,
           responsable,
           conductor,
           staffLines,
@@ -419,8 +424,8 @@ export function useServicePhasesState({
           meetingPoint: group.meetingPoint,
           startTime: group.startTime,
           endTime: group.endTime,
-          workers: filled.length,
-          jamoneros: filled.filter((line) => line.role === 'jamonero').length,
+          workers: staffSlotLines.length,
+          jamoneros: staffSlotLines.filter((line) => line.role === 'jamonero').length,
           drivers: conductor ? 1 : 0,
           needsDriver: roleLines.some((line) => line.role === 'conductor'),
           driverId: conductor?.personId || null,

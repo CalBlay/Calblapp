@@ -31,6 +31,8 @@ type Props = {
   onPhaseClick: (phase: UnifiedEvent) => void
   onRefreshDrafts?: () => Promise<unknown>
   onEditorSaved?: () => void | Promise<void>
+  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
+  renderEditor?: boolean
 }
 
 export default function QuadrantsPhaseRow({
@@ -43,6 +45,8 @@ export default function QuadrantsPhaseRow({
   onPhaseClick,
   onRefreshDrafts: _onRefreshDrafts,
   onEditorSaved,
+  onRegisterAutoSave,
+  renderEditor = true,
 }: Props) {
   const draft = phase.draft as (Draft & QuadrantDraftDetails) | undefined
   const isPending = phase.quadrantStatus === 'pending'
@@ -142,10 +146,14 @@ export default function QuadrantsPhaseRow({
         </td>
       </tr>
 
-      {isExpanded && (isPending || draft) ? (
+      {renderEditor && isExpanded && (isPending || draft) ? (
         <tr>
           <td colSpan={6} className="bg-slate-50/80 px-3 pb-3 pt-1">
-            <PendingQuadrantEditor phase={phase} onSaved={onEditorSaved} />
+            <PendingQuadrantEditor
+              phase={phase}
+              onSaved={onEditorSaved}
+              onRegisterAutoSave={onRegisterAutoSave}
+            />
           </td>
         </tr>
       ) : null}

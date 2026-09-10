@@ -1,7 +1,7 @@
 // file: src/app/menu/quadrants/drafts/page.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -237,6 +237,17 @@ export default function DraftsPage() {
   )
   const [status, setStatus] = useState<'all' | 'draft' | 'confirmed'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+    autoSaveRef.current = handler
+  }, [])
+  const toggleExpandedDraft = useCallback(async (draftId: string) => {
+    if (expandedId && autoSaveRef.current) {
+      const canChange = await autoSaveRef.current()
+      if (!canChange) return
+    }
+    setExpandedId((current) => (current === draftId ? null : draftId))
+  }, [expandedId])
 
   /* ──────────────────────────────
      API i dades
@@ -464,9 +475,7 @@ export default function DraftsPage() {
                       <React.Fragment key={q.id}>
                         <TableRow
                           className="text-xs sm:text-sm hover:bg-emerald-50 transition cursor-pointer"
-                          onClick={() =>
-                            setExpandedId(isExpanded ? null : q.id)
-                          }
+                          onClick={() => void toggleExpandedDraft(q.id)}
                         >
                           {/* Responsable */}
                           <TableCell className="font-medium text-gray-800 min-w-[130px] max-w-[160px]">
@@ -523,7 +532,11 @@ export default function DraftsPage() {
                           <TableRow>
                             <TableCell colSpan={6}>
                               <div className="mt-2 mb-4">
-                                <QuadrantCard quadrant={q} onRefreshDrafts={mutate} />
+                                <QuadrantCard
+                                  quadrant={q}
+                                  onRefreshDrafts={mutate}
+                                  onRegisterAutoSave={registerAutoSave}
+                                />
                               </div>
                             </TableCell>
                           </TableRow>

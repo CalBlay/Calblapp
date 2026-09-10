@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { typography } from '@/lib/typography'
@@ -25,6 +25,7 @@ import QuadrantsEventHeader from './QuadrantsEventHeader'
 import QuadrantsPhaseRow from './QuadrantsPhaseRow'
 import PendingQuadrantEditor from './PendingQuadrantEditor'
 import QuadrantCard from '@/app/menu/quadrants/drafts/components/QuadrantCard'
+import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 
 type Props = {
   event: GroupedQuadrantEvent
@@ -53,6 +54,11 @@ export default function QuadrantsEventGroup({
   onRefreshDrafts,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
+  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+    autoSaveRef.current = handler
+  }, [])
   const anchorId = useMemo(() => {
     const base = String(event.eventId || '').split('__')[0] || 'unknown'
     return `qe-${base}`
@@ -61,6 +67,8 @@ export default function QuadrantsEventGroup({
   const { ready, canViewPath, hasAction } = useUiPermissions()
   const canConfirm =
     ready && canViewPath('/menu/quadrants') && hasAction(PERM.action('/menu/quadrants', 'confirm'))
+  const canViewDocuments =
+    !ready || hasAction(PERM.action('/menu/events', 'docs:view'))
 
   const hasSurvey = useMemo(() => {
     const eventId = event.eventId.split('__')[0]
@@ -102,6 +110,10 @@ export default function QuadrantsEventGroup({
 
   const handleConfirm = async () => {
     if (!showConfirm || confirmLoading) return
+    if (autoSaveRef.current) {
+      const canConfirmCurrent = await autoSaveRef.current()
+      if (!canConfirmCurrent) return
+    }
     setConfirmLoading(true)
     try {
       let confirmed = 0
@@ -173,8 +185,14 @@ export default function QuadrantsEventGroup({
     onExpandedIdChange(null)
   }, [onExpandedIdChange])
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     const next = !expanded
+
+    if (!next && autoSaveRef.current) {
+      const canClose = await autoSaveRef.current()
+      if (!canClose) return
+    }
+
     setExpanded(next)
 
     if (next) {
@@ -206,11 +224,20 @@ export default function QuadrantsEventGroup({
     setExpanded(true)
   }, [forceExpanded])
 
-  const handlePhaseClick = (phase: UnifiedEvent) => {
+  const changeActiveEditor = async (nextId: string | null) => {
+    if (expandedId && expandedId !== nextId && autoSaveRef.current) {
+      const canChange = await autoSaveRef.current()
+      if (!canChange) return
+      setExpanded(true)
+    }
+    onExpandedIdChange(nextId)
+  }
+
+  const handlePhaseClick = async (phase: UnifiedEvent) => {
     const draft = phase.draft as { id?: string } | null | undefined
     if (phase.quadrantStatus === 'pending') return
     if (draft?.id) {
-      onExpandedIdChange(expandedId === draft.id ? null : draft.id)
+      await changeActiveEditor(expandedId === draft.id ? null : draft.id)
     }
   }
 
@@ -250,11 +277,13 @@ export default function QuadrantsEventGroup({
         personnel={personnel}
         assignedStaffCount={assignedStaffCount}
         showConfirm={showConfirm}
+        showDocuments={canViewDocuments}
         confirmLoading={confirmLoading}
         expanded={expanded}
         hidePersonnel={expanded}
         onToggle={handleToggle}
         onConfirm={() => void handleConfirm()}
+        onOpenDocuments={() => setDocumentsOpen(true)}
       />
 
       {expanded ? (
@@ -272,7 +301,7 @@ export default function QuadrantsEventGroup({
                       <button
                         key={key}
                         type="button"
-                        onClick={() => onExpandedIdChange(key)}
+                        onClick={() => void changeActiveEditor(key)}
                         className={cn(
                           'rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition',
                           expandedId === key
@@ -286,7 +315,11 @@ export default function QuadrantsEventGroup({
                   })}
                 </div>
               ) : null}
-              <PendingQuadrantEditor phase={activePendingPhase} onSaved={handleEditorSaved} />
+              <PendingQuadrantEditor
+                phase={activePendingPhase}
+                onSaved={handleEditorSaved}
+                onRegisterAutoSave={registerAutoSave}
+              />
             </div>
           ) : null}
 
@@ -300,6 +333,7 @@ export default function QuadrantsEventGroup({
                     pendingPhases={pendingPhasesForEvent}
                     onRefreshDrafts={onRefreshDrafts}
                     onSaved={handleEditorSaved}
+                    onRegisterAutoSave={registerAutoSave}
                   />
                 </div>
               ) : null}
@@ -340,6 +374,8 @@ export default function QuadrantsEventGroup({
                           onPhaseClick={handlePhaseClick}
                           onRefreshDrafts={onRefreshDrafts}
                           onEditorSaved={handleEditorSaved}
+                          onRegisterAutoSave={registerAutoSave}
+                          renderEditor={false}
                         />
                       )
                     })}
@@ -349,6 +385,15 @@ export default function QuadrantsEventGroup({
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {documentsOpen ? (
+        <EventDocumentsSheet
+          eventId={String(event.eventId || '').split('__')[0]}
+          eventCode={event.eventCode}
+          open
+          onOpenChange={setDocumentsOpen}
+        />
       ) : null}
     </article>
   )

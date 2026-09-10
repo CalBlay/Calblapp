@@ -22,6 +22,7 @@ import {
   createEmptyRoleLine,
   ensureGroupRoleLines,
   patchGroupRoleLines,
+  resizeServiceGroupWorkerSlots,
 } from "../lib/serviceGroupRoleLines"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { DriverCrewPremise } from "@/services/premises"
@@ -149,6 +150,9 @@ export default function ServicePhasePanel({
                 <>
                   {groupsForPhase.map((group) => {
                     const roleLines = ensureGroupRoleLines(group)
+                    const workerSlotCount = roleLines.filter(
+                      (line) => line.role === 'treballador' || line.role === 'jamonero'
+                    ).length
                     const allPhaseLines = groupsForPhase.flatMap((entry) =>
                       ensureGroupRoleLines(entry)
                     )
@@ -225,6 +229,32 @@ export default function ServicePhasePanel({
                               )}
                               aria-label="Data servei del grup"
                             />
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Label
+                                htmlFor={`service-workers-${group.id}`}
+                                className="mb-0 whitespace-nowrap text-xs text-slate-600"
+                              >
+                                Treb.
+                              </Label>
+                              <Input
+                                id={`service-workers-${group.id}`}
+                                type="number"
+                                min={0}
+                                max={30}
+                                value={workerSlotCount}
+                                onChange={(e) =>
+                                  updateGroup(
+                                    group.id,
+                                    resizeServiceGroupWorkerSlots(group, Number(e.target.value))
+                                  )
+                                }
+                                className={cn(
+                                  "w-[4.5rem] shrink-0 px-2 tabular-nums",
+                                  compact ? "h-8 text-xs" : "h-9 text-sm"
+                                )}
+                                aria-label="Nombre de treballadors del grup"
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={() =>

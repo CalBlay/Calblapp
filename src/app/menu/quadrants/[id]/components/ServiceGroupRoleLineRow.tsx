@@ -1,8 +1,11 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { GraduationCap, Truck, User, X } from 'lucide-react'
+import { Check, ChevronsUpDown, GraduationCap, Truck, User, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import type { ServeiGroupRoleLine, ServeiRoleKey } from '../phaseConfig'
 import {
@@ -84,6 +87,13 @@ function peopleForRole(
 
 const DEFAULT_ALLOWED_ROLES: ServeiRoleKey[] = ['conductor', 'responsable', 'treballador', 'jamonero']
 
+const normalizePersonSearch = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('ca')
+    .trim()
+
 export default function ServiceGroupRoleLineRow({
   line,
   mode,
@@ -98,6 +108,8 @@ export default function ServiceGroupRoleLineRow({
   allowedRoles = DEFAULT_ALLOWED_ROLES,
   hideRoleSelect = false,
 }: Props) {
+  const [personPickerOpen, setPersonPickerOpen] = useState(false)
+  const [personSearch, setPersonSearch] = useState('')
   const normalize = normalizeRoleLinePersonKey
   const basePeople = peopleForRole(line.role, responsables, conductors, treballadors).filter((person) => {
     const pid = normalize(person.id)
@@ -130,6 +142,47 @@ export default function ServiceGroupRoleLineRow({
     Boolean(String(line.personName || '').trim()) &&
     !selectedInPool &&
     (!line.personId || !people.some((person) => person.id === line.personId))
+
+  const normalizedPersonSearch = normalizePersonSearch(personSearch)
+  const filteredPeople = useMemo(() => {
+    if (!normalizedPersonSearch) return people
+    return people
+      .filter((person) => normalizePersonSearch(person.name).includes(normalizedPersonSearch))
+  }, [normalizedPersonSearch, people])
+
+  const selectedPersonLabel = line.personName || selectedInPool?.name || ''
+  const personInputPlaceholder =
+    mode !== 'manual'
+      ? 'Automàtic'
+      : line.role === 'conductor'
+        ? 'Tria conductor…'
+        : line.role === 'responsable'
+          ? 'Tria responsable…'
+          : 'Tria treballador…'
+
+  const selectPerson = (raw: string) => {
+    if (raw.startsWith('__slot__:')) {
+      onPatch({ personId: '', personName: line.personName || '' })
+      setPersonPickerOpen(false)
+      return
+    }
+
+    const nextId = raw === '__auto__' ? '' : raw
+    const selected = people.find((person) => person.id === nextId)
+    if (
+      nextId &&
+      isPersonReservedForRoleLine(
+        { id: nextId, name: selected?.name },
+        reservedPersonIds
+      )
+    ) {
+      toast.warning('Aquesta persona ja està assignada en una altra línia')
+      return
+    }
+
+    onPatch({ personId: nextId, personName: selected?.name || '' })
+    setPersonPickerOpen(false)
+  }
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5">
@@ -164,48 +217,121 @@ export default function ServiceGroupRoleLineRow({
       )}
 
       <div className="min-w-[12rem] flex-1">
-        <select
-          value={personValue}
-          onChange={(e) => {
-            const raw = e.target.value
-            if (raw.startsWith('__slot__:')) {
-              onPatch({
-                personId: '',
-                personName: line.personName || '',
-              })
-              return
-            }
-            const nextId = raw === '__auto__' ? '' : raw
-            const selected = people.find((person) => person.id === nextId)
-            if (
-              nextId &&
-              isPersonReservedForRoleLine(
-                { id: nextId, name: selected?.name },
-                reservedPersonIds
-              )
-            ) {
-              toast.warning('Aquesta persona ja està assignada en una altra línia')
-              return
-            }
-            onPatch({
-              personId: nextId,
-              personName: selected?.name || '',
-            })
+        <Popover
+          open={personPickerOpen}
+          onOpenChange={(open) => {
+            setPersonPickerOpen(open)
+            if (!open) setPersonSearch('')
           }}
-          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
-          aria-label="Persona"
         >
-          {mode !== 'manual' ? <option value="__auto__">Automàtic</option> : null}
-          <option value="">{mode === 'manual' ? 'Tria persona…' : 'Sense assignar'}</option>
-          {showSavedNameFallback ? (
-            <option value={`__slot__:${line.slotId}`}>{line.personName}</option>
-          ) : null}
-          {people.map((person) => (
-            <option key={person.id} value={person.id}>
-              {formatPersonLabel(person, useCrewOrdering && isCrewMember(person, crewMembers))}
-            </option>
-          ))}
-        </select>
+          <div className="relative">
+            <PopoverAnchor asChild>
+              <Input
+                value={personPickerOpen ? personSearch : selectedPersonLabel}
+                onClick={() => {
+                  if (!personPickerOpen) setPersonSearch('')
+                  setPersonPickerOpen(true)
+                }}
+                onFocus={() => {
+                  if (!personPickerOpen) setPersonSearch('')
+                  setPersonPickerOpen(true)
+                }}
+                onChange={(event) => {
+                  setPersonSearch(event.target.value)
+                  if (!personPickerOpen) setPersonPickerOpen(true)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setPersonPickerOpen(false)
+                  if (event.key === 'Enter' && filteredPeople.length > 0) {
+                    event.preventDefault()
+                    selectPerson(filteredPeople[0].id)
+                  }
+                }}
+                placeholder={personInputPlaceholder}
+                role="combobox"
+                data-quadrant-editor-command="open-person-search"
+                aria-expanded={personPickerOpen}
+                aria-autocomplete="list"
+                aria-label="Persona"
+                autoComplete="off"
+                className="h-8 bg-white pr-8 text-sm"
+              />
+            </PopoverAnchor>
+            <ChevronsUpDown
+              className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              aria-hidden
+            />
+          </div>
+          <PopoverContent
+            align="start"
+            className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] p-2"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+          >
+            <div className="max-h-64 overflow-y-auto">
+              <div className="space-y-0.5 border-b border-slate-100 pb-1.5">
+                {mode !== 'manual' ? (
+                  <button
+                    type="button"
+                    onClick={() => selectPerson('__auto__')}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+                  >
+                    Automàtic
+                    {!line.personId && !line.personName ? <Check className="h-4 w-4" /> : null}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => selectPerson('')}
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+                >
+                  {mode === 'manual' ? 'Sense persona' : 'Sense assignar'}
+                  {mode === 'manual' && !line.personId && !line.personName ? (
+                    <Check className="h-4 w-4" />
+                  ) : null}
+                </button>
+                {showSavedNameFallback ? (
+                  <button
+                    type="button"
+                    onClick={() => selectPerson(`__slot__:${line.slotId}`)}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+                  >
+                    <span className="truncate">{line.personName}</span>
+                    {personValue.startsWith('__slot__:') ? <Check className="h-4 w-4" /> : null}
+                  </button>
+                ) : null}
+              </div>
+
+              {filteredPeople.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-slate-500">No s'ha trobat cap persona.</p>
+              ) : (
+                <ul className="space-y-0.5 pt-1.5">
+                  {filteredPeople.map((person) => (
+                    <li key={person.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectPerson(person.id)}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100',
+                          line.personId === person.id && 'bg-slate-100'
+                        )}
+                      >
+                        <span className="truncate">
+                          {formatPersonLabel(
+                            person,
+                            useCrewOrdering && isCrewMember(person, crewMembers)
+                          )}
+                        </span>
+                        {line.personId === person.id ? (
+                          <Check className="ml-2 h-4 w-4 shrink-0" />
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="w-[9rem] shrink-0">

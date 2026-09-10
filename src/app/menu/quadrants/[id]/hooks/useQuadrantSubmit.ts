@@ -109,7 +109,7 @@ type UseQuadrantSubmitResult = {
   loading: boolean
   error: string | null
   success: boolean
-  save: (confirmAfterSave?: boolean) => Promise<void>
+  save: (confirmAfterSave?: boolean) => Promise<boolean>
 }
 
 type SubmissionContext = {
@@ -168,7 +168,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         keepOpenAfterSave = false,
       } = params
 
-      if (!canAutoGen) return
+      if (!canAutoGen) return false
       setLoading(true)
       setError(null)
       setSuccess(false)
@@ -186,7 +186,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
           setLoading(false)
           setError(localDuplicateError)
           toast.error(localDuplicateError)
-          return
+          return false
         }
       }
 
@@ -382,10 +382,12 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         if (!keepOpenAfterSave) {
           onOpenChange(false)
         }
+        return true
       } catch (err: unknown) {
         const e = err as Error
         setError(e.message)
         toast.error(e.message)
+        return false
       } finally {
         if (!shouldClose) setLoading(false)
       }

@@ -18,6 +18,7 @@ interface Props {
   onCreatePhase?: (phaseKey: string) => void
   onRefreshDrafts?: () => Promise<unknown>
   onSaved?: () => void | Promise<void>
+  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
 }
 
 type DraftWithMeta = Draft & {
@@ -34,6 +35,7 @@ export default function QuadrantCard({
   onCreatePhase: _onCreatePhase,
   onRefreshDrafts,
   onSaved,
+  onRegisterAutoSave,
 }: Props) {
   void autoExpand
   void onRefreshDrafts
@@ -81,6 +83,7 @@ export default function QuadrantCard({
         active
         layout="inline"
         existingDraft={creatingPhaseKey ? null : (quadrant as EditorDraftInput)}
+        onRegisterAutoSave={onRegisterAutoSave}
         onSaved={async () => {
           setCreatingPhaseKey(null)
           await onSaved?.()

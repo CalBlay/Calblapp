@@ -2,6 +2,12 @@ import type { ServeiGroup, ServeiGroupRoleLine, ServeiRoleKey } from '../phaseCo
 
 const makeSlotId = () => `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+const isStaffRole = (role: ServeiRoleKey) =>
+  role === 'treballador' || role === 'jamonero'
+
+const hasAssignedPerson = (line: ServeiGroupRoleLine) =>
+  Boolean(String(line.personId || '').trim() || String(line.personName || '').trim())
+
 export const createEmptyRoleLine = (
   group: ServeiGroup,
   role: ServeiRoleKey = 'treballador'
@@ -98,15 +104,14 @@ export function ensureGroupRoleLines(group: ServeiGroup): ServeiGroupRoleLine[] 
 
 export function syncGroupFromRoleLines(group: ServeiGroup, roleLines: ServeiGroupRoleLine[]): ServeiGroup {
   const normalizedRoleLines = normalizeGroupRoleLines(group, roleLines)
-  const filled = normalizedRoleLines.filter(
-    (line) => String(line.personId || '').trim() || String(line.personName || '').trim()
-  )
+  const filled = normalizedRoleLines.filter(hasAssignedPerson)
   const responsable = filled.find((line) => line.role === 'responsable')
   const conductor = filled.find((line) => line.role === 'conductor')
-  const staffLines = filled.filter((line) => line.role === 'treballador' || line.role === 'jamonero')
+  const staffLines = normalizedRoleLines.filter((line) => isStaffRole(line.role))
+  const filledStaffLines = staffLines.filter(hasAssignedPerson)
 
-  const workerIds = staffLines.map((line) => line.personId)
-  const workerDetails = staffLines.reduce<ServeiGroup['workerDetails']>((acc, line) => {
+  const workerIds = filledStaffLines.map((line) => line.personId)
+  const workerDetails = filledStaffLines.reduce<ServeiGroup['workerDetails']>((acc, line) => {
     acc![line.personId] = {
       id: line.personId,
       name: line.personName,
@@ -125,24 +130,52 @@ export function syncGroupFromRoleLines(group: ServeiGroup, roleLines: ServeiGrou
     responsibleId: responsable?.personId || '',
     needsDriver: normalizedRoleLines.some((line) => line.role === 'conductor'),
     driverId: conductor?.personId || '',
-    workers: filled.length,
-    jamoneros: filled.filter((line) => line.role === 'jamonero').length,
+    workers: staffLines.length,
+    jamoneros: staffLines.filter((line) => line.role === 'jamonero').length,
     workerIds,
     workerDetails,
   }
 }
 
 export function countServiceGroupRoleLineTotals(roleLines: ServeiGroupRoleLine[]) {
-  const filled = roleLines.filter(
-    (line) => String(line.personId || '').trim() || String(line.personName || '').trim()
-  )
+  const staffLines = roleLines.filter((line) => isStaffRole(line.role))
+  const filled = roleLines.filter(hasAssignedPerson)
 
   return {
-    workers: filled.length,
-    jamoneros: filled.filter((line) => line.role === 'jamonero').length,
+    workers: staffLines.length,
+    jamoneros: staffLines.filter((line) => line.role === 'jamonero').length,
     drivers: filled.filter((line) => line.role === 'conductor').length,
     responsables: filled.filter((line) => line.role === 'responsable').length,
   }
+}
+
+export function resizeServiceGroupWorkerSlots(
+  group: ServeiGroup,
+  workerCount: number
+): ServeiGroup {
+  const target = Math.max(0, Math.min(30, Math.floor(Number(workerCount) || 0)))
+  const current = ensureGroupRoleLines(group)
+  const nonStaffLines = current.filter((line) => !isStaffRole(line.role))
+  const staffLines = current.filter((line) => isStaffRole(line.role))
+
+  if (staffLines.length === target) return syncGroupFromRoleLines(group, current)
+
+  if (staffLines.length < target) {
+    const added = Array.from(
+      { length: target - staffLines.length },
+      () => createEmptyRoleLine(group, 'treballador')
+    )
+    return syncGroupFromRoleLines(group, [...nonStaffLines, ...staffLines, ...added])
+  }
+
+  const assigned = staffLines.filter(hasAssignedPerson)
+  const empty = staffLines.filter((line) => !hasAssignedPerson(line))
+  const keptStaff =
+    assigned.length >= target
+      ? assigned.slice(0, target)
+      : [...assigned, ...empty.slice(0, target - assigned.length)]
+
+  return syncGroupFromRoleLines(group, [...nonStaffLines, ...keptStaff])
 }
 
 export function getPrimaryServiceRoleLines(roleLines: ServeiGroupRoleLine[]) {

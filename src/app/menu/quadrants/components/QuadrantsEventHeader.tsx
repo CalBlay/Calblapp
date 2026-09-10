@@ -1,7 +1,16 @@
 'use client'
 
 import React from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, HardHat, Loader2, MapPin, Users } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  HardHat,
+  Loader2,
+  MapPin,
+  Users,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { typography } from '@/lib/typography'
@@ -28,11 +37,13 @@ interface Props {
   hidePersonnel?: boolean
   assignedStaffCount?: number
   showConfirm?: boolean
+  showDocuments?: boolean
   confirmLoading?: boolean
   className?: string
   headerClassName?: string
   onToggle?: () => void
   onConfirm?: () => void
+  onOpenDocuments?: () => void
 }
 
 function statusDotClass(status: string) {
@@ -78,11 +89,13 @@ export default function QuadrantsEventHeader({
   hidePersonnel = false,
   assignedStaffCount = 0,
   showConfirm = false,
+  showDocuments = false,
   confirmLoading = false,
   className,
   headerClassName,
   onToggle,
   onConfirm,
+  onOpenDocuments,
 }: Props) {
   const displayTitle = formatEventTitle(title)
   const lnColor = colorByLN(ln || 'altres')
@@ -119,6 +132,22 @@ export default function QuadrantsEventHeader({
           {displayTitle}
         </h3>
         <div className="flex shrink-0 items-center gap-1.5">
+          {showDocuments ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 rounded-full border-blue-200 bg-blue-50 p-0 text-blue-700 shadow-sm hover:border-blue-300 hover:bg-blue-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenDocuments?.()
+              }}
+              title="Veure documents adjunts"
+              aria-label="Veure documents adjunts"
+            >
+              <FileText className="h-4 w-4" aria-hidden />
+            </Button>
+          ) : null}
           {showConfirm ? (
             <Button
               type="button"

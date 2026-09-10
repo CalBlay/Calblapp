@@ -94,7 +94,10 @@ export default function QuadrantModalFooter({
         )}
       </LazyAnimatePresence>
 
-      <div className="sticky bottom-0 border-t border-slate-200 bg-white/80 px-3 py-3 backdrop-blur sm:px-4">
+      <div
+        className="sticky bottom-0 border-t border-slate-200 bg-white/80 px-3 py-3 backdrop-blur sm:px-4"
+        data-quadrant-editor-command
+      >
         <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button variant="outline" onClick={onCancel} className="sm:min-w-[140px]">
             Cancel·la

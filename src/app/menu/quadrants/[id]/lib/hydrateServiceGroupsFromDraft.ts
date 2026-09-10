@@ -8,7 +8,12 @@ import {
   type ServeiGroupRoleLine,
   type ServeiRoleKey,
 } from '../phaseConfig'
-import { createEmptyRoleLine, syncGroupFromRoleLines, sortRoleLinesConductorFirst } from './serviceGroupRoleLines'
+import {
+  createEmptyRoleLine,
+  resizeServiceGroupWorkerSlots,
+  syncGroupFromRoleLines,
+  sortRoleLinesConductorFirst,
+} from './serviceGroupRoleLines'
 import {
   resolveRoleLinesPersonIds,
   type PersonnelPoolRef,
@@ -80,12 +85,6 @@ function roleLinesFromSavedServeisGroup(
           startTime: String(line?.startTime || groupDef.startTime || draft.startTime || ''),
           endTime: String(line?.endTime || groupDef.endTime || draft.endTime || ''),
         }))
-        .filter((line) => {
-          const hasPerson = Boolean(line.personId || line.personName)
-          const isPlaceholderConductor =
-            line.role === 'conductor' && !line.personId && !line.personName
-          return hasPerson || isPlaceholderConductor
-        })
     : []
   if (savedRoleLines.length > 0) {
     return sortRoleLinesConductorFirst(savedRoleLines)
@@ -449,7 +448,24 @@ export function hydrateServiceGroupsFromDraft(
       driverId: String(groupDef.driverId || ''),
     }
 
-    return syncGroupFromRoleLines(base, roleLines)
+    const synced = syncGroupFromRoleLines(base, roleLines)
+    const savedRoleLines = Array.isArray((groupDef as ServeisGroupDef).roleLines)
+      ? (groupDef as ServeisGroupDef).roleLines || []
+      : null
+    const savedWorkerCount = Math.max(
+      0,
+      savedRoleLines
+        ? savedRoleLines.filter(
+            (line) => line?.role === 'treballador' || line?.role === 'jamonero'
+          ).length
+        : Number(
+            groupDef.workers ??
+              groupRows.filter(
+                (row) => row.role === 'treballador' || row.isJamonero === true
+              ).length
+          ) || 0
+    )
+    return resizeServiceGroupWorkerSlots(synced, savedWorkerCount)
   })
 
   const settings = createServicePhaseSettings()

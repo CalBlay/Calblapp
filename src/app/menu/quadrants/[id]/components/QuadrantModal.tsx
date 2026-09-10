@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -43,6 +43,7 @@ export type QuadrantEditorProps = {
   existingDraft?: EditorDraftInput | null
   onSaved?: () => void | Promise<void>
   onCancel?: () => void
+  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
 }
 
 export function QuadrantEditor({
@@ -53,7 +54,9 @@ export function QuadrantEditor({
   existingDraft,
   onSaved,
   onCancel,
+  onRegisterAutoSave,
 }: QuadrantEditorProps) {
+  const dirtyRef = useRef(false)
   const { data: session } = useSession()
   const sessionUser = session?.user as SessionUserInfo | undefined
   const userRole = normalizeRole(String(sessionUser?.role || ''))
@@ -330,6 +333,7 @@ export function QuadrantEditor({
         })
         toast.success('Borrador eliminat')
         window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'deleted' } }))
+        dirtyRef.current = false
         await onSaved?.()
         handleClose()
       } catch (err) {
@@ -342,6 +346,7 @@ export function QuadrantEditor({
     }
 
     if (!confirm('Vols tancar l\'editor sense desar?')) return
+    dirtyRef.current = false
     await onSaved?.()
     handleClose()
   }, [
@@ -401,6 +406,30 @@ export function QuadrantEditor({
     },
   })
 
+  const runSave = useCallback(async (confirmAfterSave: boolean) => {
+    const wasDirty = dirtyRef.current
+    dirtyRef.current = false
+    const saved = await handleAutoGenAndSave(confirmAfterSave)
+    if (!saved) dirtyRef.current = wasDirty
+    return saved
+  }, [handleAutoGenAndSave])
+
+  const handleAutoSaveBeforeClose = useCallback(async () => {
+    if (!dirtyRef.current) return true
+    if (loading || deleting) return false
+    if (!canAutoGen) {
+      toast.warning('Hi ha canvis pendents. Completa les dates i hores abans de plegar la targeta.')
+      return false
+    }
+
+    return runSave(false)
+  }, [canAutoGen, deleting, loading, runSave])
+
+  useEffect(() => {
+    onRegisterAutoSave?.(handleAutoSaveBeforeClose)
+    return () => onRegisterAutoSave?.(null)
+  }, [handleAutoSaveBeforeClose, onRegisterAutoSave])
+
   const editorActions = {
     loading,
     deleting,
@@ -411,7 +440,7 @@ export function QuadrantEditor({
     autoPreview,
     autoPreviewLoading,
     onDelete: handleDelete,
-    onSave: handleAutoGenAndSave,
+    onSave: runSave,
   }
 
   if (!active) return null
@@ -451,6 +480,16 @@ export function QuadrantEditor({
         'flex flex-col',
         layout === 'modal' ? 'max-h-[92vh]' : 'min-w-0'
       )}
+      onChangeCapture={(event) => {
+        const target = event.target as Element
+        if (target.closest('[data-quadrant-editor-command]')) return
+        dirtyRef.current = true
+      }}
+      onClickCapture={(event) => {
+        const target = event.target as Element
+        if (target.closest('[data-quadrant-editor-command]')) return
+        if (target.closest('button')) dirtyRef.current = true
+      }}
     >
       {!shouldHideHeader ? (
         <QuadrantModalHeader
@@ -681,7 +720,7 @@ export function QuadrantEditor({
           autoPreview={autoPreview}
           autoPreviewLoading={autoPreviewLoading}
           onCancel={handleClose}
-          onSave={handleAutoGenAndSave}
+          onSave={runSave}
         />
       )}
     </div>
@@ -689,8 +728,23 @@ export function QuadrantEditor({
 }
 
 export default function QuadrantModal({ open, onOpenChange, event, onSaved }: QuadrantModalProps) {
+  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+    autoSaveRef.current = handler
+  }, [])
+  const requestClose = useCallback(async () => {
+    const canClose = autoSaveRef.current ? await autoSaveRef.current() : true
+    if (canClose) onOpenChange(false)
+  }, [onOpenChange])
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) onOpenChange(true)
+        else void requestClose()
+      }}
+    >
       <DialogContent
         className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-hidden rounded-2xl p-0"
         onClick={(e) => e.stopPropagation()}
@@ -700,7 +754,8 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
           active={open}
           layout="modal"
           onSaved={onSaved}
-          onCancel={() => onOpenChange(false)}
+          onCancel={() => void requestClose()}
+          onRegisterAutoSave={registerAutoSave}
         />
       </DialogContent>
     </Dialog>

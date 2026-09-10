@@ -10,9 +10,15 @@ type Props = {
   phase: UnifiedEvent
   department?: string
   onSaved?: () => void | Promise<void>
+  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
 }
 
-export default function PendingQuadrantEditor({ phase, department, onSaved }: Props) {
+export default function PendingQuadrantEditor({
+  phase,
+  department,
+  onSaved,
+  onRegisterAutoSave,
+}: Props) {
   const event = useMemo(() => {
     const base = unifiedPhaseToQuadrantEvent(phase)
     const resolvedDepartment = String(base.department || phase.department || department || '').trim()
@@ -37,6 +43,7 @@ export default function PendingQuadrantEditor({ phase, department, onSaved }: Pr
       layout="inline"
       existingDraft={existingDraft}
       onSaved={onSaved}
+      onRegisterAutoSave={onRegisterAutoSave}
     />
   )
 }

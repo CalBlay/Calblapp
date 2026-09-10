@@ -80,7 +80,7 @@ export default function QuadrantEditorIconActions({
     : null
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-quadrant-editor-command>
       <div className="flex items-center gap-1.5">
         <Button
           type="button"

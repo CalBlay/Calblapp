@@ -1,9 +1,9 @@
 'use client'
 
-import React from 'react'
+import React, { useCallback, useRef } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   buildQuadrantPhaseBadge,
@@ -15,6 +15,9 @@ import type { Draft } from '@/app/menu/quadrants/drafts/page'
 import { buildPendingExpandKey } from '@/lib/buildPendingQuadrantDraft'
 import PendingQuadrantEditor from './PendingQuadrantEditor'
 import QuadrantsPersonnelList from './QuadrantsPersonnelList'
+import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 type QuadrantDraftDetails = {
   id?: string
@@ -44,12 +47,25 @@ export default function QuadrantsLinesTable({
   department,
   onRefreshDrafts: _onRefreshDrafts,
 }: Props) {
+  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
+  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+    autoSaveRef.current = handler
+  }, [])
+  const [documentsEvent, setDocumentsEvent] = React.useState<{
+    eventId: string
+    eventCode?: string | null
+  } | null>(null)
+  const { ready, hasAction } = useUiPermissions()
+  const canViewDocuments =
+    !ready || hasAction(PERM.action('/menu/events', 'docs:view'))
+
   return (
-    <div
-      id="quadrants-print-root"
-      className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl"
-    >
-      <div className="overflow-x-auto">
+    <>
+      <div
+        id="quadrants-print-root"
+        className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl"
+      >
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -142,6 +158,16 @@ export default function QuadrantsLinesTable({
                     '—'
                   const people = peopleFromPhase(ev)
                   const responsablePerson = people.find((person) => person.role === 'responsable')
+                  const toggleRow = async () => {
+                    const nextId = isPending ? pendingKey : draft?.id || null
+                    const willCloseCurrent = Boolean(expandedId)
+                    if (willCloseCurrent && autoSaveRef.current) {
+                      const canClose = await autoSaveRef.current()
+                      if (!canClose) return
+                    }
+
+                    onExpandedIdChange(expandedId === nextId ? null : nextId)
+                  }
 
                   return (
                     <React.Fragment key={fragmentKey}>
@@ -150,13 +176,7 @@ export default function QuadrantsLinesTable({
                           'cursor-pointer border-b border-slate-100 transition hover:bg-indigo-50/40',
                           isExpanded && 'bg-indigo-50/60'
                         )}
-                        onClick={() => {
-                          if (isPending) {
-                            onExpandedIdChange(expandedId === pendingKey ? null : pendingKey)
-                          } else if (draft && draft.id) {
-                            onExpandedIdChange(expandedId === draft.id ? null : draft.id)
-                          }
-                        }}
+                        onClick={() => void toggleRow()}
                       >
                         <td className="px-3 py-2.5 font-semibold text-slate-900">
                           {responsablePerson ? (
@@ -175,6 +195,23 @@ export default function QuadrantsLinesTable({
                         <td className="px-3 py-2.5 text-[15px] font-semibold tracking-tight text-slate-900">
                           <div className="flex items-center gap-2">
                             <span>{ev.summary}</span>
+                            {canViewDocuments ? (
+                              <button
+                                type="button"
+                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setDocumentsEvent({
+                                    eventId: eventId.split('__')[0],
+                                    eventCode: ev.eventCode || ev.code || null,
+                                  })
+                                }}
+                                title="Veure documents adjunts"
+                                aria-label={`Veure documents adjunts de ${ev.summary}`}
+                              >
+                                <FileText className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            ) : null}
                             {hasSurvey ? (
                               <span
                                 className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
@@ -225,6 +262,7 @@ export default function QuadrantsLinesTable({
                               phase={ev}
                               department={department}
                               onSaved={() => onExpandedIdChange(null)}
+                              onRegisterAutoSave={registerAutoSave}
                             />
                           </td>
                         </tr>
@@ -235,8 +273,20 @@ export default function QuadrantsLinesTable({
               </React.Fragment>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
-    </div>
+
+      {documentsEvent ? (
+        <EventDocumentsSheet
+          eventId={documentsEvent.eventId}
+          eventCode={documentsEvent.eventCode}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDocumentsEvent(null)
+          }}
+        />
+      ) : null}
+    </>
   )
 }
