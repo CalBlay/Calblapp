@@ -1,12 +1,16 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
 
+const { readFileSync } = require('node:fs')
+const { join } = require('node:path')
+
 const {
   sanitizeMaintenanceZones,
   sanitizeMaintenanceInternalLocations,
   sanitizeMaintenanceLocationNodes,
   buildMaintenanceCenterHierarchy,
   resolveMaintenanceSite,
+  maintenanceTicketSiteValues,
   matchesMaintenanceSiteFilters,
   buildControlledMaintenanceLocations,
   getMaintenanceLocationsForCenter,
@@ -104,6 +108,70 @@ test('matchesMaintenanceSiteFilters resolves free-text values against hierarchy 
     false
   )
   assert.equal(matchesMaintenanceSiteFilters(centers, {}, 'anything'), true)
+})
+
+test('maintenanceTicketSiteValues prefers zone, then workLocation, then center, then location', () => {
+  assert.deepEqual(
+    maintenanceTicketSiteValues({
+      zone: ' Cambra freda ',
+      workLocation: '',
+      center: 'Cuina Central',
+      location: 'legacy loc',
+    }),
+    ['Cambra freda', 'Cuina Central', 'legacy loc']
+  )
+  assert.deepEqual(
+    maintenanceTicketSiteValues({
+      zone: null,
+      workLocation: '  ',
+      center: undefined,
+      location: null,
+    }),
+    []
+  )
+})
+
+test('informes site filters match new tickets that only store center/zone, not location', () => {
+  const centerOnly = maintenanceTicketSiteValues({
+    center: 'Cuina Central',
+    location: '',
+  })
+  assert.equal(
+    matchesMaintenanceSiteFilters(centers, { center: 'Cuina Central' }, ...centerOnly),
+    true
+  )
+  assert.equal(
+    matchesMaintenanceSiteFilters(centers, { center: 'Cuina Central' }, ''),
+    false
+  )
+
+  const splitFields = maintenanceTicketSiteValues({
+    zone: 'Cambra freda',
+    workLocation: 'Planta baixa',
+    center: 'Cuina Central',
+    location: 'Sala gran',
+  })
+  assert.equal(
+    matchesMaintenanceSiteFilters(
+      centers,
+      { center: 'Cuina Central', location: 'Planta baixa', zone: 'Cambra freda' },
+      ...splitFields
+    ),
+    true
+  )
+  assert.equal(
+    matchesMaintenanceSiteFilters(centers, { center: 'Finca Nord' }, ...splitFields),
+    false
+  )
+})
+
+test('maintenance informes overview spreads ticket siteValues into the site matcher', () => {
+  const source = readFileSync(
+    join(__dirname, '../src/lib/informes/buildMaintenanceOverview.ts'),
+    'utf8'
+  )
+  assert.match(source, /siteValues: maintenanceTicketSiteValues\(data\)/)
+  assert.match(source, /\.\.\.item\.siteValues/)
 })
 
 test('buildControlledMaintenanceLocations includes propi centers and internal locations', () => {

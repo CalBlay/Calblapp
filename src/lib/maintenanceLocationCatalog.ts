@@ -182,6 +182,18 @@ export function resolveMaintenanceSite(
   return { center: '', location: '', zone: '' }
 }
 
+/** Ticket site fields, most specific first, for informes/list hierarchy matching. */
+export function maintenanceTicketSiteValues(ticket: {
+  zone?: string | null
+  workLocation?: string | null
+  center?: string | null
+  location?: string | null
+}): string[] {
+  return [ticket.zone, ticket.workLocation, ticket.center, ticket.location]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+}
+
 /**
  * Prefer an explicit ticket.center; otherwise infer from workLocation/location
  * via the center hierarchy (used when backfilling older tickets).

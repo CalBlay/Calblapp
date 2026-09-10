@@ -7,6 +7,7 @@ import {
   getMaintenanceCenterOptions,
   getMaintenanceLocationsForCenter,
   getMaintenanceZones,
+  maintenanceTicketSiteValues,
   matchesMaintenanceSiteFilters,
   sanitizeMaintenanceInternalLocations,
   sanitizeMaintenanceLocationNodes,
@@ -422,9 +423,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       location: String(data.location || '').trim(),
       // Els tickets nous separen centre, ubicació interna i zona. Prioritzem
       // el valor més específic per resoldre correctament tota la jerarquia.
-      siteValues: [data.zone, data.workLocation, data.center, data.location]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean),
+      siteValues: maintenanceTicketSiteValues(data),
       machine: String(data.machine || '').trim(),
       status: normalizeText(data.status) || 'nou',
       priority: normalizeText(data.priority) || 'normal',
