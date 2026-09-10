@@ -5,7 +5,7 @@ import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 
 export const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
-const MAINTENANCE_TICKET_API_VIEW_PATHS = [
+export const MAINTENANCE_TICKET_API_VIEW_PATHS = [
   MAINTENANCE_TICKETS_PATH,
   '/menu/manteniment/preventius',
   '/menu/manteniment/preventius/fulls',
