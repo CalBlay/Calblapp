@@ -32,6 +32,9 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(byId.mediaDelete.requireViewOnly, undefined)
   assert.equal(byId.decoTicketsActions.visibleWhen.path, '/menu/deco/tickets')
   assert.equal(byId.decoTicketsActions.actions.length, 6)
+  assert.equal(byId.costServeisActions.visibleWhen.path, '/menu/cost-serveis')
+  assert.equal(byId.costServeisActions.requireViewOnly, undefined)
+  assert.equal(byId.costServeisActions.actions.length, 3)
 
   assert.equal(
     shouldShowActionGroup(true, false, byId.eventsComanda.requireViewOnly),
