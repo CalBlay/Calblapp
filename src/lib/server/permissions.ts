@@ -77,6 +77,7 @@ import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
   DECO_TICKETS_ACTION,
   DECO_TICKETS_UI_PATH,
+  resolveDecoTicketActionGrant,
 } from '@/lib/decoTicketsPermissions'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
@@ -409,9 +410,15 @@ export async function isUiPermissionGranted(params: {
       if (!canViewTickets) return false
       const permission = PERM.action(DECO_TICKETS_UI_PATH, parsed.action)
       const effect = await getClientOverrideEffectForPermission(params.user.id, permission)
-      if (effect === 'deny') return false
-      if (effect === 'allow') return true
-      return canEditUiPath({ user: params.user, path: DECO_TICKETS_UI_PATH })
+      const canEditTickets = await canEditUiPath({
+        user: params.user,
+        path: DECO_TICKETS_UI_PATH,
+      })
+      return resolveDecoTicketActionGrant({
+        canViewTickets,
+        canEditTickets,
+        overrideEffect: effect,
+      })
     }
   }
 

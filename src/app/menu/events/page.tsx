@@ -18,6 +18,7 @@ import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
+import { shouldRestrictEventsListToOwnAssignments } from '@/lib/eventListAccess'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import EventNotificationsBell from './components/EventNotificationsBell'
 import {
@@ -133,8 +134,13 @@ export default function EventsPage() {
 
   const hasFullEventsAccess =
     permsReady && canViewPath('/menu/events') && canEditPath('/menu/events')
-  const scope: 'all' | 'mine' =
-    role === 'treballador' && !productionWorker && !hasFullEventsAccess ? 'mine' : 'all'
+  const scope: 'all' | 'mine' = shouldRestrictEventsListToOwnAssignments({
+    role,
+    isProductionOperationalWorker: productionWorker,
+    hasFullEventsAccess,
+  })
+    ? 'mine'
+    : 'all'
   const includeQuadrants = role === 'treballador' && !productionWorker
 
   const initial: FiltersState = useMemo(() => {

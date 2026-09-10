@@ -7,6 +7,7 @@ const {
   canManageIncidentCategories,
   canDeleteIncident,
   isIncidentCreatedByUser,
+  shouldRestrictIncidentListToCreator,
   normalizeIncidentStatus,
   normalizeIncidentActionStatus,
 } = require('../src/lib/incidentPolicy')
@@ -29,6 +30,54 @@ test('isIncidentCreatedByUser prefers id and supports legacy name/email aliases'
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Gloria Rodriguez' }), true)
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'foodlovers@calblay.com' }), true)
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Una altra persona' }), false)
+})
+
+test('view-only board users are scoped to incidents they created', () => {
+  assert.equal(
+    shouldRestrictIncidentListToCreator({
+      canViewModule: true,
+      canEditModule: false,
+      canViewCommandBoard: false,
+      canViewEventScopedIncidents: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldRestrictIncidentListToCreator({
+      canViewModule: true,
+      canEditModule: true,
+      canViewCommandBoard: false,
+      canViewEventScopedIncidents: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldRestrictIncidentListToCreator({
+      canViewModule: true,
+      canEditModule: false,
+      canViewCommandBoard: true,
+      canViewEventScopedIncidents: false,
+    }),
+    false
+  )
+  assert.equal(
+    shouldRestrictIncidentListToCreator({
+      canViewModule: true,
+      canEditModule: false,
+      canViewCommandBoard: false,
+      canViewEventScopedIncidents: true,
+    }),
+    false
+  )
+  assert.equal(
+    shouldRestrictIncidentListToCreator({
+      canViewModule: false,
+      canEditModule: false,
+      canViewCommandBoard: false,
+      canViewEventScopedIncidents: true,
+    }),
+    false
+  )
 })
 
 test('canAccessIncidentsModule allows production workers and allowed dept roles', () => {

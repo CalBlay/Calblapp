@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { afterEach, test } = require('node:test')
 
-const { requireCronAuth } = require('../src/lib/server/internalApiAuth')
+const { requireCronAuth, isInternalApiAuthorized } = require('../src/lib/server/internalApiAuth')
 
 const previous = {
   INTERNAL_API_SECRET: process.env.INTERNAL_API_SECRET,
@@ -75,4 +75,22 @@ test('requireCronAuth falls back to CRON_SECRET when INTERNAL_API_SECRET is unse
     assert.equal(requireCronAuth(req({ 'x-cron-secret': 'cron-secret' })), null)
     assert.equal(requireCronAuth(req({ 'x-internal-secret': 'cron-secret' })), null)
   })
+})
+
+test('isInternalApiAuthorized prefers INTERNAL_API_SECRET while cron prefers CRON_SECRET', () => {
+  withEnv(
+    { INTERNAL_API_SECRET: 'internal-only', CRON_SECRET: 'cron-only' },
+    () => {
+      assert.equal(
+        isInternalApiAuthorized(req({ 'x-internal-secret': 'internal-only' })),
+        true
+      )
+      assert.equal(
+        isInternalApiAuthorized(req({ 'x-cron-secret': 'cron-only' })),
+        false
+      )
+      assert.equal(requireCronAuth(req({ 'x-cron-secret': 'cron-only' })), null)
+      assert.ok(requireCronAuth(req({ 'x-internal-secret': 'internal-only' })))
+    }
+  )
 })

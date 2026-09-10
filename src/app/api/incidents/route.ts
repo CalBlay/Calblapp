@@ -11,7 +11,7 @@ import {
   notifyForNewDecoTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
-import { canPostIncident, isIncidentCreatedByUser } from '@/lib/incidentPolicy'
+import { canPostIncident, isIncidentCreatedByUser, shouldRestrictIncidentListToCreator } from '@/lib/incidentPolicy'
 import {
   canEditIncidentsModule,
   canViewIncidentsCommandBoard,
@@ -772,11 +772,12 @@ export async function GET(req: Request) {
       };
     }) as IncidentDoc[];
 
-    const restrictGeneralListToCreator =
-      canViewModule &&
-      !canEditModule &&
-      !canViewCommandBoard &&
-      !canViewEventScopedIncidents;
+    const restrictGeneralListToCreator = shouldRestrictIncidentListToCreator({
+      canViewModule,
+      canEditModule,
+      canViewCommandBoard,
+      canViewEventScopedIncidents,
+    });
     const raw = restrictGeneralListToCreator
       ? unscopedRaw.filter((incident) => isIncidentCreatedByUser(user, incident))
       : unscopedRaw;
