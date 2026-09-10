@@ -6,6 +6,7 @@ const {
   shouldShowActionGroup,
   actionGroupDefaultExpanded,
 } = require('../src/lib/permissions/matrixConfig')
+const { CALENDAR_PERM } = require('../src/lib/calendar/calendarPermissions')
 
 test('shouldShowActionGroup requires view+edit unless the group is view-only', () => {
   assert.equal(shouldShowActionGroup(true, true, false), true)
@@ -40,5 +41,19 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(
     shouldShowActionGroup(true, false, byId.eventsActions.requireViewOnly),
     false
+  )
+})
+
+test('calendar action group exposes cancel and cancellation-email gates', () => {
+  const calendar = PERMISSION_ACTION_GROUPS.find((group) => group.id === 'calendarActions')
+  const keys = calendar.actions.map((action) => action.key)
+
+  assert.equal(calendar.visibleWhen.path, '/menu/calendar')
+  assert.ok(keys.includes(CALENDAR_PERM.cancelEvent))
+  assert.ok(keys.includes(CALENDAR_PERM.sendCancellation))
+  assert.equal(CALENDAR_PERM.cancelEvent, 'ui:action:/menu/calendar:event:cancel')
+  assert.equal(
+    CALENDAR_PERM.sendCancellation,
+    'ui:action:/menu/calendar:email:send-cancellation'
   )
 })

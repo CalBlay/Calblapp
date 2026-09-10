@@ -1,4 +1,5 @@
 import { storageAdmin } from '@/lib/firebaseAdmin'
+import { incidentActionCalendarStartDate } from '@/lib/incidentActionCalendarDates'
 import {
   deadlineCalendarRecurrenceBody,
   deadlineCalendarStartDate,
@@ -1010,11 +1011,7 @@ export async function createIncidentActionDeadlineCalendarEvent(
 
   const incidentLabel = String(input.incidentNumber || '').trim() || 'Incidència'
   const accessToken = await getAccessToken()
-  const requestedStartDate = String(input.startDate || '').trim()
-  const startDate =
-    /^\d{4}-\d{2}-\d{2}$/.test(requestedStartDate) && requestedStartDate <= deadline
-      ? requestedStartDate
-      : deadline
+  const startDate = incidentActionCalendarStartDate(input.startDate, deadline)
   const endDate = addOneDay(deadline)
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
