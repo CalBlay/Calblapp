@@ -1,4 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { isoToBarcelonaCalendarDate } from '@/lib/incidentActionCalendarDates'
 import {
   defaultPushUrlForNotificationType,
   sendPushToUsers,
@@ -66,23 +67,6 @@ async function resolveAssigneeUser(params: {
   const name = String(params.assignedToName || '').trim()
   if (!name) return null
   return findUserByName(name)
-}
-
-function isoToBarcelonaCalendarDate(iso: string | null | undefined): string {
-  if (!iso) return ''
-  const normalized = iso.trim()
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized
-  const ms = Date.parse(iso)
-  if (!Number.isFinite(ms)) return ''
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(ms))
-  const read = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value || ''
-  return `${read('year')}-${read('month')}-${read('day')}`
 }
 
 async function notifyIncidentActionAssigned(params: {
