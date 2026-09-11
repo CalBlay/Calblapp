@@ -62,3 +62,21 @@ test('calculateServeisStaffSlots counts unique people including responsable-as-d
     0
   )
 })
+
+test('serveisRequestedStaffSlots keeps staff slots and does not subtract drivers', () => {
+  const {
+    serveisRequestedStaffSlots,
+  } = require('../src/utils/calculatePersonalNeeded')
+
+  assert.equal(serveisRequestedStaffSlots(3), 3)
+  assert.equal(
+    serveisRequestedStaffSlots(3),
+    calculateServeisStaffSlots({
+      staffCount: 3,
+      drivers: ['Pau'],
+      responsableName: 'Marta',
+    }) + 2
+  )
+  assert.equal(serveisRequestedStaffSlots(0), 0)
+  assert.equal(serveisRequestedStaffSlots(Number.NaN), 0)
+})

@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   countServiceGroupRoleLineTotals,
   createEmptyRoleLine,
+  parseServiceWorkerSlotInput,
   resizeServiceGroupWorkerSlots,
   syncGroupFromRoleLines,
 } = require('../src/app/menu/quadrants/[id]/lib/serviceGroupRoleLines')
@@ -77,4 +78,14 @@ test('service totals count blank worker and jamonero slots but not other roles',
     drivers: 0,
     responsables: 0,
   })
+})
+
+test('empty worker-count keystrokes do not parse as zero', () => {
+  assert.equal(parseServiceWorkerSlotInput(''), null)
+  assert.equal(parseServiceWorkerSlotInput('   '), null)
+  assert.equal(parseServiceWorkerSlotInput('abc'), null)
+  assert.equal(parseServiceWorkerSlotInput('0'), 0)
+  assert.equal(parseServiceWorkerSlotInput('3'), 3)
+  assert.equal(parseServiceWorkerSlotInput('30'), 30)
+  assert.equal(parseServiceWorkerSlotInput('99'), 30)
 })

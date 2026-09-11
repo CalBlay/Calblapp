@@ -9,7 +9,7 @@ import { buildLedger, type Ledger } from './workloadLedger'
 import { isEligibleByName, type EligibilityCtx } from './eligibility'
 import {
   calculatePersonalNeeded,
-  calculateServeisStaffSlots,
+  serveisRequestedStaffSlots,
 } from '@/utils/calculatePersonalNeeded'
 import { assignVehiclesAndDrivers } from './vehicleAssign'
 import {
@@ -946,15 +946,11 @@ export async function autoAssign(payload: {
     name: d.name,
   }))
   const totalRequestedWorkers = Number(totalWorkers) || 0
-  // Serveis: `totalWorkers` = total de persones del grup (resp + conductor + treballadors en un sol número).
-  // Les places de staff després d’assignar resp/conductors: calculateServeisStaffSlots.
+  // Serveis: `totalWorkers` is treballador/jamonero slot count (empty slots included).
+  // Subtracting resp/conductors here under-staffs every auto-generated group.
   const neededWorkers =
     dept === 'serveis'
-      ? calculateServeisStaffSlots({
-          staffCount: totalRequestedWorkers,
-          drivers: driversForCalc,
-          responsableName: chosenResp?.name ?? null,
-        })
+      ? serveisRequestedStaffSlots(totalRequestedWorkers)
       : calculatePersonalNeeded({
           staffCount: totalRequestedWorkers,
           drivers: driversForCalc,

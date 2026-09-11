@@ -22,6 +22,7 @@ import {
   createEmptyRoleLine,
   ensureGroupRoleLines,
   patchGroupRoleLines,
+  parseServiceWorkerSlotInput,
   resizeServiceGroupWorkerSlots,
 } from "../lib/serviceGroupRoleLines"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
@@ -242,12 +243,14 @@ export default function ServicePhasePanel({
                                 min={0}
                                 max={30}
                                 value={workerSlotCount}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                  const next = parseServiceWorkerSlotInput(e.target.value)
+                                  if (next === null) return
                                   updateGroup(
                                     group.id,
-                                    resizeServiceGroupWorkerSlots(group, Number(e.target.value))
+                                    resizeServiceGroupWorkerSlots(group, next)
                                   )
-                                }
+                                }}
                                 className={cn(
                                   "w-[4.5rem] shrink-0 px-2 tabular-nums",
                                   compact ? "h-8 text-xs" : "h-9 text-sm"

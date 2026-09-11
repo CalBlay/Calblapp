@@ -210,9 +210,10 @@ export async function buildServeisPhaseRequests(
         ? findCrewByDriver({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
         : findCrewByCompanion({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
       : null
-    // Esdeveniments petits (treballadors + conductors demanats < 5): un sol vehicle amb el conductor principal.
+    // Esdeveniments petits (staff slots + conductors + responsable < 5): un sol vehicle.
+    // `g.workers` is staff slots only; do not treat it as total people.
     const serveisCompactHeadcount =
-      Number(g.workers || 0) + Number(g.drivers || 0)
+      Number(g.workers || 0) + Number(g.drivers || 0) + (wantsResp ? 1 : 0)
     const compactServeisSingleVehicle = serveisCompactHeadcount < 5
 
     const splitForManualJamonero =

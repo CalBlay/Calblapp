@@ -139,6 +139,15 @@ export function QuadrantEditor({
     availableTreballadors,
   } = useQuadrantFormState({ event, department, modalOpen: active, mode, existingDraft })
 
+  const updateServiceGroupAndMarkDirty = useCallback(
+    (id: string, patch: Parameters<typeof updateServiceGroup>[1]) => {
+      // Person search options render in a Radix portal, so DOM capture never sees the click.
+      dirtyRef.current = true
+      updateServiceGroup(id, patch)
+    },
+    [updateServiceGroup]
+  )
+
   const rawTitle = event.summary || event.title || ''
   const { name: eventName, code: parsedCode } = splitTitle(rawTitle)
   const _eventCode = parsedCode || (rawTitle.match(/[A-Z]\d{6,}/)?.[0] ?? '').toUpperCase()
@@ -637,7 +646,7 @@ export function QuadrantEditor({
               toggleVisibility={toggleServicePhaseVisibility}
               addGroup={addServiceGroup}
               removeGroup={removeServiceGroup}
-              updateGroup={updateServiceGroup}
+              updateGroup={updateServiceGroupAndMarkDirty}
               toggleEtt={toggleServicePhaseEtt}
               updateEtt={updateServicePhaseEtt}
             />
