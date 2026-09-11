@@ -3,7 +3,7 @@
 export type Driver = { name: string } | string
 
 export interface PersonalRow {
-  /** A cuina / logística: total combinat. A Serveis (amb calculateServeisStaffSlots): total de **persones** del grup (resp i conductor inclosos en el mateix número). */
+  /** A cuina / logística: total combinat. */
   staffCount: number
   /** Llista de conductors (només nom) */
   drivers: Driver[]
@@ -43,9 +43,8 @@ export function calculatePersonalNeeded(row: PersonalRow): number {
 }
 
 /**
- * Serveis: `staffCount` és el **total de persones** del grup (inclou responsable i conductor dins d’aquest número).
- * Retorna quantes línies de «treballador» (staff) calen després d’assignar responsable + conductors,
- * sense comptar dues vegades la mateixa persona (p. ex. Luis resp + conductor → 1 sol).
+ * Legacy helper: `staffCount` as **total people** (responsable + conductor included).
+ * New Serveis payloads send staff slots instead — use `serveisRequestedStaffSlots`.
  */
 export function calculateServeisStaffSlots(
   row: Pick<PersonalRow, 'staffCount' | 'drivers' | 'responsableName'>
@@ -60,4 +59,13 @@ export function calculateServeisStaffSlots(
     if (n) names.add(n)
   }
   return Math.max(0, total - names.size)
+}
+
+/**
+ * Serveis `groups[].workers` / phase `totalWorkers` after the buscador slot UI:
+ * count of treballador/jamonero lines, including empty slots. Do not subtract
+ * responsable or conductors — those are separate fields.
+ */
+export function serveisRequestedStaffSlots(totalWorkers: number): number {
+  return Math.max(0, Number(totalWorkers) || 0)
 }

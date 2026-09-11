@@ -149,6 +149,15 @@ export function countServiceGroupRoleLineTotals(roleLines: ServeiGroupRoleLine[]
   }
 }
 
+/** Empty/partial number-input values must not resize (and drop) assigned workers. */
+export function parseServiceWorkerSlotInput(value: string): number | null {
+  const raw = String(value ?? '').trim()
+  if (raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, Math.min(30, Math.floor(n)))
+}
+
 export function resizeServiceGroupWorkerSlots(
   group: ServeiGroup,
   workerCount: number
