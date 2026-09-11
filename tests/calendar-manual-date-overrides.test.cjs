@@ -7,6 +7,7 @@ const {
   hasManualDateOverride,
   isManualOverrideChange,
   preserveManualCalendarOverrides,
+  readManualOverrideValues,
 } = require('../src/lib/calendar/manualOverrides')
 
 test('Zoho sync preserves manually overridden event dates', () => {
@@ -45,6 +46,49 @@ test('stored manual values survive an unsafe overwrite from another module', () 
     NomEvent: 'CALZEDONIA',
     DataFi: '2026-09-15',
   })
+})
+
+test('falsy stored override values still beat a later overwrite', () => {
+  assert.deepEqual(
+    preserveManualCalendarOverrides(
+      { NomEvent: 'FROM_ZOHO', NumPax: 80 },
+      {
+        NomEvent: 'FROM_ZOHO',
+        NumPax: 80,
+        manualOverrides: { NomEvent: true, NumPax: true },
+        manualOverrideValues: { NomEvent: '', NumPax: 0 },
+      }
+    ),
+    { NomEvent: '', NumPax: 0 }
+  )
+  assert.deepEqual(
+    preserveManualCalendarOverrides(
+      { NumPax: 80 },
+      {
+        NumPax: 80,
+        manualOverrides: { NumPax: true },
+        manualOverrideValues: { NumPax: null },
+      }
+    ),
+    { NumPax: null }
+  )
+})
+
+test('invalid override copies fall back to the document field and ignore unmarked fields', () => {
+  assert.deepEqual(readManualOverrideValues({ manualOverrideValues: 'nope' }), {})
+  assert.deepEqual(readManualOverrideValues(undefined), {})
+  assert.deepEqual(
+    preserveManualCalendarOverrides(
+      { NomEvent: 'FROM_ZOHO', DataInici: '2026-09-20' },
+      {
+        NomEvent: 'MANUAL',
+        DataInici: '2026-09-12',
+        manualOverrides: { NomEvent: true, DataInici: false },
+        manualOverrideValues: 'broken',
+      }
+    ),
+    { NomEvent: 'MANUAL', DataInici: '2026-09-20' }
+  )
 })
 
 test('Zoho sync still updates dates that were not changed manually', () => {
