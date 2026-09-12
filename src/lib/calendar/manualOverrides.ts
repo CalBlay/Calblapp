@@ -58,6 +58,17 @@ export function hasManualDateOverride(document?: CalendarDocument): boolean {
   return overrides.DataInici === true || overrides.DataFi === true
 }
 
+/** Qualsevol camp de calendari marcat a mà (nom, dates, etc.). */
+export function hasAnyManualCalendarOverride(
+  document?: CalendarDocument
+): boolean {
+  const overrides = readManualOverrides(document)
+  for (const field of CALENDAR_MANUAL_OVERRIDE_FIELDS) {
+    if (overrides[field] === true) return true
+  }
+  return false
+}
+
 export function preserveManualCalendarOverrides(
   incoming: CalendarDocument,
   existing?: CalendarDocument

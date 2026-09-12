@@ -4,6 +4,7 @@ const path = require('node:path')
 const { test } = require('node:test')
 
 const {
+  hasAnyManualCalendarOverride,
   hasManualDateOverride,
   isManualOverrideChange,
   buildManualOverrideRepair,
@@ -93,6 +94,19 @@ test('a manual override of either boundary protects the event from date cleanup'
     hasManualDateOverride({ manualOverrides: { NomEvent: true } }),
     false
   )
+})
+
+test('any calendar field override blocks stage cleanup deletes', () => {
+  assert.equal(
+    hasAnyManualCalendarOverride({ manualOverrides: { NomEvent: true } }),
+    true
+  )
+  assert.equal(
+    hasAnyManualCalendarOverride({ manualOverrides: { DataFi: true } }),
+    true
+  )
+  assert.equal(hasAnyManualCalendarOverride({ manualOverrides: {} }), false)
+  assert.equal(hasAnyManualCalendarOverride({}), false)
 })
 
 test('normalizing a missing DataFi to the unchanged DataInici is not a manual change', () => {

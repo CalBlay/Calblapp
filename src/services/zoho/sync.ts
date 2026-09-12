@@ -27,6 +27,7 @@ import {
 } from '@/services/zoho/sync-types'
 import {
   buildManualOverrideRepair,
+  hasAnyManualCalendarOverride,
   hasManualDateOverride,
   preserveManualCalendarOverrides,
   readManualOverrides,
@@ -309,10 +310,10 @@ async function cleanupGrocTaronjaStageDocs(
         if (
           absentFromSyncedStages &&
           eligibleZohoIds.has(id) &&
-          hasManualDateOverride(data)
+          hasAnyManualCalendarOverride(data)
         ) {
           console.info(
-            `[zoho-sync] Conservat ${name}/${id}: les dates manuals tenen prioritat`
+            `[zoho-sync] Conservat ${name}/${id}: canvis manuals de calendari tenen prioritat`
           )
           continue
         }
@@ -783,10 +784,10 @@ async function syncStageCollections({
         if (
           group !== null &&
           !movedToSyncedStage &&
-          hasManualDateOverride(doc.data())
+          hasAnyManualCalendarOverride(doc.data())
         ) {
           console.info(
-            `[zoho-sync] Conservat stage_verd/${id}: les dates manuals tenen prioritat`
+            `[zoho-sync] Conservat stage_verd/${id}: canvis manuals de calendari tenen prioritat`
           )
           continue
         }
