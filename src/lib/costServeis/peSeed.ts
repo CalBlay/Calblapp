@@ -41,7 +41,7 @@ function fold(s: string): string {
     .replace(/\s+/g, ' ')
 }
 
-function monthsInRange(from: string, to: string): string[] {
+export function monthsInRange(from: string, to: string): string[] {
   const out: string[] = []
   const [fy, fm] = from.slice(0, 7).split('-').map(Number)
   const [ty, tm] = to.slice(0, 7).split('-').map(Number)

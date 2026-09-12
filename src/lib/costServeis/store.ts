@@ -2,6 +2,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   defaultServiceCostConfig,
   emptyDepartments,
+  mergeDeparturePoint,
   normalizeDepartmentBlock,
   normalizeFuelConfig,
 } from './defaults'
@@ -18,30 +19,15 @@ export async function getServiceCostConfig(): Promise<ServiceCostConfig> {
   if (!snap.exists) return base
   const data = snap.data() || {}
 
-  const mergeDeparture = (
-    dept: 'logistica' | 'serveis' | 'cuina'
-  ): ServiceCostConfig['departures']['logistica'] => {
-    const saved = (data.departures?.[dept] || {}) as Partial<
-      ServiceCostConfig['departures']['logistica']
-    >
-    const merged = { ...base.departures[dept], ...saved }
-    // No deixar adreça/label buits trepitjant els defaults
-    if (!String(merged.address || '').trim()) merged.address = base.departures[dept].address
-    if (!String(merged.label || '').trim()) merged.label = base.departures[dept].label
-    if (merged.lat == null) merged.lat = base.departures[dept].lat
-    if (merged.lng == null) merged.lng = base.departures[dept].lng
-    return merged
-  }
-
   return {
     hourlyRates: {
       ...base.hourlyRates,
       ...(data.hourlyRates || {}),
     },
     departures: {
-      logistica: mergeDeparture('logistica'),
-      serveis: mergeDeparture('serveis'),
-      cuina: mergeDeparture('cuina'),
+      logistica: mergeDeparturePoint(base.departures.logistica, data.departures?.logistica),
+      serveis: mergeDeparturePoint(base.departures.serveis, data.departures?.serveis),
+      cuina: mergeDeparturePoint(base.departures.cuina, data.departures?.cuina),
     },
     fuel: normalizeFuelConfig(data.fuel),
     updatedAt: data.updatedAt ? String(data.updatedAt) : undefined,
