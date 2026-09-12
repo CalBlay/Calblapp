@@ -6,6 +6,7 @@ const { test } = require('node:test')
 const {
   hasManualDateOverride,
   isManualOverrideChange,
+  buildManualOverrideRepair,
   preserveManualCalendarOverrides,
 } = require('../src/lib/calendar/manualOverrides')
 
@@ -45,6 +46,24 @@ test('stored manual values survive an unsafe overwrite from another module', () 
     NomEvent: 'CALZEDONIA',
     DataFi: '2026-09-15',
   })
+})
+
+test('incremental sync can repair protected values without receiving the Zoho deal', () => {
+  assert.deepEqual(
+    buildManualOverrideRepair({
+      NomEvent: 'CALZEDONIA / 15/09/26 / 60',
+      DataFi: '2026-09-16',
+      manualOverrides: { NomEvent: true, DataFi: true },
+      manualOverrideValues: {
+        NomEvent: 'CALZEDONIA - proves',
+        DataFi: '2026-09-15',
+      },
+    }),
+    {
+      NomEvent: 'CALZEDONIA - proves',
+      DataFi: '2026-09-15',
+    }
+  )
 })
 
 test('Zoho sync still updates dates that were not changed manually', () => {
@@ -96,6 +115,38 @@ test('moving a one-day event marks its normalized DataFi as changed', () => {
   )
 })
 
+test('manual LN override is not wiped by Marta Granato commercial rule in zoho sync', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/zoho/sync.ts'),
+    'utf8'
+  )
+  assert.match(source, /lnManuallyOverridden/)
+  assert.match(source, /!lnManuallyOverridden/)
+})
+
+test('ADA sync skips codes marked as manualOverrides', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/sync/adaSync.ts'),
+    'utf8'
+  )
+  assert.match(source, /codeManuallyOverridden/)
+  assert.match(source, /manualOverrides\?\.code === true/)
+})
+
+test('calendar PUT protects both date fields when either boundary changes', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/app/api/calendar/manual/[id]/route.ts'),
+    'utf8'
+  )
+  const putRoute = source.match(
+    /export\s+async\s+function\s+PUT\b[\s\S]*?(?=export\s+async\s+function\s+DELETE\b)/
+  )?.[0] || ''
+
+  assert.match(putRoute, /dateTouched/)
+  assert.match(putRoute, /manualOverrides\.DataInici = true/)
+  assert.match(putRoute, /manualOverrides\.DataFi = true/)
+})
+
 test('Zoho writes re-read the latest calendar document transactionally', () => {
   const source = fs.readFileSync(
     path.join(__dirname, '../src/services/zoho/sync.ts'),
@@ -103,6 +154,12 @@ test('Zoho writes re-read the latest calendar document transactionally', () => {
   )
 
   assert.match(source, /commitStageDealsPreservingLatestManualChanges/)
+  assert.match(source, /repairStoredManualOverrides/)
+  assert.match(
+    source,
+    /repairStoredManualOverrides\(existingVerd, new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\)/
+  )
+  assert.match(source, /eventDate < todayISO/)
   assert.match(source, /firestore\.runTransaction/)
   assert.match(source, /tx\.getAll\(\.\.\.refs\)/)
   assert.match(

@@ -83,3 +83,27 @@ export function preserveManualCalendarOverrides(
 
   return result
 }
+
+/**
+ * Retorna nomes els camps que han quedat diferents de la copia manual
+ * protegida. Serveix per autoreparar documents tocats per escriptors antics
+ * encara que Zoho no hagi modificat l'oportunitat en el sync incremental.
+ */
+export function buildManualOverrideRepair(
+  document?: CalendarDocument
+): CalendarDocument {
+  if (!document) return {}
+
+  const repair: CalendarDocument = {}
+  const overrides = readManualOverrides(document)
+  const overrideValues = readManualOverrideValues(document)
+
+  for (const field of CALENDAR_MANUAL_OVERRIDE_FIELDS) {
+    if (overrides[field] !== true) continue
+    if (!Object.prototype.hasOwnProperty.call(overrideValues, field)) continue
+    if (comparable(document[field]) === comparable(overrideValues[field])) continue
+    repair[field] = overrideValues[field]
+  }
+
+  return repair
+}

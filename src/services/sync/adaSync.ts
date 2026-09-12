@@ -22,6 +22,7 @@ type StageEvent = {
   codeSource?: string
   codeMatchScore?: number
   codeMatchFields?: string[]
+  manualOverrides?: Record<string, unknown>
 }
 
 type MatchResult = {
@@ -279,7 +280,9 @@ export async function syncAdaEventsToFirestore(opts?: {
     }
 
     const codeSource = String(data.codeSource || '').toLowerCase()
-    if (codeSource === 'manual') {
+    const codeManuallyOverridden = data.manualOverrides?.code === true
+    // Mateixa regla que Zoho: canvi manual a l'app mana sobre qualsevol sync.
+    if (codeSource === 'manual' || codeManuallyOverridden) {
       skippedManual++
       continue
     }

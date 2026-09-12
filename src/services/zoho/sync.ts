@@ -26,8 +26,10 @@ import {
   type ZohoNamedValue,
 } from '@/services/zoho/sync-types'
 import {
+  buildManualOverrideRepair,
   hasManualDateOverride,
   preserveManualCalendarOverrides,
+  readManualOverrides,
 } from '@/lib/calendar/manualOverrides'
 
 function preserveLocalCalendarChanges(
@@ -63,9 +65,10 @@ function preserveLocalCalendarChanges(
     }
   }
 
-  // Regla de negoci: Marta Granato â†’ Grups Restaurants (sempre, tambÃ© si LN estava desada abans)
+  // Marta Granato → Grups Restaurants, tret que LN s'hagi canviat a mà al calendari.
   const commercial = String(out.Comercial ?? existing.Comercial ?? '')
-  if (isMartaGranatoCommercial(commercial)) {
+  const lnManuallyOverridden = readManualOverrides(existing).LN === true
+  if (isMartaGranatoCommercial(commercial) && !lnManuallyOverridden) {
     out.LN = 'Grups Restaurants'
     if (out.FincaLN !== undefined || existing.FincaLN !== undefined) {
       out.FincaLN = 'Grups Restaurants'
@@ -419,6 +422,50 @@ async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   return new Map(snap.docs.map((doc) => [doc.id, doc]))
 }
 
+async function repairStoredManualOverrides(
+  existingVerd: StageSnapshotMap,
+  todayISO: string
+): Promise<number> {
+  let batch = firestore.batch()
+  let pending = 0
+  let repaired = 0
+
+  const flush = async () => {
+    if (pending === 0) return
+    await batch.commit()
+    batch = firestore.batch()
+    pending = 0
+  }
+
+  for (const doc of existingVerd.values()) {
+    const data = doc.data()
+    const eventDate = String(data.DataInici || '').slice(0, 10)
+    if (!eventDate || eventDate < todayISO) continue
+
+    const fields = buildManualOverrideRepair(data)
+    if (Object.keys(fields).length === 0) continue
+
+    const now = new Date().toISOString()
+    batch.update(firestore.collection('stage_verd').doc(doc.id), {
+      ...fields,
+      updatedAt: now,
+      lastWriteSource: 'manual-override-repair',
+      lastWriteAt: now,
+    })
+    pending += 1
+    repaired += 1
+    if (pending >= MAX_BATCH_WRITES) await flush()
+  }
+
+  await flush()
+  if (repaired > 0) {
+    console.warn(
+      `[zoho-sync] Reparats ${repaired} documents sobreescrits per un escriptor antic`
+    )
+  }
+  return repaired
+}
+
 function parseZohoModifiedTimeMs(value?: string | null): number | null {
   const raw = String(value || '').trim()
   if (!raw) return null
@@ -609,6 +656,8 @@ async function syncStageCollections({
     readStageDocs('stage_groc'),
     readStageDocs('stage_taronja'),
   ])
+
+  await repairStoredManualOverrides(existingVerd, new Date().toISOString().slice(0, 10))
 
   const getExistingStageDoc = (id: string) =>
     existingVerd.get(id)?.data() ||

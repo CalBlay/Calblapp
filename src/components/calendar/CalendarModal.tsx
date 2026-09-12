@@ -483,7 +483,9 @@ export default function CalendarModal({
     const next: CalendarEditData = {
       LN,
       code: Code,
-      NomEvent: NomEventRaw.split('/')[0].trim(),
+      // No tallar pel "/": el llistat ja ho fa per mostrar; aquí cal el valor real
+      // per no marcar NomEvent com a canvi manual en desar sense haver-lo editat.
+      NomEvent: NomEventRaw.trim(),
       DataInici,
       DataFi,
       HoraInici,

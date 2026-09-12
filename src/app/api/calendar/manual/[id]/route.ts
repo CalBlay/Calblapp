@@ -162,6 +162,21 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         }
       }
 
+      // El rang de dates és una unitat: si es toca inici o fi, protegir les dues
+      // perquè Zoho no pugui deixar un DataInici original amb un DataFi manual.
+      const dateTouched =
+        manualOverrides.DataInici === true || manualOverrides.DataFi === true
+      if (dateTouched) {
+        if (Object.prototype.hasOwnProperty.call(safeData, 'DataInici')) {
+          manualOverrides.DataInici = true
+          manualOverrideValues.DataInici = safeData.DataInici
+        }
+        if (Object.prototype.hasOwnProperty.call(safeData, 'DataFi')) {
+          manualOverrides.DataFi = true
+          manualOverrideValues.DataFi = safeData.DataFi
+        }
+      }
+
       tx.set(
         docRef,
         {
