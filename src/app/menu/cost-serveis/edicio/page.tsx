@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetSt
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
-import { Calendar } from 'lucide-react'
+import { Calendar, CalendarRange } from 'lucide-react'
 import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -33,6 +33,10 @@ import {
 } from '@/lib/costServeis/types'
 import type { ManualServiceLine, ManualServiceOrigin } from '@/lib/costServeis/manualServices'
 import { MANUAL_LN_OPTIONS, normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
+import {
+  buildManualRecurrenceDates,
+  type ManualServiceRecurrence,
+} from '@/lib/costServeis/manualRecurrence'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import {
   TRANSPORT_TYPE_LABELS,
@@ -127,6 +131,7 @@ type ManualFormState = {
   washingCost: number
   billing: number
   notes: string
+  recurrence: ManualServiceRecurrence | null
 }
 
 function emptyManualForm(day: string, dept: CostServeisDepartment): ManualFormState {
@@ -154,6 +159,23 @@ function emptyManualForm(day: string, dept: CostServeisDepartment): ManualFormSt
     washingCost: 0,
     billing: 0,
     notes: '',
+    recurrence: null,
+  }
+}
+
+function monthlyManualForm(
+  monthDay: string,
+  dept: CostServeisDepartment
+): ManualFormState {
+  const month = /^\d{4}-\d{2}/.test(monthDay) ? monthDay.slice(0, 7) : format(new Date(), 'yyyy-MM')
+  const eventDate = `${month}-01`
+  return {
+    ...emptyManualForm(eventDate, dept),
+    recurrence: {
+      kind: 'weekly',
+      endDate: format(endOfMonth(parseISO(eventDate)), 'yyyy-MM-dd'),
+      weekdays: [],
+    },
   }
 }
 
@@ -367,6 +389,15 @@ export default function CostServeisEdicioPage() {
     setManualMsg('')
   }
 
+  const openMonthlyProgramming = () => {
+    const dept =
+      effectiveDept === 'all'
+        ? 'logistica'
+        : (effectiveDept as CostServeisDepartment)
+    setManualForm(monthlyManualForm(dateRange.start, dept))
+    setManualMsg('')
+  }
+
   const openEditManual = (row: ManualServiceLine) => {
     const rate = serviceConfig?.hourlyRates?.[row.dept] || 18
     const managementHours =
@@ -407,6 +438,7 @@ export default function CostServeisEdicioPage() {
       washingCost: row.washingCost,
       billing: row.billing,
       notes: row.notes,
+      recurrence: null,
     })
     setManualMsg('')
   }
@@ -416,8 +448,10 @@ export default function CostServeisEdicioPage() {
     setSavingManual(true)
     setManualMsg('')
     try {
+      const { recurrence, ...serviceForm } = manualForm
       const payload = {
-        ...manualForm,
+        ...serviceForm,
+        recurrence: manualForm.id ? undefined : recurrence || undefined,
         autoKm: true,
         managementHours: manualForm.managementHours,
         preparationHours: manualForm.preparationHours,
@@ -507,9 +541,15 @@ export default function CostServeisEdicioPage() {
         title="Edició"
         subtitle="Events i línies de Disponibilitat / manuals. Gestió/prep/rentat manuals es resten dels pots d’estructura."
         actions={
-          <Button type="button" onClick={() => openCreateManual()}>
-            Afegir servei manual
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={openMonthlyProgramming}>
+              <CalendarRange className="mr-2 h-4 w-4" />
+              Programació mensual
+            </Button>
+            <Button type="button" onClick={() => openCreateManual()}>
+              Afegir servei manual
+            </Button>
+          </div>
         }
       />
 
@@ -1089,6 +1129,23 @@ function ManualServiceDialog({
     })
   }
 
+  let recurrenceCount = 0
+  let recurrenceError = ''
+  if (form.recurrence) {
+    try {
+      recurrenceCount = buildManualRecurrenceDates(form.eventDate, form.recurrence).length
+    } catch (error) {
+      recurrenceError = error instanceof Error ? error.message : 'Programació invàlida'
+    }
+  }
+
+  const patchRecurrence = (next: Partial<ManualServiceRecurrence>) => {
+    if (!form.recurrence) return
+    patch({
+      recurrence: { ...form.recurrence, ...next } as ManualServiceRecurrence,
+    })
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => (!v ? onClose() : undefined)}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -1098,7 +1155,9 @@ function ManualServiceDialog({
               ? form.origin === 'disponibilitat'
                 ? 'Editar línia de Disponibilitat'
                 : 'Editar servei manual'
-              : 'Nou servei manual'}
+              : form.recurrence
+                ? 'Nova programació mensual'
+                : 'Nou servei manual'}
           </DialogTitle>
         </DialogHeader>
         <p className="text-xs text-slate-500">
@@ -1110,16 +1169,132 @@ function ManualServiceDialog({
             Encara no hi ha hores de gestió/preparació. Omple-les si cal restar cost dels pots.
           </p>
         ) : null}
+        {form.recurrence ? (
+          <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-slate-700">
+                Mes de la programació
+                <Input
+                  type="month"
+                  className="mt-1 bg-white"
+                  value={form.eventDate.slice(0, 7)}
+                  onChange={(e) => {
+                    const month = e.target.value
+                    if (!/^\d{4}-\d{2}$/.test(month)) return
+                    const firstDay = `${month}-01`
+                    patch({
+                      eventDate: firstDay,
+                      recurrence: {
+                        ...form.recurrence!,
+                        endDate: format(endOfMonth(parseISO(firstDay)), 'yyyy-MM-dd'),
+                      },
+                    })
+                  }}
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-700">
+                Freqüència
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-white px-2 text-sm"
+                  value={form.recurrence.kind}
+                  onChange={(e) => {
+                    const kind = e.target.value as 'weekly' | 'interval'
+                    patch({
+                      recurrence:
+                        kind === 'weekly'
+                          ? {
+                              kind,
+                              endDate: form.recurrence!.endDate,
+                              weekdays: [],
+                            }
+                          : {
+                              kind,
+                              endDate: form.recurrence!.endDate,
+                              intervalDays: 2,
+                            },
+                    })
+                  }}
+                >
+                  <option value="weekly">Dies fixos de la setmana</option>
+                  <option value="interval">Cada cert nombre de dies</option>
+                </select>
+              </label>
+            </div>
+
+            {form.recurrence.kind === 'weekly' ? (
+              <div>
+                <p className="mb-2 text-xs font-medium text-slate-700">Dies de servei</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    [1, 'Dl'],
+                    [2, 'Dt'],
+                    [3, 'Dc'],
+                    [4, 'Dj'],
+                    [5, 'Dv'],
+                    [6, 'Ds'],
+                    [7, 'Dg'],
+                  ].map(([day, label]) => {
+                    const dayNumber = Number(day)
+                    const selected = form.recurrence?.kind === 'weekly' &&
+                      form.recurrence.weekdays.includes(dayNumber)
+                    return (
+                      <button
+                        key={dayNumber}
+                        type="button"
+                        className={cn(
+                          'h-9 min-w-10 rounded-md border px-3 text-xs font-semibold transition',
+                          selected
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'
+                        )}
+                        onClick={() => {
+                          if (form.recurrence?.kind !== 'weekly') return
+                          const weekdays = selected
+                            ? form.recurrence.weekdays.filter((value) => value !== dayNumber)
+                            : [...form.recurrence.weekdays, dayNumber].sort((a, b) => a - b)
+                          patchRecurrence({ weekdays })
+                        }}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <label className="block text-xs font-medium text-slate-700">
+                Repetir cada
+                <span className="ml-2 inline-flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    className="inline-flex w-20 bg-white"
+                    value={form.recurrence.intervalDays}
+                    onChange={(e) => patchRecurrence({ intervalDays: Number(e.target.value) || 1 })}
+                  />
+                  dies
+                </span>
+              </label>
+            )}
+
+            <p className={cn('text-xs', recurrenceError ? 'text-rose-600' : 'text-blue-800')}>
+              {recurrenceError || `${recurrenceCount} serveis es crearan dins del mes.`}
+            </p>
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-slate-600">
-            Data
-            <Input
-              type="date"
-              className="mt-1"
-              value={form.eventDate}
-              onChange={(e) => patch({ eventDate: e.target.value })}
-            />
-          </label>
+          {!form.recurrence ? (
+            <label className="text-xs text-slate-600">
+              Data
+              <Input
+                type="date"
+                className="mt-1"
+                value={form.eventDate}
+                onChange={(e) => patch({ eventDate: e.target.value })}
+              />
+            </label>
+          ) : null}
           <label className="text-xs text-slate-600">
             Departament (pots)
             <select
@@ -1393,8 +1568,16 @@ function ManualServiceDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel·lar
             </Button>
-            <Button type="button" disabled={saving} onClick={onSave}>
-              {saving ? 'Desant…' : 'Desar'}
+            <Button
+              type="button"
+              disabled={saving || Boolean(form.recurrence && recurrenceError)}
+              onClick={onSave}
+            >
+              {saving
+                ? 'Desant…'
+                : form.recurrence
+                  ? `Crear ${recurrenceCount} serveis`
+                  : 'Desar'}
             </Button>
           </div>
         </DialogFooter>

@@ -32,6 +32,7 @@ type BuiltEvent = {
   commercial: string
   servei?: string
   horaInici?: string
+  fincaId?: string | null
   isResponsible: boolean
 }
 
@@ -89,10 +90,16 @@ export async function GET(request: Request) {
     const d = doc.data() as Record<string, unknown>
     const dataIniciRaw = String(d.DataInici || '')
     const dataInici = dataIniciRaw ? new Date(dataIniciRaw) : null
-    if (!dataInici) return
+    if (!dataInici || isNaN(dataInici.getTime())) return
 
-    // Filtre per rang de dates
-    if (dataInici < fromDate || dataInici > toDate) return
+    const dataFiRaw = String(d.DataFi || dataIniciRaw)
+    const parsedDataFi = dataFiRaw ? new Date(dataFiRaw) : dataInici
+    const dataFi = !isNaN(parsedDataFi.getTime()) && parsedDataFi >= dataInici
+      ? parsedDataFi
+      : dataInici
+
+    // Inclou els esdeveniments de diversos dies actius en qualsevol punt del rang.
+    if (dataInici > toDate || dataFi < fromDate) return
 
     const start = String(d.DataInici || '')
     const end = String(d.DataFi || start)
@@ -131,6 +138,7 @@ export async function GET(request: Request) {
       commercial,
       servei,
       horaInici,
+      fincaId: d.FincaId ? String(d.FincaId) : null,
       isResponsible: false,
     })
   })

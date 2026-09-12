@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Clock, Filter, MapPin, RefreshCw, Truck } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
@@ -35,6 +35,16 @@ type VehicleAvailability = {
 type Conductor = {
   id: string
   name: string
+}
+
+type EventOption = {
+  id: string
+  summary: string
+  start: string
+  end: string
+  location: string
+  eventCode: string
+  fincaId?: string | null
 }
 
 type AvailabilityExportRow = {
@@ -78,12 +88,17 @@ export default function DisponibilitatLogisticaPage() {
   const [typeFilter, setTypeFilter] = useState<string>('tots')
   const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleAvailability | null>(null)
+  const [destinationMode, setDestinationMode] = useState<'location' | 'event'>('location')
   const [destination, setDestination] = useState('')
   const [destinationOther, setDestinationOther] = useState(false)
   const [fincaId, setFincaId] = useState<string | null>(null)
   const [ln, setLn] = useState('')
   const [notes, setNotes] = useState('')
   const [conductorId, setConductorId] = useState('')
+  const [events, setEvents] = useState<EventOption[]>([])
+  const [selectedEventId, setSelectedEventId] = useState('')
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsError, setEventsError] = useState<string | null>(null)
   const [assignLoading, setAssignLoading] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
   const [showMobileParams, setShowMobileParams] = useState(false)
@@ -139,11 +154,64 @@ export default function DisponibilitatLogisticaPage() {
     [availableConductors]
   )
 
-  const resetAssignForm = () => {
-    setSelectedVehicle(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    const dayStart = `${date}T00:00:00`
+    const dayEnd = `${date}T23:59:59`
+
+    setEventsLoading(true)
+    setEventsError(null)
+
+    fetch(
+      `/api/events?from=${encodeURIComponent(dayStart)}&to=${encodeURIComponent(dayEnd)}`,
+      { signal: controller.signal }
+    )
+      .then(async (res) => {
+        if (!res.ok) throw new Error("No s'han pogut carregar els esdeveniments")
+        return res.json()
+      })
+      .then((data) => {
+        const rows = Array.isArray(data?.events) ? data.events : []
+        const nextEvents = rows
+          .map((event: Partial<EventOption>) => ({
+            id: String(event.id || ''),
+            summary: String(event.summary || ''),
+            start: String(event.start || ''),
+            end: String(event.end || event.start || ''),
+            location: String(event.location || ''),
+            eventCode: String(event.eventCode || ''),
+            fincaId: event.fincaId ? String(event.fincaId) : null,
+          }))
+          .filter((event: EventOption) => event.id && event.summary)
+          .sort((a: EventOption, b: EventOption) => a.start.localeCompare(b.start))
+        setEvents(nextEvents)
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setEvents([])
+        setEventsError(err instanceof Error ? err.message : 'Error carregant esdeveniments')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEventsLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [date])
+
+  useEffect(() => {
+    setSelectedEventId('')
     setDestination('')
     setDestinationOther(false)
     setFincaId(null)
+  }, [date, destinationMode])
+
+  const resetAssignForm = () => {
+    setSelectedVehicle(null)
+    setDestinationMode('location')
+    setDestination('')
+    setDestinationOther(false)
+    setFincaId(null)
+    setSelectedEventId('')
     setLn('')
     setNotes('')
     setConductorId('')
@@ -159,14 +227,19 @@ export default function DisponibilitatLogisticaPage() {
       setAssignError('La LN és obligatòria (apareixerà a Cost de Serveis → Edició).')
       return
     }
-    if (!destinationOther && !fincaId) {
+    if (destinationMode === 'location' && !destinationOther && !fincaId) {
       setAssignError('Tria una finca de la llista o «Altres» per destinació lliure.')
+      return
+    }
+    if (destinationMode === 'event' && !selectedEventId) {
+      setAssignError('Tria un esdeveniment de la llista.')
       return
     }
     setAssignError(null)
     try {
       setAssignLoading(true)
       const selectedConductor = conductors.find(c => c.id === conductorId)
+      const selectedEvent = events.find((event) => event.id === selectedEventId)
 
       const payload = {
         plate: selectedVehicle.plate,
@@ -179,7 +252,10 @@ export default function DisponibilitatLogisticaPage() {
         startTime,
         endTime,
         destination: destination.trim(),
-        fincaId: destinationOther ? null : fincaId,
+        fincaId: destinationMode === 'location' && destinationOther ? null : fincaId,
+        eventId: selectedEvent?.id || null,
+        eventName: selectedEvent?.summary || null,
+        eventCode: selectedEvent?.eventCode || null,
         ln: normalizeManualLnName(ln.trim()),
         notes,
         department: 'logistica',
@@ -212,7 +288,7 @@ export default function DisponibilitatLogisticaPage() {
       destination.trim() &&
       conductorId &&
       ln.trim() &&
-      (destinationOther || fincaId)
+      (destinationMode === 'event' ? selectedEventId : destinationOther || fincaId)
   )
   const loading = isLoading
   const listEmpty = !loading && !error && filteredVehicles.length === 0
@@ -687,7 +763,7 @@ export default function DisponibilitatLogisticaPage() {
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <label className="text-xs text-slate-500">Destinació</label>
-                    {destinationOther ? (
+                    {destinationMode === 'location' && destinationOther ? (
                       <button
                         type="button"
                         className="text-xs font-medium text-emerald-700 hover:underline"
@@ -701,7 +777,67 @@ export default function DisponibilitatLogisticaPage() {
                       </button>
                     ) : null}
                   </div>
-                  {destinationOther ? (
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-200 p-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-medium transition',
+                        destinationMode === 'location'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600'
+                      )}
+                      onClick={() => setDestinationMode('location')}
+                    >
+                      Ubicació
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-medium transition',
+                        destinationMode === 'event'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600'
+                      )}
+                      onClick={() => setDestinationMode('event')}
+                    >
+                      Esdeveniment
+                    </button>
+                  </div>
+                  {destinationMode === 'event' ? (
+                    <>
+                      <select
+                        className="w-full rounded border bg-white px-3 py-2 text-sm"
+                        value={selectedEventId}
+                        onChange={(e) => {
+                          const eventId = e.target.value
+                          const selectedEvent = events.find((event) => event.id === eventId)
+                          setSelectedEventId(eventId)
+                          setDestination(
+                            selectedEvent?.location.trim() || selectedEvent?.summary.trim() || ''
+                          )
+                          setFincaId(selectedEvent?.fincaId || null)
+                        }}
+                        disabled={eventsLoading}
+                      >
+                        <option value="">
+                          {eventsLoading ? 'Carregant esdeveniments...' : 'Selecciona esdeveniment'}
+                        </option>
+                        {events.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.summary}{event.location ? ` · ${event.location}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {!eventsLoading && events.length === 0 && !eventsError ? (
+                        <p className="text-[11px] text-amber-700">
+                          No hi ha esdeveniments en celebració aquest dia.
+                        </p>
+                      ) : null}
+                      {eventsError ? (
+                        <p className="text-[11px] text-rose-600">{eventsError}</p>
+                      ) : null}
+                    </>
+                  ) : destinationOther ? (
                     <>
                       <input
                         type="text"
@@ -798,8 +934,3 @@ export default function DisponibilitatLogisticaPage() {
     </main>
   )
 }
-
-
-
-
-

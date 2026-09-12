@@ -46,6 +46,7 @@ function ProgressRing({ pct, size = 112 }: { pct: number; size?: number }) {
 
 function PrepLineCard({ line }: { line: PrepLineProgress }) {
   const { row, status, pct } = line
+  const eventDate = row.EventDate || row.DataInici
   const allWarehouses = Object.entries(PREPARATION_WAREHOUSE_LABELS).map(([code, label]) => ({
     code: code as keyof typeof PREPARATION_WAREHOUSE_LABELS,
     label,
@@ -70,7 +71,7 @@ function PrepLineCard({ line }: { line: PrepLineProgress }) {
         </div>
         <div className="text-right">
           <div className="text-lg font-bold tabular-nums text-slate-900">{row.PreparacioHora || '--:--'}</div>
-          <div className="text-xs text-slate-500">{formatDateOnly(row.PreparacioData, '')}</div>
+          <div className="text-xs text-slate-500">{formatDateOnly(eventDate, '')}</div>
         </div>
       </div>
 

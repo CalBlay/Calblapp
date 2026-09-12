@@ -33,6 +33,9 @@ type AssignmentInput = {
   conductorId?: string
   conductorName?: string
   destination?: string
+  eventId?: string | null
+  eventName?: string | null
+  eventCode?: string | null
   /** Id de finca (col·lecció finques); buit si destinació «Altres». */
   fincaId?: string | null
   ln?: string
@@ -258,6 +261,9 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString()
     const destination = String(body.destination || '').trim()
+    const eventId = String(body.eventId || '').trim()
+    const eventName = String(body.eventName || '').trim()
+    const eventCode = String(body.eventCode || '').trim()
     const fincaId = body.fincaId ? String(body.fincaId).trim() : ''
     const ln = normalizeManualLnName(body.ln)
     const hours = Math.max(
@@ -274,6 +280,9 @@ export async function POST(req: NextRequest) {
       conductorId: body.conductorId || '',
       conductorName: body.conductorName || '',
       destination,
+      eventId: eventId || null,
+      eventName: eventName || null,
+      eventCode: eventCode || null,
       fincaId: fincaId || null,
       ln,
       department: body.department || '',
@@ -300,14 +309,14 @@ export async function POST(req: NextRequest) {
         const spaceKind = resolveSpaceKind(ownership, {
           fincaId: fincaId || null,
           location: destination,
-          eventName: destination,
+          eventName: eventName || destination,
         })
         const rawVehicleType = String(body.vehicleType || '').trim()
         const vehicleType = normalizeTransportType(rawVehicleType) || rawVehicleType
         const manual = await createManualService(
           {
             eventDate: cleaned.startDate,
-            eventName: destination,
+            eventName: eventName || destination,
             ln,
             location: destination,
             serviceType: 'Intern',

@@ -25,6 +25,10 @@ import { computeKmByDepartment } from '@/lib/costServeis/applyDepartureKm'
 import { fuelCostForTrip } from '@/lib/costServeis/calc'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
+import {
+  buildManualRecurrenceDates,
+  type ManualServiceRecurrence,
+} from '@/lib/costServeis/manualRecurrence'
 
 export const SERVICE_COST_MANUAL_COL = 'serviceCostManualServices'
 
@@ -499,6 +503,44 @@ export async function createManualService(
   }
   const ref = await db.collection(SERVICE_COST_MANUAL_COL).add(payload)
   return mapDoc(ref.id, payload, n(payload['hourlyRateUsed']) || undefined)
+}
+
+export async function createRecurringManualServices(
+  input: ManualServiceInput,
+  recurrence: ManualServiceRecurrence,
+  userId: string
+): Promise<{ items: ManualServiceLine[]; seriesId: string }> {
+  const dates = buildManualRecurrenceDates(input.eventDate, recurrence)
+  const basePayload = await buildManualPayload(
+    { ...input, eventDate: dates[0] },
+    userId,
+    null
+  )
+  const collection = db.collection(SERVICE_COST_MANUAL_COL)
+  const seriesId = collection.doc().id
+  const createdAt = new Date().toISOString()
+  const batch = db.batch()
+  const rows: Array<{ id: string; payload: Record<string, unknown> }> = []
+
+  for (const eventDate of dates) {
+    const ref = collection.doc()
+    const payload = {
+      ...basePayload,
+      eventDate,
+      recurrenceSeriesId: seriesId,
+      recurrence,
+      createdAt,
+    }
+    batch.set(ref, payload)
+    rows.push({ id: ref.id, payload })
+  }
+
+  await batch.commit()
+  const hourlyRate = n(basePayload['hourlyRateUsed']) || undefined
+  return {
+    seriesId,
+    items: rows.map((row) => mapDoc(row.id, row.payload, hourlyRate)),
+  }
 }
 
 export async function updateManualService(

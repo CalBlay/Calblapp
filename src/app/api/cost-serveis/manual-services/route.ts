@@ -4,11 +4,13 @@ import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import {
   createManualService,
+  createRecurringManualServices,
   deleteManualService,
   listManualServicesByDateRange,
   updateManualService,
   type ManualServiceInput,
 } from '@/lib/costServeis/manualServices'
+import type { ManualServiceRecurrence } from '@/lib/costServeis/manualRecurrence'
 import { COST_SERVEIS_DEPARTMENTS } from '@/lib/costServeis/types'
 
 export const runtime = 'nodejs'
@@ -49,12 +51,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const body = (await req.json().catch(() => null)) as ManualServiceInput | null
+  const body = (await req.json().catch(() => null)) as
+    | (ManualServiceInput & { recurrence?: ManualServiceRecurrence })
+    | null
   if (!body) {
     return NextResponse.json({ error: 'Cos invàlid' }, { status: 400 })
   }
 
   try {
+    if (body.recurrence) {
+      const result = await createRecurringManualServices(
+        body,
+        body.recurrence,
+        auth.user.id
+      )
+      return NextResponse.json(
+        { items: result.items, seriesId: result.seriesId, count: result.items.length },
+        { status: 201 }
+      )
+    }
     const item = await createManualService(body, auth.user.id)
     return NextResponse.json({ item }, { status: 201 })
   } catch (err) {
