@@ -1,5 +1,8 @@
 import { normalizeTicketWorkflowStage } from '@/lib/maintenanceTicketAlerts'
 
+export const CREATOR_REOPEN_WINDOW_DAYS = 7
+export const CREATOR_REOPEN_WINDOW_MS = CREATOR_REOPEN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
 const normalizeStatus = (value?: string | null) => {
   const v = String(value || '')
     .trim()
@@ -17,7 +20,37 @@ export type MaintenanceTicketValidationSnapshot = {
   requiresCreatorValidation?: boolean | null
   creatorValidatedAt?: number | string | null
   capValidatedAt?: number | string | null
+  resolvedAt?: number | string | null
+  statusHistory?: Array<{ status?: string | null; at?: number | string | null }> | null
   createdById?: string | null
+}
+
+const validationTimestamp = (ticket: MaintenanceTicketValidationSnapshot): number | null => {
+  const directCandidates = [ticket.capValidatedAt, ticket.creatorValidatedAt, ticket.resolvedAt]
+    .map((value) => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = new Date(value).getTime()
+        return Number.isNaN(parsed) ? null : parsed
+      }
+      return null
+    })
+    .filter((value): value is number => value !== null)
+
+  const historyCandidates = (ticket.statusHistory || [])
+    .filter((entry) => normalizeStatus(entry.status) === 'validat')
+    .map((entry) => {
+      if (typeof entry.at === 'number' && Number.isFinite(entry.at)) return entry.at
+      if (typeof entry.at === 'string' && entry.at.trim()) {
+        const parsed = new Date(entry.at).getTime()
+        return Number.isNaN(parsed) ? null : parsed
+      }
+      return null
+    })
+    .filter((value): value is number => value !== null)
+
+  const candidates = [...directCandidates, ...historyCandidates]
+  return candidates.length ? Math.max(...candidates) : null
 }
 
 export function isGestorResolvedMaintenanceTicket(ticket: {
@@ -52,6 +85,29 @@ export function canCreatorValidateMaintenanceTicket(
   if (normalizeStatus(ticket.status) === 'validat') return false
   if (!isMaintenanceTicketPendingValidation(ticket)) return false
   return !ticket.creatorValidatedAt
+}
+
+/**
+ * The creator keeps the final say even after Maintenance has validated the
+ * resolution. This lets an external centre reopen work that is not actually
+ * correct on site.
+ */
+export function canCreatorRejectMaintenanceTicket(
+  ticket: MaintenanceTicketValidationSnapshot,
+  userId?: string | null,
+  nowMs = Date.now()
+): boolean {
+  const actorId = String(userId || '').trim()
+  const creatorId = String(ticket.createdById || '').trim()
+  if (!actorId || !creatorId || actorId !== creatorId) return false
+
+  const status = normalizeStatus(ticket.status)
+  if (status === 'fet') return true
+  if (status !== 'validat') return false
+
+  const validatedAt = validationTimestamp(ticket)
+  if (validatedAt === null || validatedAt > nowMs) return false
+  return nowMs - validatedAt <= CREATOR_REOPEN_WINDOW_MS
 }
 
 export function canCapValidateMaintenanceTicket(

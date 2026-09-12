@@ -24,6 +24,7 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { canActorMutateMaintenanceTicket } from '@/lib/maintenanceTicketPatchAuth'
 import {
+  canCreatorRejectMaintenanceTicket,
   canCreatorValidateMaintenanceTicket,
   maintenanceTicketRequiresCreatorValidation,
 } from '@/lib/maintenanceTicketValidation'
@@ -486,7 +487,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (creatorValidationDecision) {
-      if (!canCreatorValidateMaintenanceTicket(current, user.id)) {
+      const creatorCanDecide =
+        creatorValidationDecision === 'incorrect'
+          ? canCreatorRejectMaintenanceTicket(current, user.id)
+          : canCreatorValidateMaintenanceTicket(current, user.id)
+      if (!creatorCanDecide) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
 

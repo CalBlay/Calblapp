@@ -25,6 +25,7 @@ import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
 import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/utils'
 import {
+  canCreatorRejectMaintenanceTicket,
   canCreatorValidateMaintenanceTicket,
 } from '@/lib/maintenanceTicketValidation'
 import {
@@ -156,6 +157,10 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
   )
   const canCreatorValidateTicket = useCallback(
     (ticket: Ticket) => canCreatorValidateMaintenanceTicket(ticket, userId),
+    [userId]
+  )
+  const canCreatorRejectTicket = useCallback(
+    (ticket: Ticket) => canCreatorRejectMaintenanceTicket(ticket, userId),
     [userId]
   )
   const canExternalize = hasAction(
@@ -1171,6 +1176,7 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
     canValidate,
     canCapValidateTicket,
     canCreatorValidateTicket,
+    canCreatorRejectTicket,
     canReopen,
     canExternalize,
     tickets,

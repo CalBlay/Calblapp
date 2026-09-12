@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { TriangleAlert, XCircle } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ArrowLeft, CheckCircle2, TriangleAlert, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useEventPersonnel, type Person } from '@/hooks/useEventPersonnel'
@@ -10,8 +9,9 @@ import { normalizeDept } from '@/lib/accessControl'
 import { canCloseEventDepartment } from '@/lib/eventClosingPermissions'
 
 type Props = {
-  open: boolean
+  onBack: () => void
   onClose: () => void
+  onSaved?: () => void
   eventId: string
   eventName?: string
   user?: { role?: string; department?: string; id?: string }
@@ -24,24 +24,25 @@ type Row = Person & {
   leftEarly?: boolean
 }
 
-const norm = (s?: string | null) =>
-  (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+const norm = (value?: string | null) =>
+  (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-const normDepartment = (s?: string | null) => normalizeDept(s)
+const normDepartment = (value?: string | null) => normalizeDept(value)
 
-export default function EventClosingModal({ open, onClose, eventId, eventName, user }: Props) {
+export default function EventClosingHoursPanel({ onBack, onClose, onSaved, eventId, eventName, user }: Props) {
   const { data, loading, error } = useEventPersonnel(eventId)
-  const [selectedDept, setSelectedDept] = useState<string>('')
+  const [selectedDept, setSelectedDept] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [bulkHour, setBulkHour] = useState('')
 
   const departments = useMemo(() => {
-    const set = new Set<string>()
-    data?.responsables?.forEach(p => p.department && set.add(normDepartment(p.department)))
-    data?.conductors?.forEach(p => p.department && set.add(normDepartment(p.department)))
-    data?.treballadors?.forEach(p => p.department && set.add(normDepartment(p.department)))
-    return Array.from(set)
+    const values = new Set<string>()
+    data?.responsables?.forEach((person) => person.department && values.add(normDepartment(person.department)))
+    data?.conductors?.forEach((person) => person.department && values.add(normDepartment(person.department)))
+    data?.treballadors?.forEach((person) => person.department && values.add(normDepartment(person.department)))
+    return Array.from(values)
   }, [data])
 
   useEffect(() => {
@@ -57,263 +58,287 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
   useEffect(() => {
     if (!selectedDept) return
     const list: Row[] = []
-    const pushRows = (arr?: Person[], role?: string) => {
-      if (!Array.isArray(arr)) return
-      arr.forEach(p => {
-      if (normDepartment(p.department) !== selectedDept) return
-        list.push({ ...p, role: p.role || role })
+    const appendRows = (people?: Person[], fallbackRole?: string) => {
+      if (!Array.isArray(people)) return
+      people.forEach((person) => {
+        if (normDepartment(person.department) !== selectedDept) return
+        list.push({ ...person, role: person.role || fallbackRole })
       })
     }
-    pushRows(data?.responsables, 'responsable')
-    pushRows(data?.conductors, 'conductor')
-    pushRows(data?.treballadors, 'treballador')
+    appendRows(data?.responsables, 'responsable')
+    appendRows(data?.conductors, 'conductor')
+    appendRows(data?.treballadors, 'treballador')
     setRows(list)
   }, [data, selectedDept])
 
-  const roleN = norm(user?.role)
-  const isAdmin = roleN === 'admin'
-  const isDireccio = roleN === 'direccio' || roleN === 'direccion'
-  const isCap = roleN.includes('cap')
+  const normalizedRole = norm(user?.role)
+  const canSwitchDepartment =
+    normalizedRole === 'admin' ||
+    normalizedRole === 'direccio' ||
+    normalizedRole === 'direccion' ||
+    normalizedRole.includes('cap')
   const canEdit = canCloseEventDepartment({
     role: user?.role,
     userDepartment: user?.department,
     targetDepartment: selectedDept,
     hasClosingPermission: true,
   })
-  const canSwitchDepartment = isAdmin || isDireccio || isCap
 
-  const handleApplyHourToAll = () => {
-    if (!bulkHour) return
-    setRows(prev =>
-      prev.map(row => (row.noShow ? row : { ...row, endTimeReal: bulkHour }))
+  const applyHourToAll = (hour: string) => {
+    setBulkHour(hour)
+    if (!hour) return
+    setRows((current) =>
+      current.map((row) => (row.noShow ? row : { ...row, endTimeReal: hour }))
     )
   }
 
   const patchRow = (index: number, patch: Partial<Row>) => {
-    setRows(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+    setRows((current) =>
+      current.map((row, currentIndex) => (currentIndex === index ? { ...row, ...patch } : row))
+    )
   }
 
   const handleSave = async () => {
-    if (!canEdit || !selectedDept) return
+    if (!canEdit || !selectedDept || saving) return
     setSaving(true)
+    setSaveError('')
     try {
-      const updates = rows.map(row => ({
+      const updates = rows.map((row) => ({
         name: row.name || '',
         role: row.role,
         endTimeReal: row.endTimeReal || '',
         notes: row.notes || '',
-        noShow: !!row.noShow,
-        leftEarly: !!row.leftEarly,
+        noShow: Boolean(row.noShow),
+        leftEarly: Boolean(row.leftEarly),
       }))
 
-      const res = await fetch('/api/quadrants/closing', {
+      const response = await fetch('/api/quadrants/closing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          department: selectedDept,
-          updates,
-        }),
+        body: JSON.stringify({ eventId, department: selectedDept, updates }),
       })
 
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json?.error || 'Error desant tancament')
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}))
+        throw new Error(json?.error || 'No s’han pogut desar les hores reals')
       }
 
-      alert('Hores reals desades correctament')
-      onClose()
-    } catch (err: unknown) {
-      console.error('[EventClosingModal] save error', err)
-      alert(err instanceof Error ? err.message : 'No s ha pogut desar')
+      onSaved?.()
+    } catch (caught: unknown) {
+      console.error('[EventClosingHoursPanel] save error', caught)
+      setSaveError(caught instanceof Error ? caught.message : 'No s’han pogut desar les hores reals')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={next => !next && onClose()}>
-      <DialogContent className="h-[92dvh] w-[100vw] max-w-none translate-x-[-50%] translate-y-[-50%] rounded-none border-0 p-0 sm:h-auto sm:max-h-[92vh] sm:w-[96vw] sm:max-w-5xl sm:rounded-2xl">
-        <DialogHeader className="sticky top-0 z-20 border-b border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <DialogTitle className="truncate text-left text-base font-semibold text-slate-900 sm:text-lg">
-                {eventName || 'Tancament'}
-              </DialogTitle>
-            </div>
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))]">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-slate-700 active:bg-slate-100"
+            aria-label="Tornar al tancament operatiu"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <h2 id="audit-execution-title" className="text-lg font-semibold leading-tight text-slate-950">Hores reals</h2>
+            <p className="truncate text-sm text-slate-500">{eventName || 'Tancament operatiu'}</p>
           </div>
-        </DialogHeader>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-slate-700 active:bg-slate-100"
+            aria-label="Tancar el tancament operatiu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
 
-        {loading && <p className="px-4 py-6 text-sm text-gray-500">Carregant personal...</p>}
-        {error && <p className="px-4 py-6 text-sm text-red-600">Error: {error}</p>}
-
-        {!loading && !error && (
-          <div className="flex h-full min-h-0 flex-col bg-slate-50">
-            <div className="border-b border-slate-200 bg-white px-4 py-3">
-              <div className="flex flex-col gap-2.5">
-                {canSwitchDepartment ? (
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {departments.map(dept => (
+      {loading ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">
+          <p className="text-sm text-slate-500">Carregant el personal…</p>
+        </div>
+      ) : error ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">
+          <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            No s’ha pogut carregar el personal: {error}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+            <section className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+              {canSwitchDepartment && departments.length > 1 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Departament</p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {departments.map((department) => (
                       <button
-                        key={dept}
+                        key={department}
                         type="button"
-                        onClick={() => setSelectedDept(dept)}
+                        onClick={() => setSelectedDept(department)}
                         className={[
-                          'rounded-full border px-3 py-1.5 text-sm font-medium transition',
-                          selectedDept === dept
+                          'min-h-11 shrink-0 touch-manipulation rounded-full border px-4 py-2 text-sm font-semibold capitalize transition active:scale-[0.98]',
+                          selectedDept === department
                             ? 'border-slate-900 bg-slate-900 text-white'
                             : 'border-slate-200 bg-white text-slate-700',
                         ].join(' ')}
                       >
-                        {dept || '-'}
+                        {department || 'Sense departament'}
                       </button>
                     ))}
                   </div>
-                ) : null}
-
-                <div className="grid gap-2 sm:grid-cols-[140px_auto]">
-                  <div className="min-w-0">
-                    <Input
-                      type="time"
-                      className="h-11 rounded-xl border-slate-200 bg-white text-base font-semibold text-slate-900"
-                      disabled={!canEdit}
-                      value={bulkHour}
-                      onChange={e => setBulkHour(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!canEdit || !bulkHour}
-                    onClick={handleApplyHourToAll}
-                    className="h-11 rounded-xl px-4"
-                  >
-                    Aplicar a tots
-                  </Button>
                 </div>
-              </div>
-            </div>
+              ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <div>
+                <label htmlFor="closing-bulk-hour" className="mb-1.5 block text-sm font-semibold text-slate-800">
+                  Hora de finalització comuna
+                </label>
+                <Input
+                  id="closing-bulk-hour"
+                  type="time"
+                  className="h-12 w-full rounded-xl border-slate-300 bg-white px-3 text-center text-lg font-semibold text-slate-950"
+                  disabled={!canEdit}
+                  value={bulkHour}
+                  onChange={(event) => applyHourToAll(event.target.value)}
+                />
+                <p className="mt-1.5 text-xs leading-4 text-slate-500">
+                  En seleccionar-la, s’aplica automàticament a totes les persones presents.
+                </p>
+              </div>
+            </section>
+
+            <section className="space-y-3 px-3 py-3 pb-6">
+              {!canEdit && selectedDept ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Aquest departament és només de consulta.
+                </p>
+              ) : null}
+
               {rows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
-                  Cap persona per aquest departament.
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                  No hi ha personal en aquest departament.
                 </div>
               ) : (
-                <div className="grid gap-3">
-                  {rows.map((row, idx) => {
-                    const showNote = row.noShow || row.leftEarly
-                    return (
-                      <article
-                        key={`${row.name}-${idx}`}
-                        className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
-                      >
-                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_148px_92px] sm:items-center">
-                          <div className="min-w-0">
-                            <p className="truncate text-base font-semibold text-slate-900">
-                              {row.name || 'Sense nom'}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500">
-                              {row.endTime ? <span>Previst {row.endTime}</span> : null}
-                              {row.time ? <span>Inici {row.time}</span> : null}
-                              {!canEdit ? <span>Lectura</span> : null}
-                              {!row.time && !row.endTime ? (
-                                <span className="capitalize">{row.role || row.department || '-'}</span>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div>
-                            <Input
-                              type="time"
-                              className="h-12 rounded-xl border-slate-200 bg-white text-center text-base font-semibold text-slate-900"
-                              disabled={!canEdit || row.noShow}
-                              value={row.endTimeReal || ''}
-                              onChange={e => patchRow(idx, { endTimeReal: e.target.value })}
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 sm:justify-self-end">
-                            <button
-                              type="button"
-                              aria-label="No ha vingut"
-                              title="No ha vingut"
-                              disabled={!canEdit}
-                              onClick={() =>
-                                patchRow(idx, {
-                                  noShow: !row.noShow,
-                                  endTimeReal: !row.noShow ? '' : row.endTimeReal,
-                                  notes: !row.noShow ? row.notes : '',
-                                })
-                              }
-                              className={[
-                                'flex h-12 w-full items-center justify-center rounded-xl border transition sm:w-10',
-                                row.noShow
-                                  ? 'border-red-300 bg-red-50 text-red-700'
-                                  : 'border-slate-200 bg-white text-slate-600',
-                              ].join(' ')}
-                            >
-                              <XCircle className="h-4.5 w-4.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              aria-label="Ha marxat abans"
-                              title="Ha marxat abans"
-                              disabled={!canEdit}
-                              onClick={() =>
-                                patchRow(idx, {
-                                  leftEarly: !row.leftEarly,
-                                  notes: !row.leftEarly ? row.notes : '',
-                                })
-                              }
-                              className={[
-                                'flex h-12 w-full items-center justify-center rounded-xl border transition sm:w-10',
-                                row.leftEarly
-                                  ? 'border-amber-300 bg-amber-50 text-amber-700'
-                                  : 'border-slate-200 bg-white text-slate-600',
-                              ].join(' ')}
-                            >
-                              <TriangleAlert className="h-4.5 w-4.5" />
-                            </button>
-                          </div>
+                rows.map((row, index) => {
+                  const showNote = Boolean(row.noShow || row.leftEarly)
+                  const inputId = `closing-hour-${index}`
+                  return (
+                    <article key={`${row.id || row.name}-${index}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="min-w-0">
+                        <p className="break-words text-base font-semibold text-slate-950">{row.name || 'Sense nom'}</p>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                          {row.time ? <span>Inici: {row.time}</span> : null}
+                          {row.endTime ? <span>Final previst: {row.endTime}</span> : null}
+                          <span className="capitalize">{row.role || row.department || 'Personal'}</span>
                         </div>
+                      </div>
 
-                        {showNote ? (
-                          <div className="mt-2">
-                            <Input
-                              placeholder="Nota"
-                              disabled={!canEdit}
-                              value={row.notes || ''}
-                              onChange={e => patchRow(idx, { notes: e.target.value })}
-                              className="h-11 rounded-xl border-slate-200 text-sm"
-                            />
-                          </div>
-                        ) : null}
-                      </article>
-                    )
-                  })}
-                </div>
+                      <div className="mt-3">
+                        <label htmlFor={inputId} className="mb-1.5 block text-sm font-medium text-slate-700">
+                          Hora real de finalització
+                        </label>
+                        <Input
+                          id={inputId}
+                          type="time"
+                          className="h-12 w-full rounded-xl border-slate-300 bg-white text-center text-lg font-semibold text-slate-950"
+                          disabled={!canEdit || row.noShow}
+                          value={row.endTimeReal || ''}
+                          onChange={(event) => patchRow(index, { endTimeReal: event.target.value })}
+                        />
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={Boolean(row.noShow)}
+                          disabled={!canEdit}
+                          onClick={() =>
+                            patchRow(index, {
+                              noShow: !row.noShow,
+                              endTimeReal: !row.noShow ? '' : row.endTimeReal,
+                              notes: !row.noShow ? row.notes : '',
+                            })
+                          }
+                          className={[
+                            'flex min-h-12 touch-manipulation items-center justify-center gap-2 rounded-xl border px-2 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50',
+                            row.noShow
+                              ? 'border-red-300 bg-red-50 text-red-700'
+                              : 'border-slate-200 bg-white text-slate-700',
+                          ].join(' ')}
+                        >
+                          <XCircle className="h-5 w-5 shrink-0" />
+                          No ha vingut
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={Boolean(row.leftEarly)}
+                          disabled={!canEdit}
+                          onClick={() =>
+                            patchRow(index, {
+                              leftEarly: !row.leftEarly,
+                              notes: !row.leftEarly ? row.notes : '',
+                            })
+                          }
+                          className={[
+                            'flex min-h-12 touch-manipulation items-center justify-center gap-2 rounded-xl border px-2 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50',
+                            row.leftEarly
+                              ? 'border-amber-300 bg-amber-50 text-amber-700'
+                              : 'border-slate-200 bg-white text-slate-700',
+                          ].join(' ')}
+                        >
+                          <TriangleAlert className="h-5 w-5 shrink-0" />
+                          Ha marxat abans
+                        </button>
+                      </div>
+
+                      {showNote ? (
+                        <div className="mt-3">
+                          <label htmlFor={`closing-note-${index}`} className="mb-1.5 block text-sm font-medium text-slate-700">
+                            Observacions
+                          </label>
+                          <Input
+                            id={`closing-note-${index}`}
+                            placeholder="Explica breument què ha passat"
+                            disabled={!canEdit}
+                            value={row.notes || ''}
+                            onChange={(event) => patchRow(index, { notes: event.target.value })}
+                            className="h-12 rounded-xl border-slate-300 text-base"
+                          />
+                        </div>
+                      ) : null}
+                    </article>
+                  )
+                })
               )}
-            </div>
 
-            <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
-                  Cancel.la
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={!canEdit || saving}
-                  className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:bg-blue-400 sm:w-auto"
-                >
-                  {saving ? 'Desant...' : 'Desa tancament'}
-                </Button>
-              </div>
-            </div>
+              {saveError ? (
+                <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {saveError}
+                </p>
+              ) : null}
+            </section>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+          <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={!canEdit || saving || rows.length === 0}
+              className="h-12 w-full touch-manipulation rounded-xl bg-blue-600 text-base font-semibold text-white hover:bg-blue-700 disabled:bg-blue-400 disabled:opacity-60"
+            >
+              <CheckCircle2 className="mr-2 h-5 w-5" />
+              {saving ? 'Desant les hores…' : 'Desar hores reals'}
+            </Button>
+          </footer>
+        </>
+      )}
+    </div>
   )
 }

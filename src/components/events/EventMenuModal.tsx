@@ -39,7 +39,6 @@ import EventModificationsModal from './EventModificationsModal'
 import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
-import EventClosingModal from './EventClosingModal'
 import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -223,7 +222,6 @@ export default function EventMenuModal({
   const [showModifications, setShowModifications] = useState(false)
   const [showCreateModification, setShowCreateModification] = useState(false)
   const [showAvisos, setShowAvisos] = useState(false)
-  const [showClosing, setShowClosing] = useState(false)
   const [showBudget, setShowBudget] = useState(false)
   const [showKitchenDocs, setShowKitchenDocs] = useState(false)
   const [showVisitVideo, setShowVisitVideo] = useState(false)
@@ -470,17 +468,6 @@ const operativa = useMemo(
           }
         : null,
 
-      canCloseEventPerm
-        ? {
-            key: 'closing',
-            label: 'Tancament (hores reals)',
-            badge: 'Tancament',
-            icon: Sparkles,
-            tone: 'success' as const,
-            onClick: () => setShowClosing(true),
-          }
-        : null,
-
       // 🔔 Avisos de Producció (visible només per Producció / Admin / Direcció)
       canWriteAvisos
         ? {
@@ -500,7 +487,6 @@ const operativa = useMemo(
     canCreateModificationPerm,
     canSeeModifications,
     canWriteAvisos,
-    canCloseEventPerm,
     onClose,
     onOpenAuditExecution,
   ]
@@ -826,20 +812,6 @@ const recursos = useMemo(
   fincaId={(event.fincaId || event.fincaCode || '').trim() || null}
   eventSummary={event.summary}
 />
-      <EventClosingModal
-        open={showClosing}
-        onClose={() => setShowClosing(false)}
-        eventId={String(event.id)}
-        eventName={event.summary}
-        user={{
-          role: user.role,
-          department: user.department,
-          id: user.id != null ? String(user.id) : undefined,
-        }}
-      />
-      
-
-     
     </>
   )
 }

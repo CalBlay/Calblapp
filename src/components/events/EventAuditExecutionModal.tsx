@@ -7,8 +7,10 @@ import {
   AlertTriangle,
   Camera,
   CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
   Circle,
+  Clock3,
   Gift,
   Paperclip,
   RotateCcw,
@@ -29,6 +31,10 @@ import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 import { cn } from '@/lib/utils'
 import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
 import EventExtrasModal from './EventExtrasModal'
+import EventClosingHoursPanel from './EventClosingModal'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
 
 type Outcome = 'none' | 'reported'
 
@@ -104,6 +110,7 @@ const nextChecklistValue = (current: unknown) => {
 }
 
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
+  const { uiActions, ready: permissionsReady } = useUiPermissions()
   const [hasIncidents, setHasIncidents] = useState(true)
   const [localIncidentIds, setLocalIncidentIds] = useState<string[]>([])
   const [notes, setNotes] = useState('')
@@ -115,6 +122,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [incidentsRefresh, setIncidentsRefresh] = useState(0)
   const [hasExtras, setHasExtras] = useState(false)
   const [showExtrasModal, setShowExtrasModal] = useState(false)
+  const [showRealHours, setShowRealHours] = useState(false)
   const [answers, setAnswers] = useState<
     Record<
       string,
@@ -139,6 +147,12 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       : resolveAuditDepartmentForUser(user.department || '') || ''
   const eventId = String(event.id || '')
   const eventDay = String(event.start || '').slice(0, 10)
+  const canOpenRealHours =
+    permissionsReady &&
+    canOpenEventClosing({
+      role: user.role,
+      hasClosingPermission: uiActions[PERM.action('/menu/events', 'event:close')] === true,
+    })
 
   const executionUrl = useMemo(() => {
     if (!open || !eventId || !department) return null
@@ -212,6 +226,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!open) setShowRealHours(false)
+  }, [open])
 
   useEffect(() => {
     if (!open) {
@@ -595,8 +613,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center sm:px-4">
       <div
         className={cn(
-          'relative flex h-[min(92dvh,100svh)] w-full max-w-lg flex-col overflow-hidden bg-white shadow-2xl',
-          'rounded-t-2xl sm:max-h-[min(92dvh,100svh)] sm:rounded-2xl'
+          'relative flex w-full flex-col overflow-hidden bg-white shadow-2xl',
+          showRealHours
+            ? 'h-[100dvh] max-w-none rounded-none sm:h-[min(92dvh,100svh)] sm:max-h-[min(92dvh,100svh)] sm:max-w-lg sm:rounded-2xl'
+            : 'h-[min(92dvh,100svh)] max-w-lg rounded-t-2xl sm:max-h-[min(92dvh,100svh)] sm:rounded-2xl'
         )}
         role="dialog"
         aria-modal="true"
@@ -614,6 +634,19 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           </div>
         ) : null}
 
+        {showRealHours ? (
+          <EventClosingHoursPanel
+            eventId={eventId}
+            eventName={eventTitle}
+            user={{ role: user.role, department: user.department }}
+            onBack={() => setShowRealHours(false)}
+            onClose={onClose}
+            onSaved={() => {
+              setShowRealHours(false)
+              setSuccess('Hores reals desades correctament.')
+            }}
+          />
+        ) : (
         <ClientErrorBoundary title="Error al tancament operatiu" onReset={() => void mutate()}>
               <div className="shrink-0 border-b border-gray-100 px-4 pb-2 pt-3 sm:pt-4">
                 <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
@@ -644,6 +677,27 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           ) : (
             <>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] touch-pan-y px-4 pb-4">
+              {canOpenRealHours ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccess('')
+                    setShowRealHours(true)
+                  }}
+                  className="flex min-h-16 w-full touch-manipulation items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-left text-blue-950 shadow-sm transition active:scale-[0.99] active:bg-blue-100"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                    <Clock3 className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">Registrar hores reals</span>
+                    <span className="mt-0.5 block text-xs leading-4 text-blue-700">
+                      Finalització, absències i sortides anticipades
+                    </span>
+                  </span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-blue-500" />
+                </button>
+              ) : null}
               <div className="rounded-xl border border-gray-200 p-3 space-y-3">
                 <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-orange-600" />
@@ -974,6 +1028,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             </>
           )}
             </ClientErrorBoundary>
+        )}
           </div>
         </div>
   ) : null

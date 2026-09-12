@@ -173,6 +173,7 @@ function TicketWorkspace() {
     canValidate,
     canCapValidateTicket,
     canCreatorValidateTicket,
+    canCreatorRejectTicket,
     canReopen,
     canExternalize,
     tickets,
@@ -897,6 +898,7 @@ function TicketWorkspace() {
           onDelete={handleDelete}
           canDelete={canDeleteTicket}
           canCreatorValidate={canCreatorValidateTicket}
+          canCreatorReject={canCreatorRejectTicket}
           onCreatorValidate={handleCreatorValidate}
           onCreatorReject={(ticket) => {
             const note = window.prompt('Indica què no és correcte perquè el responsable ho pugui corregir:')

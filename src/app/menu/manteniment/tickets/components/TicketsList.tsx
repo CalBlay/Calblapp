@@ -26,6 +26,7 @@ type Props = {
   onDelete: (ticket: Ticket) => void
   canDelete: (ticket: Ticket) => boolean
   canCreatorValidate?: (ticket: Ticket) => boolean
+  canCreatorReject?: (ticket: Ticket) => boolean
   onCreatorValidate?: (ticket: Ticket) => void
   onCreatorReject?: (ticket: Ticket) => void
   canShowOps?: (ticket: Ticket) => boolean
@@ -219,6 +220,7 @@ export default function TicketsList({
   onDelete,
   canDelete,
   canCreatorValidate,
+  canCreatorReject,
   onCreatorValidate,
   onCreatorReject,
   canShowOps,
@@ -316,6 +318,7 @@ export default function TicketsList({
                   const cardDescription = getCardDescription(ticket)
                   const showOps = Boolean(canShowOps?.(ticket) && onOpenOps)
                   const showCreatorValidate = Boolean(canCreatorValidate?.(ticket) && onCreatorValidate)
+                  const showCreatorReject = Boolean(canCreatorReject?.(ticket) && onCreatorReject)
 
                   return (
                     <article
@@ -398,14 +401,14 @@ export default function TicketsList({
                               Correcte
                             </button>
                           ) : null}
-                          {showCreatorValidate && onCreatorReject ? (
+                          {showCreatorReject ? (
                             <button
                               type="button"
                               title="Indicar que la resolució no és correcta"
                               aria-label="Reobrir el ticket perquè la resolució no és correcta"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                onCreatorReject(ticket)
+                                onCreatorReject?.(ticket)
                               }}
                               className="rounded-full border border-rose-300 bg-white/85 px-3 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-50"
                             >
