@@ -6,6 +6,10 @@ import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
 import { listQuadrantEventsInRange } from '@/lib/quadrantEvents'
 import { listSurveyKeysByDepartmentAndRange } from '@/lib/quadrantSurveys'
 import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
+import {
+  applyMeetingDecisionsToDashboard,
+} from '@/lib/quadrantsWeeklyMeeting'
+import { listMeetingDecisions } from '@/lib/server/quadrantsWeeklyMeetingStore'
 
 export const runtime = 'nodejs'
 
@@ -69,7 +73,15 @@ export async function GET(req: NextRequest) {
         }
       : await getDashboardCached(start, end, department)
 
-    return NextResponse.json(payload)
+    const decisions = await listMeetingDecisions(start, end)
+    const adjusted = applyMeetingDecisionsToDashboard(
+      department,
+      payload.events,
+      payload.quadrants,
+      decisions
+    )
+
+    return NextResponse.json({ ...payload, ...adjusted })
   } catch (error) {
     console.error('[quadrants/dashboard] ERROR:', error)
     const message = error instanceof Error ? error.message : 'Error intern'

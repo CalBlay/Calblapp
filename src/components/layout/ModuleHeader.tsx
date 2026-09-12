@@ -77,6 +77,7 @@ export default function ModuleHeader({
   const subLabels: Record<string, string> = {
     reserves: 'Reserves',
     operativa: 'Operativa',
+    'reunio-setmanal': 'Reunió setmanal',
     drafts: 'Esborranys',
     premisses: 'Premisses',
     info: 'Informació',

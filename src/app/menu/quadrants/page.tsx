@@ -579,6 +579,12 @@ export default function QuadrantsPage() {
             >
               Vista operativa
             </Link>
+            <Link
+              href="/menu/quadrants/reunio-setmanal"
+              className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
+            >
+              Reunió setmanal
+            </Link>
             {canPremisses ? (
               <Link
                 href="/menu/quadrants/premisses"

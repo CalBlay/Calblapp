@@ -108,12 +108,20 @@ export default function QuadrantsOperativaPage() {
         title="Quadrants"
         subtitle="Vista operativa per línies"
         actions={
-          <Link
-            href="/menu/quadrants"
-            className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
-          >
-            Tauler de treball
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/menu/quadrants/reunio-setmanal"
+              className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
+            >
+              Reunió setmanal
+            </Link>
+            <Link
+              href="/menu/quadrants"
+              className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
+            >
+              Tauler de treball
+            </Link>
+          </div>
         }
       />
 
