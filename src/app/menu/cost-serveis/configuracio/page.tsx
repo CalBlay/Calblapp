@@ -17,10 +17,11 @@ import { SPACE_KIND_LABELS, type SpaceKind } from '@/lib/costServeis/spaceOwners
 import { SpaceKindBadge } from '../SpaceKindBadge'
 import { TRANSPORT_TYPE_OPTIONS } from '@/lib/transportTypes'
 import { cn } from '@/lib/utils'
+import { MonthlyDataTab } from './MonthlyDataTab'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-type TabId = 'general' | 'ponderacio'
+type TabId = 'general' | 'dades'
 
 function currentMonthRange() {
   const now = new Date()
@@ -37,14 +38,14 @@ export default function CostServeisConfigPage() {
     <div className="w-full space-y-6 pb-24">
       <ModuleHeader
         title="Configuració"
-        subtitle="Tarifes, sortida, combustible i ponderació per tipus de servei"
+        subtitle="Tarifes operatives i dades mensuals de cost per esdeveniment i pax"
       />
 
       <div className="flex gap-1 border-b border-slate-200">
         {(
           [
             { id: 'general' as const, label: 'General' },
-            { id: 'ponderacio' as const, label: 'Ponderació' },
+            { id: 'dades' as const, label: 'Dades mensuals' },
           ] as const
         ).map((t) => (
           <button
@@ -63,7 +64,7 @@ export default function CostServeisConfigPage() {
         ))}
       </div>
 
-      {tab === 'general' ? <GeneralConfigTab /> : <PonderacioTab />}
+      {tab === 'general' ? <GeneralConfigTab /> : <MonthlyDataTab />}
     </div>
   )
 }
@@ -270,7 +271,8 @@ function GeneralConfigTab() {
   )
 }
 
-function PonderacioTab() {
+/** @deprecated Conservat temporalment per poder consultar la configuració històrica. */
+export function LegacyPonderacioTab() {
   const range0 = useMemo(() => currentMonthRange(), [])
   const [dept, setDept] = useState<'logistica' | 'cuina' | 'all'>('logistica')
   const [spaceFilter, setSpaceFilter] = useState<'all' | SpaceKind>('all')
