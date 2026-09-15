@@ -14,6 +14,7 @@ function normalizeDepartment(value: unknown): AuditDepartment {
     .toLowerCase()
     .trim()
   if (raw === 'serveis') return 'serveis'
+  if (raw === 'foodlover' || raw === 'foodlovers' || raw === 'food lover' || raw === 'food lovers') return 'foodlovers'
   if (raw === 'cuina') return 'cuina'
   if (raw === 'logistica') return 'logistica'
   if (raw === 'deco' || raw === 'decoracio' || raw === 'decoracions') return 'deco'

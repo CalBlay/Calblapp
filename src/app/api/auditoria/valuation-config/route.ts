@@ -7,7 +7,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
 type DepartmentBonusConfig = {
   minAuditoriesMes: number
@@ -16,7 +16,7 @@ type DepartmentBonusConfig = {
   enabled: boolean
 }
 
-const DEPARTMENTS: Department[] = ['comercial', 'serveis', 'cuina', 'logistica', 'deco']
+const DEPARTMENTS: Department[] = ['comercial', 'foodlovers', 'serveis', 'cuina', 'logistica', 'deco']
 
 const DEFAULT_CONFIG: DepartmentBonusConfig = {
   minAuditoriesMes: 6,
@@ -33,6 +33,7 @@ function normalizeDept(raw?: string): Department | null {
     .toLowerCase()
     .trim()
   if (value === 'comercial') return 'comercial'
+  if (value === 'foodlover' || value === 'foodlovers' || value === 'food lover' || value === 'food lovers') return 'foodlovers'
   if (value === 'serveis' || value === 'sala') return 'serveis'
   if (value === 'cuina') return 'cuina'
   if (value === 'logistica') return 'logistica'
@@ -53,6 +54,7 @@ function buildConfigMap(raw: unknown): Record<Department, DepartmentBonusConfig>
   const src = (raw || {}) as Record<string, unknown>
   return {
     comercial: normalizeConfig(src.comercial),
+    foodlovers: normalizeConfig(src.foodlovers),
     serveis: normalizeConfig(src.serveis),
     cuina: normalizeConfig(src.cuina),
     logistica: normalizeConfig(src.logistica),

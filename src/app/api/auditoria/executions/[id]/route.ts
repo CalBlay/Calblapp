@@ -7,7 +7,7 @@ import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { normalizeCommercialAuditGroup, resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
 type TemplateItem = { id?: string; type?: string; weight?: number }
 type TemplateBlock = {
@@ -37,6 +37,7 @@ function normalizeDept(raw?: string): Department | null {
     .toLowerCase()
     .trim()
   if (value === 'comercial') return 'comercial'
+  if (value === 'foodlover' || value === 'foodlovers' || value === 'food lover' || value === 'food lovers') return 'foodlovers'
   if (value === 'serveis' || value === 'sala') return 'serveis'
   if (value === 'cuina') return 'cuina'
   if (value === 'logistica') return 'logistica'
@@ -226,9 +227,21 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
     const runDepartment = normalizeDept(String(run.department || ''))
 
     if (auth.role === 'cap' && (!runDepartment || auth.department !== runDepartment)) {
-      return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+      const isLegacyFoodloversRun =
+        auth.department === 'foodlovers' &&
+        runDepartment === 'comercial' &&
+        auth.commercialGroup === 'foodlovers' &&
+        (await commercialRunBelongsToGroup(run, auth.commercialGroup))
+      if (!isLegacyFoodloversRun) {
+        return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+      }
     }
-    if (auth.role === 'cap' && runDepartment === 'comercial' && auth.commercialGroup) {
+    if (
+      auth.role === 'cap' &&
+      auth.department === 'comercial' &&
+      runDepartment === 'comercial' &&
+      auth.commercialGroup
+    ) {
       const allowed = await commercialRunBelongsToGroup(run, auth.commercialGroup)
       if (!allowed) return NextResponse.json({ error: 'Sense permisos sobre aquest comercial' }, { status: 403 })
     }
@@ -285,9 +298,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const run = snap.data() as Record<string, unknown>
     const runDepartment = normalizeDept(String(run.department || ''))
     if (auth.role === 'cap' && (!runDepartment || auth.department !== runDepartment)) {
-      return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+      const isLegacyFoodloversRun =
+        auth.department === 'foodlovers' &&
+        runDepartment === 'comercial' &&
+        auth.commercialGroup === 'foodlovers' &&
+        (await commercialRunBelongsToGroup(run, auth.commercialGroup))
+      if (!isLegacyFoodloversRun) {
+        return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+      }
     }
-    if (auth.role === 'cap' && runDepartment === 'comercial' && auth.commercialGroup) {
+    if (
+      auth.role === 'cap' &&
+      auth.department === 'comercial' &&
+      runDepartment === 'comercial' &&
+      auth.commercialGroup
+    ) {
       const allowed = await commercialRunBelongsToGroup(run, auth.commercialGroup)
       if (!allowed) return NextResponse.json({ error: 'Sense permisos sobre aquest comercial' }, { status: 403 })
     }

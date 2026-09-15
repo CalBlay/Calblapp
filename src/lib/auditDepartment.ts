@@ -1,5 +1,5 @@
 /** Mateixa lògica que `normalizeDept` a `/api/auditoria/executions` (client + prefetch). */
-export type AuditApiDepartment = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+export type AuditApiDepartment = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 export type CommercialAuditGroupDepartment = 'empresa' | 'casaments' | 'foodlovers'
 
 const normalizeText = (raw?: string | null) => {
@@ -14,6 +14,7 @@ const normalizeText = (raw?: string | null) => {
 export function normalizeAuditDepartment(raw?: string | null): AuditApiDepartment | null {
   const value = normalizeText(raw)
   if (value === 'comercial') return 'comercial'
+  if (value === 'foodlover' || value === 'foodlovers' || value === 'food lover' || value === 'food lovers') return 'foodlovers'
   if (value === 'serveis' || value === 'sala') return 'serveis'
   if (value === 'cuina') return 'cuina'
   if (value === 'logistica') return 'logistica'
@@ -30,5 +31,25 @@ export function normalizeCommercialAuditGroup(raw?: string | null): CommercialAu
 }
 
 export function resolveAuditDepartmentForUser(rawDepartment?: string | null): AuditApiDepartment | null {
-  return normalizeAuditDepartment(rawDepartment) || (normalizeCommercialAuditGroup(rawDepartment) ? 'comercial' : null)
+  const auditDepartment = normalizeAuditDepartment(rawDepartment)
+  if (auditDepartment) return auditDepartment
+  const commercialGroup = normalizeCommercialAuditGroup(rawDepartment)
+  if (commercialGroup === 'foodlovers') return 'foodlovers'
+  return commercialGroup ? 'comercial' : null
+}
+
+export function resolveAuditDepartmentForEvent(params: {
+  userDepartment?: string | null
+  userRole?: string | null
+  eventLn?: string | null
+}): AuditApiDepartment | null {
+  const role = normalizeText(params.userRole).replace(/\s+/g, '')
+  const commercialGroup = normalizeCommercialAuditGroup(params.userDepartment)
+  const eventGroup = normalizeCommercialAuditGroup(params.eventLn)
+
+  if ((role === 'comercial' || commercialGroup) && eventGroup === 'foodlovers') {
+    return 'foodlovers'
+  }
+  if (role === 'comercial') return 'comercial'
+  return resolveAuditDepartmentForUser(params.userDepartment)
 }

@@ -40,7 +40,7 @@ import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
-import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
+import { resolveAuditDepartmentForEvent } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
@@ -307,7 +307,11 @@ const treballadorsPersons =
     const eventId = String(event?.id ?? '').trim()
     if (!eventId || !canCreateIncident) return
 
-    const dept = resolveAuditDepartmentForUser(user.department)
+    const dept = resolveAuditDepartmentForEvent({
+      userDepartment: user.department,
+      userRole: user.role,
+      eventLn: lnKey,
+    })
     if (!dept) return
 
     const warmAudit = () => {
@@ -323,7 +327,7 @@ const treballadorsPersons =
     }
     const t = window.setTimeout(warmAudit, 300)
     return () => clearTimeout(t)
-  }, [canCreateIncident, event?.id, event?.start, user.department])
+  }, [canCreateIncident, event?.id, event?.start, lnKey, user.department, user.role])
 
   const DEPT_TO_LN: Record<string, LnKey> = {
     empresa: 'empresa',

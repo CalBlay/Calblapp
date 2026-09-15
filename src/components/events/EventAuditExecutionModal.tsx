@@ -27,7 +27,7 @@ import {
   afterMobileFilePicker,
   prepareAuditImageUpload,
 } from '@/lib/media/prepareAuditImageUpload'
-import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
+import { resolveAuditDepartmentForEvent } from '@/lib/auditDepartment'
 import { cn } from '@/lib/utils'
 import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
 import EventExtrasModal from './EventExtrasModal'
@@ -142,9 +142,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
 
   const userRole = String(user.role || '').trim().toLowerCase()
   const department =
-    userRole === 'comercial'
-      ? 'comercial'
-      : resolveAuditDepartmentForUser(user.department || '') || ''
+    resolveAuditDepartmentForEvent({
+      userDepartment: user.department,
+      userRole,
+      eventLn: event.lnKey,
+    }) || ''
   const eventId = String(event.id || '')
   const eventDay = String(event.start || '').slice(0, 10)
   const canOpenRealHours =

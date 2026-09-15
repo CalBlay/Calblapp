@@ -5,6 +5,7 @@ const {
   normalizeAuditDepartment,
   normalizeCommercialAuditGroup,
   resolveAuditDepartmentForUser,
+  resolveAuditDepartmentForEvent,
 } = require('../src/lib/auditDepartment')
 
 test('normalizeAuditDepartment maps aliases and strips accents', () => {
@@ -15,6 +16,7 @@ test('normalizeAuditDepartment maps aliases and strips accents', () => {
   assert.equal(normalizeAuditDepartment('decoracions'), 'deco')
   assert.equal(normalizeAuditDepartment('cuina'), 'cuina')
   assert.equal(normalizeAuditDepartment('comercial'), 'comercial')
+  assert.equal(normalizeAuditDepartment('Food Lovers'), 'foodlovers')
   assert.equal(normalizeAuditDepartment('unknown'), null)
   assert.equal(normalizeAuditDepartment(null), null)
 })
@@ -28,11 +30,26 @@ test('normalizeCommercialAuditGroup compactifies spaces and aliases', () => {
   assert.equal(normalizeCommercialAuditGroup('sala'), null)
 })
 
-test('resolveAuditDepartmentForUser maps commercial groups onto comercial', () => {
+test('resolveAuditDepartmentForUser keeps Foodlovers separate from comercial', () => {
   assert.equal(resolveAuditDepartmentForUser('casaments'), 'comercial')
   assert.equal(resolveAuditDepartmentForUser('empresa'), 'comercial')
-  assert.equal(resolveAuditDepartmentForUser('Food Lover'), 'comercial')
+  assert.equal(resolveAuditDepartmentForUser('Food Lover'), 'foodlovers')
   assert.equal(resolveAuditDepartmentForUser('sala'), 'serveis')
   assert.equal(resolveAuditDepartmentForUser('deco'), 'deco')
   assert.equal(resolveAuditDepartmentForUser('altres'), null)
+})
+
+test('resolveAuditDepartmentForEvent selects the Foodlovers audit for Foodlovers events', () => {
+  assert.equal(
+    resolveAuditDepartmentForEvent({ userDepartment: 'Empresa', userRole: 'comercial', eventLn: 'foodlovers' }),
+    'foodlovers'
+  )
+  assert.equal(
+    resolveAuditDepartmentForEvent({ userDepartment: 'Casaments', userRole: 'comercial', eventLn: 'casaments' }),
+    'comercial'
+  )
+  assert.equal(
+    resolveAuditDepartmentForEvent({ userDepartment: 'Serveis', userRole: 'treballador', eventLn: 'foodlovers' }),
+    'serveis'
+  )
 })

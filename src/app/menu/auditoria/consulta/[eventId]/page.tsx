@@ -7,9 +7,10 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { Card } from '@/components/ui/card'
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 const DEPARTMENTS: Array<{ id: Department; label: string }> = [
-  { id: 'comercial', label: 'Comercial' },
+  { id: 'comercial', label: 'Comercial (Empresa i Casaments)' },
+  { id: 'foodlovers', label: 'Foodlovers' },
   { id: 'serveis', label: 'Serveis' },
   { id: 'cuina', label: 'Cuina' },
   { id: 'logistica', label: 'Logistica' },
@@ -134,6 +135,7 @@ export default function AuditoriaConsultaEventPage() {
   const auditsByDept = useMemo(() => {
     const map: Record<Department, ExecutionRow[]> = {
       comercial: [],
+      foodlovers: [],
       serveis: [],
       cuina: [],
       logistica: [],
@@ -141,7 +143,7 @@ export default function AuditoriaConsultaEventPage() {
     }
     rows.forEach((r) => {
       const d = String(r.department || '').toLowerCase().trim()
-      if (d === 'comercial' || d === 'serveis' || d === 'cuina' || d === 'logistica' || d === 'deco') {
+      if (d === 'comercial' || d === 'foodlovers' || d === 'serveis' || d === 'cuina' || d === 'logistica' || d === 'deco') {
         map[d].push(r)
       }
     })

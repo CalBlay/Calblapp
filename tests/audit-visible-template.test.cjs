@@ -54,6 +54,16 @@ test('pickVisibleAuditTemplate ignores non-visible or draft templates', () => {
   assert.equal(pickVisibleAuditTemplate(rows, 'logistica'), null)
 })
 
+test('pickVisibleAuditTemplate keeps Foodlovers separate from comercial', () => {
+  const rows = [
+    { id: 'commercial', department: 'comercial', status: 'active', isVisible: true, blocks: [] },
+    { id: 'foodlovers', department: 'Food Lovers', status: 'active', isVisible: true, blocks: [] },
+  ]
+
+  assert.equal(pickVisibleAuditTemplate(rows, 'foodlovers')?.id, 'foodlovers')
+  assert.equal(pickVisibleAuditTemplate(rows, 'comercial')?.id, 'commercial')
+})
+
 test('formatTornNotificationLabel uses torns day date format', () => {
   assert.equal(
     formatTornNotificationLabel('Nou esdeveniment', '2026-06-09'),

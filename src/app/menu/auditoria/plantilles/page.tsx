@@ -27,7 +27,8 @@ type DepartmentMeta = {
 }
 
 const DEPARTMENTS: DepartmentMeta[] = [
-  { id: 'comercial', label: 'Comercial' },
+  { id: 'comercial', label: 'Comercial (Empresa i Casaments)' },
+  { id: 'foodlovers', label: 'Foodlovers' },
   { id: 'serveis', label: 'Serveis' },
   { id: 'cuina', label: 'Cuina' },
   { id: 'logistica', label: 'Logistica' },

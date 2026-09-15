@@ -1,6 +1,6 @@
 export type AuditSubmodule = 'templates' | 'valuation' | 'consultation'
 
-export type AuditDepartment = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+export type AuditDepartment = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
 export type AuditTemplateStatus = 'active' | 'draft'
 

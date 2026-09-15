@@ -28,7 +28,7 @@ type ExecutionRow = {
   completedByName: string
 }
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
 type DepartmentBonusConfig = {
   minAuditoriesMes: number
@@ -70,7 +70,8 @@ type SessionUser = {
 }
 
 const DEPARTMENTS: Array<{ id: Department; label: string }> = [
-  { id: 'comercial', label: 'Comercial' },
+  { id: 'comercial', label: 'Comercial (Empresa i Casaments)' },
+  { id: 'foodlovers', label: 'Foodlovers' },
   { id: 'serveis', label: 'Serveis' },
   { id: 'cuina', label: 'Cuina' },
   { id: 'logistica', label: 'Logistica' },
@@ -185,6 +186,7 @@ export default function AuditoriaValoracioPage() {
   const canSeeValoracio =
     isGlobalViewer ||
     userAuditDepartment === 'comercial' ||
+    userAuditDepartment === 'foodlovers' ||
     userDepartment === 'serveis' ||
     userDepartment === 'cuina' ||
     userDepartment === 'logistica'
@@ -198,6 +200,7 @@ export default function AuditoriaValoracioPage() {
 
   const [configMap, setConfigMap] = useState<Record<Department, DepartmentBonusConfig>>({
     comercial: DEFAULT_BONUS_CONFIG,
+    foodlovers: DEFAULT_BONUS_CONFIG,
     serveis: DEFAULT_BONUS_CONFIG,
     cuina: DEFAULT_BONUS_CONFIG,
     logistica: DEFAULT_BONUS_CONFIG,

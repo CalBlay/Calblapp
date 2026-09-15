@@ -7,7 +7,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type ItemType = 'checklist' | 'rating' | 'photo'
 type ItemWeightMode = 'equal' | 'manual'
 
@@ -19,6 +19,7 @@ function normalizeDept(raw?: string): Department | null {
     .toLowerCase()
     .trim()
   if (value === 'comercial') return 'comercial'
+  if (value === 'foodlover' || value === 'foodlovers' || value === 'food lover' || value === 'food lovers') return 'foodlovers'
   if (value === 'serveis') return 'serveis'
   if (value === 'cuina') return 'cuina'
   if (value === 'logistica') return 'logistica'

@@ -7,7 +7,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { normalizeCommercialAuditGroup, resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+type Department = 'comercial' | 'foodlovers' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
 function round2(n: number) {
   return Math.round(n * 100) / 100
@@ -26,7 +26,7 @@ type SummaryRow = {
   avgCompliancePct: number
 }
 
-const DEPARTMENTS: Department[] = ['comercial', 'serveis', 'cuina', 'logistica', 'deco']
+const DEPARTMENTS: Department[] = ['comercial', 'foodlovers', 'serveis', 'cuina', 'logistica', 'deco']
 
 function normalizeDept(raw?: string): Department | null {
   const value = (raw || '')
@@ -36,6 +36,7 @@ function normalizeDept(raw?: string): Department | null {
     .toLowerCase()
     .trim()
   if (value === 'comercial') return 'comercial'
+  if (value === 'foodlover' || value === 'foodlovers' || value === 'food lover' || value === 'food lovers') return 'foodlovers'
   if (value === 'serveis' || value === 'sala') return 'serveis'
   if (value === 'cuina') return 'cuina'
   if (value === 'logistica') return 'logistica'
@@ -84,7 +85,10 @@ export async function GET(req: Request) {
     let ref: FirebaseFirestore.Query = firestoreAdmin.collection('audit_runs')
     if (role === 'cap') {
       if (!userDept) return NextResponse.json({ rows: [] }, { status: 200 })
-      ref = ref.where('department', '==', userDept)
+      ref =
+        userDept === 'foodlovers' && commercialGroup === 'foodlovers'
+          ? ref.where('department', 'in', ['foodlovers', 'comercial'])
+          : ref.where('department', '==', userDept)
     } else if (department) {
       ref = ref.where('department', '==', department)
     }
@@ -143,9 +147,13 @@ export async function GET(req: Request) {
         const rowGroup = normalizeCommercialAuditGroup(row.completedByDepartment || '')
         if (rowGroup !== commercialGroup && !allowedCommercialUserIds.has(row.completedById)) return
       }
-      const key = `${row.department}__${row.responsible}`
+      const effectiveDepartment: Department =
+        userDept === 'foodlovers' && commercialGroup === 'foodlovers' && row.department === 'comercial'
+          ? 'foodlovers'
+          : row.department
+      const key = `${effectiveDepartment}__${row.responsible}`
       const current = grouped.get(key) || {
-        department: row.department,
+        department: effectiveDepartment,
         responsible: row.responsible,
         fetes: 0,
         validades: 0,

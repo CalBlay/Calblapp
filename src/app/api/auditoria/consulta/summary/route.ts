@@ -88,7 +88,10 @@ export async function GET(req: Request) {
     let ref: FirebaseFirestore.Query = firestoreAdmin.collection('audit_runs')
     if (role === 'cap') {
       if (!userDept) return NextResponse.json({ events: [] }, { status: 200 })
-      ref = ref.where('department', '==', userDept)
+      ref =
+        userDept === 'foodlovers' && commercialGroup === 'foodlovers'
+          ? ref.where('department', 'in', ['foodlovers', 'comercial'])
+          : ref.where('department', '==', userDept)
     }
 
     ref = ref.where('status', '==', 'validated')
