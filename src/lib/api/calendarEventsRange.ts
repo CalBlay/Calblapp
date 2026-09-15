@@ -18,7 +18,7 @@ export async function computeCalendarEventsInRange(
     return { events: [] }
   }
 
-  const collections = ['stage_verd', 'stage_taronja']
+  const collections = ['stage_verd', 'stage_taronja', 'stage_groc']
   const base: Record<string, unknown>[] = []
   const startMs = new Date(`${start}T00:00:00.000Z`).getTime()
   const endMs = new Date(`${end}T23:59:59.999Z`).getTime()

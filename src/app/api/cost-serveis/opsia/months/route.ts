@@ -8,6 +8,8 @@ import {
   listOpsiaMonthDocs,
 } from '@/lib/costServeis/opsiaFinance'
 import type { CostServeisDepartment } from '@/lib/costServeis/types'
+import { listOpsiaTransfersMonthDocs } from '@/lib/costServeis/opsiaTransfers'
+import { adjustStructureLinesWithTransfers } from '@/lib/costServeis/transferCostMath'
 
 export const runtime = 'nodejs'
 
@@ -41,11 +43,49 @@ export async function GET(req: NextRequest) {
   })
 
   try {
-    const docs = await listOpsiaMonthDocs({ fromYm: from, toYm: to })
-    const rows = flattenOpsiaMonthsToRows(
+    const [docs, transferDocs] = await Promise.all([
+      listOpsiaMonthDocs({ fromYm: from, toYm: to }),
+      listOpsiaTransfersMonthDocs({ fromYm: from, toYm: to }),
+    ])
+    const transferByYm = new Map(transferDocs.map((doc) => [doc.ym, doc]))
+    const rowsRaw = flattenOpsiaMonthsToRows(
       docs,
       dept as CostServeisDepartment | 'all'
     )
+    const adjustedByKey = new Map<
+      string,
+      { costPersonal: number; costPersonalGross: number; transferOut: number; transferIn: number }
+    >()
+    for (const doc of docs) {
+      const transferDoc = transferByYm.get(doc.ym)
+      if (transferDoc?.estat !== 'CONFIRMAT') continue
+      for (const department of ['logistica', 'cuina'] as const) {
+        const adjustment = adjustStructureLinesWithTransfers({
+          department,
+          sourceLines: (doc.departments?.[department]?.lines || []).map((line) => ({
+            deptCodi: line.deptCodi,
+            deptNom: line.deptNom,
+            costPersonal: line.costPersonal,
+            pot: line.pot,
+          })),
+          transfers: transferDoc.lines,
+        })
+        for (const line of adjustment.lines) {
+          adjustedByKey.set(`${doc.ym}|${department}|${line.deptCodi}`, line)
+        }
+      }
+    }
+    const rows = rowsRaw.map((row) => {
+      const transferDoc = transferByYm.get(row.ym)
+      const adjusted = adjustedByKey.get(
+        `${row.ym}|${row.calBlayDept}|${row.deptCodi}`
+      )
+      return {
+        ...row,
+        ...(adjusted || { costPersonalGross: row.costPersonal }),
+        transfersStatus: transferDoc?.estat || 'NO_IMPORTAT',
+      }
+    })
     const { configured } = getOpsiaFinanceConfig()
     return NextResponse.json({
       from,

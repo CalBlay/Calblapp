@@ -91,6 +91,18 @@ function CostRow({
   sourceLines: MonthlySourceLine[]
   emphasized?: boolean
 }) {
+  const originalCost = sourceLines.reduce(
+    (sum, line) => sum + (line.costPersonalGross ?? line.costPersonal),
+    0
+  )
+  const transferOut = sourceLines.reduce(
+    (sum, line) => sum + (line.transferOut || 0),
+    0
+  )
+  const transferIn = sourceLines.reduce(
+    (sum, line) => sum + (line.transferIn || 0),
+    0
+  )
   return (
     <section className={cn('border-t border-slate-100 px-4 py-3', emphasized && 'bg-slate-50')}>
       <div className="grid grid-cols-3 items-center gap-2 sm:grid-cols-[minmax(130px,1fr)_repeat(3,minmax(0,1fr))]">
@@ -122,18 +134,31 @@ function CostRow({
           Veure brut, ajustos i origen
         </summary>
         <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-          <div className="grid grid-cols-3 gap-3 border-b border-slate-100 pb-2">
+          <div className="grid grid-cols-2 gap-3 border-b border-slate-100 pb-2 sm:grid-cols-5">
             <div>
-              <div className="text-[10px] uppercase text-slate-400">Brut Opsia</div>
+              <div className="text-[10px] uppercase text-slate-400">Original Opsia</div>
+              <div className="font-medium text-slate-800">{euro(originalCost || metrics.grossCost)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase text-slate-400">Sortides</div>
+              <div className="font-medium text-rose-700">−{euro(transferOut)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase text-slate-400">Entrades</div>
+              <div className="font-medium text-emerald-700">+{euro(transferIn)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase text-slate-400">Després traspassos</div>
               <div className="font-medium text-slate-800">{euro(metrics.grossCost)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase text-slate-400">Deduccions</div>
-              <div className="font-medium text-slate-800">{euro(metrics.manualDeductions)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase text-slate-400">Net</div>
+              <div className="text-[10px] uppercase text-slate-400">Net final</div>
               <div className="font-semibold text-slate-950">{euro(metrics.netCost)}</div>
+              {metrics.manualDeductions > 0 ? (
+                <div className="text-[10px] text-slate-400">
+                  −{euro(metrics.manualDeductions)} manual
+                </div>
+              ) : null}
             </div>
           </div>
           {sourceLines.length > 0 ? (
@@ -150,7 +175,18 @@ function CostRow({
                     <span className="font-medium text-slate-800">{line.deptNom || 'Sense nom'}</span>
                     {line.deptCodi ? <span className="ml-1 text-slate-400">· {line.deptCodi}</span> : null}
                   </span>
-                  <span className="shrink-0 font-medium text-slate-800">{euro(line.costPersonal)}</span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-medium text-slate-800">
+                      {euro(line.costPersonal)}
+                    </span>
+                    {(line.transferOut || 0) > 0 || (line.transferIn || 0) > 0 ? (
+                      <span className="block text-[10px] text-slate-400">
+                        {euro(line.costPersonalGross ?? line.costPersonal)}
+                        {' · '}
+                        −{euro(line.transferOut || 0)} +{euro(line.transferIn || 0)}
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
               ))}
               <div className="flex justify-between gap-3 border-t border-slate-200 px-2 pt-2 font-semibold text-slate-900">

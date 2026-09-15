@@ -44,6 +44,11 @@ import {
 import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
 import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
 import { getOpsiaMonthDoc } from '@/lib/costServeis/opsiaFinance'
+import { getOpsiaTransfersMonthDoc } from '@/lib/costServeis/opsiaTransfers'
+import {
+  adjustStructureLinesWithTransfers,
+  sumAdjustedStructurePots,
+} from '@/lib/costServeis/transferCostMath'
 import { listServeiWeightRows, PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import {
   allocateStructurePotsToEvents,
@@ -352,11 +357,28 @@ export async function buildCostServeisListItems(
   for (const [ym, group] of byYm) {
     const [y, m] = ym.split('-').map(Number)
     if (!y || !m) continue
-    const opsia = await getOpsiaMonthDoc(y, m)
-    if (!opsia?.departments) continue
+    const [opsia, transferDoc] = await Promise.all([
+      getOpsiaMonthDoc(y, m),
+      getOpsiaTransfersMonthDoc(y, m),
+    ])
+    if (!opsia?.departments || transferDoc?.estat !== 'CONFIRMAT') continue
 
     for (const dept of PONDERACIO_DEPTS) {
-      const potsRaw = resolveStructurePots(opsia.departments[dept])
+      const block = opsia.departments[dept]
+      const adjustment = adjustStructureLinesWithTransfers({
+        department: dept,
+        sourceLines: (block?.lines || []).map((line) => ({
+          deptCodi: line.deptCodi,
+          deptNom: line.deptNom,
+          costPersonal: line.costPersonal,
+          pot: line.pot,
+        })),
+        transfers: transferDoc.lines,
+      })
+      const potsRaw =
+        adjustment.lines.length > 0
+          ? sumAdjustedStructurePots(adjustment.lines)
+          : resolveStructurePots(block)
       if (!potsRaw) continue
       const pots = applyManualDeductionsToPots(
         potsRaw,

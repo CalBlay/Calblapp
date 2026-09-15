@@ -23,6 +23,7 @@ import type {
 } from '@/lib/costServeis/opsiaPctAnualTypes'
 import { corporateFilterFieldClass, corporateFilterLabelClass } from '@/lib/corporate-filters'
 import { cn } from '@/lib/utils'
+import { TraspassosTab } from './TraspassosTab'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -32,7 +33,7 @@ const POT_LABELS: Record<string, string> = {
   rentat: 'Rentat',
 }
 
-type TabId = 'estructura' | 'fixos-ln' | 'estructura-ln' | 'pct-anual'
+type TabId = 'estructura' | 'fixos-ln' | 'estructura-ln' | 'traspassos' | 'pct-anual'
 
 type OpsiaEstructuraMonthMeta = {
   ym: string
@@ -95,15 +96,16 @@ export default function CostosEstructuraPage() {
     <section className="w-full max-w-none space-y-6 pb-12">
       <ModuleHeader
         title="Costos estructura"
-        subtitle="Importació OpsiaFinance: pots, salarial, personal indirecte i % anual Compres/Gestió."
+        subtitle="Importació OpsiaFinance: pots, salarial, traspassos, personal indirecte i % anual Compres/Gestió."
       />
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex flex-wrap gap-1 border-b border-slate-200">
         {(
           [
             { id: 'estructura' as const, label: 'Estructura (Logística / Cuina)' },
             { id: 'fixos-ln' as const, label: 'Cost salarial LN' },
             { id: 'estructura-ln' as const, label: 'Personal indirecte LN' },
+            { id: 'traspassos' as const, label: 'Cost de traspassos' },
             { id: 'pct-anual' as const, label: '% anual Compres / Gestió' },
           ] as const
         ).map((t) => (
@@ -129,6 +131,8 @@ export default function CostosEstructuraPage() {
         <FixosLnTab />
       ) : tab === 'estructura-ln' ? (
         <EstructuraLnTab />
+      ) : tab === 'traspassos' ? (
+        <TraspassosTab />
       ) : (
         <PctAnualTab />
       )}
@@ -317,7 +321,9 @@ function EstructuraTab() {
                           <th className={thClass}>Departament</th>
                           <th className={thClass}>Codi</th>
                           <th className={thClass}>Pot (futur)</th>
-                          <th className={cn(thClass, 'text-right')}>Cost</th>
+                          <th className={cn(thClass, 'text-right')}>
+                            Cost després traspassos
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -345,7 +351,17 @@ function EstructuraTab() {
                                     {row.pot ? POT_LABELS[row.pot] || row.pot : '—'}
                                   </td>
                                   <td className={cn(tdClass, 'text-right font-medium')}>
-                                    {fmtEuro(row.costPersonal)}
+                                    <span className="block">{fmtEuro(row.costPersonal)}</span>
+                                    {(row.transferOut || 0) > 0 || (row.transferIn || 0) > 0 ? (
+                                      <span className="block text-[10px] font-normal text-slate-400">
+                                        original {fmtEuro(row.costPersonalGross ?? row.costPersonal)}
+                                        {' · '}−{fmtEuro(row.transferOut || 0)} +{fmtEuro(row.transferIn || 0)}
+                                      </span>
+                                    ) : row.transfersStatus !== 'CONFIRMAT' ? (
+                                      <span className="block text-[10px] font-normal text-amber-600">
+                                        traspassos no sincronitzats
+                                      </span>
+                                    ) : null}
                                   </td>
                                 </tr>
                               ))
@@ -676,7 +692,7 @@ function EstructuraLnTab() {
               0
             )
             const totalExclos = monthRows.reduce(
-              (s, r) => s + (r.personalExclosLogisticaCuina || 0),
+              (s, r) => s + (r.operationalDirectTransfers || 0),
               0
             )
             return (
@@ -698,7 +714,7 @@ function EstructuraLnTab() {
                         : fmtEuro(totalNet)}
                     </strong>
                     <span className="ml-2 text-slate-400">
-                      (exclòs L+C per dept {fmtEuro(totalExclos)})
+                      (traspassos directes exclosos {fmtEuro(totalExclos)})
                     </span>
                   </span>
                 </div>
@@ -716,7 +732,9 @@ function EstructuraLnTab() {
                           Fix configurat Opsia
                         </th>
                         <th className={cn(thClass, 'text-right')}>Fix directe</th>
-                        <th className={cn(thClass, 'text-right')}>Exclòs L+C</th>
+                        <th className={cn(thClass, 'text-right')}>
+                          Traspassos directes
+                        </th>
                         <th className={cn(thClass, 'text-right')}>Fix indirecte</th>
                       </tr>
                     </thead>
@@ -757,7 +775,9 @@ function EstructuraLnTab() {
                                 : fmtEuro(row.fixedDirecte)}
                             </td>
                             <td className={cn(tdClass, 'text-right text-slate-500')}>
-                              {fmtEuro(row.personalExclosLogisticaCuina)}
+                              {row.operationalDirectTransfers == null
+                                ? 'No sincronitzats'
+                                : fmtEuro(row.operationalDirectTransfers)}
                             </td>
                             <td className={cn(tdClass, 'text-right text-slate-500')}>
                               {row.personalIndirecteCalculat == null

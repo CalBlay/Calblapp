@@ -6,10 +6,12 @@ import {
   sumManualPotDeductions,
 } from '@/lib/costServeis/manualServices'
 import { listOpsiaMonthDocs } from '@/lib/costServeis/opsiaFinance'
+import { listOpsiaTransfersMonthDocs } from '@/lib/costServeis/opsiaTransfers'
 import { loadSpaceOwnershipIndex } from '@/lib/costServeis/loadSpaceOwnership'
 import { resolveSpaceKind } from '@/lib/costServeis/spaceOwnership'
 import { resolveStructurePots } from '@/lib/costServeis/allocateStructure'
 import type { CostServeisDepartment } from '@/lib/costServeis/types'
+import { adjustStructureLinesWithTransfers } from '@/lib/costServeis/transferCostMath'
 import {
   MONTHLY_INDICATOR_VERSION,
   MONTHLY_POT_KEYS,
@@ -87,14 +89,16 @@ export async function rebuildMonthlyCostIndicators(opts: {
 
   const fromDay = `${opts.fromYm}-01`
   const toDay = endDay(opts.toYm)
-  const [stageDocs, opsiaDocs, manuals, spaceIndex] = await Promise.all([
+  const [stageDocs, opsiaDocs, transferDocs, manuals, spaceIndex] = await Promise.all([
     queryStageCollectionDocsInDateRange(db, 'stage_verd', fromDay, toDay),
     listOpsiaMonthDocs({ fromYm: opts.fromYm, toYm: opts.toYm }),
+    listOpsiaTransfersMonthDocs({ fromYm: opts.fromYm, toYm: opts.toYm }),
     listManualServicesByDateRange(fromDay, toDay),
     loadSpaceOwnershipIndex(),
   ])
   const deductions = sumManualPotDeductions(manuals)
   const opsiaByYm = new Map(opsiaDocs.map((doc) => [doc.ym, doc]))
+  const transfersByYm = new Map(transferDocs.map((doc) => [doc.ym, doc]))
   const generatedAt = new Date().toISOString()
   const runId = `${generatedAt}__${opts.userId}`
   const factsByYm = new Map<string, MonthlyEventFact[]>(months.map((ym) => [ym, []]))
@@ -178,8 +182,9 @@ export async function rebuildMonthlyCostIndicators(opts: {
     for (const department of STRUCTURE_DEPARTMENTS) {
       const block = opsia?.departments?.[department]
       const resolvedPots = resolveStructurePots(block)
+      const transferDoc = transfersByYm.get(ym)
       const deptDeductions = deductions.get(ym)?.[department]
-      const sourceLines = (block?.lines || []).map((line) => ({
+      const rawSourceLines = (block?.lines || []).map((line) => ({
         deptCodi: String(line.deptCodi || ''),
         deptNom: String(line.deptNom || ''),
         costPersonal: Math.round((Number(line.costPersonal) || 0) * 100) / 100,
@@ -187,11 +192,22 @@ export async function rebuildMonthlyCostIndicators(opts: {
           ? (line.pot as (typeof MONTHLY_POT_KEYS)[number])
           : null,
       }))
+      const transferAdjustment = adjustStructureLinesWithTransfers({
+        department: department as CostServeisDepartment,
+        sourceLines: rawSourceLines,
+        transfers: transferDoc?.estat === 'CONFIRMAT' ? transferDoc.lines : [],
+      })
+      const sourceLines = transferAdjustment.lines
       const pots = Object.fromEntries(
         MONTHLY_POT_KEYS.map((pot) => [
           pot,
           buildPotMetrics({
-            grossCost: Number(resolvedPots?.[pot]) || 0,
+            grossCost:
+              sourceLines.length > 0
+                ? sourceLines
+                    .filter((line) => line.pot === pot)
+                    .reduce((sum, line) => sum + line.costPersonal, 0)
+                : Number(resolvedPots?.[pot]) || 0,
             manualDeductions: Number(deptDeductions?.[pot]) || 0,
             eventCount: activity.eventCount,
             paxCount: activity.paxCount,
@@ -200,6 +216,14 @@ export async function rebuildMonthlyCostIndicators(opts: {
       ) as MonthlyCostIndicatorRow['pots']
       const warnings: string[] = []
       if (!block) warnings.push('Costos d’Opsia no disponibles')
+      if (!transferDoc || transferDoc.estat !== 'CONFIRMAT') {
+        warnings.push('Traspassos d’Opsia no sincronitzats o no confirmats')
+      }
+      if (transferAdjustment.unappliedTransfers > 0) {
+        warnings.push(
+          `${transferAdjustment.unappliedTransfers.toLocaleString('ca-ES')} € de traspassos sense departament aplicable`
+        )
+      }
       if (activity.eventCount === 0) warnings.push('Cap esdeveniment Empresa/Casaments')
       if (activity.paxCount === 0) warnings.push('Cap pax vàlid')
       if (activity.missingPaxEvents > 0) {
@@ -239,6 +263,12 @@ export async function rebuildMonthlyCostIndicators(opts: {
         pots,
         totals: sumPotMetrics(pots, activity.eventCount, activity.paxCount),
         sourceLines,
+        transferAdjustment: {
+          transferOut: transferAdjustment.transferOut,
+          transferIn: transferAdjustment.transferIn,
+          netAdjustment: transferAdjustment.netAdjustment,
+          unappliedTransfers: transferAdjustment.unappliedTransfers,
+        },
         status,
         warnings,
         opsiaSyncedAt: String(opsia?.syncedAt || ''),

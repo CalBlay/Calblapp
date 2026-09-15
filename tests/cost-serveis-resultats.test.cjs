@@ -7,14 +7,14 @@ const {
   calculateIndirectPersonnelPool,
 } = require('../src/lib/costServeis/fixedCostMath')
 
-test('indirect personnel subtracts direct and logistics/kitchen from the Opsia LN total', () => {
+test('indirect personnel subtracts direct and confirmed operational transfers', () => {
   assert.equal(
     calculateIndirectPersonnelPool({
       personalTotalLn: 339888.5,
       fixedDirect: 41251.58,
-      logisticsKitchen: 224971.9,
+      operationalDirectTransfers: 555.45,
     }),
-    73665.02
+    298081.47
   )
 })
 
@@ -23,7 +23,7 @@ test('indirect personnel is unavailable when Opsia does not provide the LN total
     calculateIndirectPersonnelPool({
       personalTotalLn: null,
       fixedDirect: 41251.58,
-      logisticsKitchen: 224971.9,
+      operationalDirectTransfers: 555.45,
     }),
     null
   )
@@ -35,7 +35,7 @@ test('configured monthly fixed amounts from Opsia are exported unchanged', () =>
       calculateIndirectPersonnelPool({
         personalTotalLn: 999999,
         fixedDirect: 367053.66,
-        logisticsKitchen: 9230.77,
+        operationalDirectTransfers: null,
         mode: 'FIX_DEPARTAMENTS',
         configuredFixed,
       }),

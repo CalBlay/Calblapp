@@ -7,7 +7,9 @@ import {
   listOpsiaEstructuraLnMonthDocs,
 } from '@/lib/costServeis/opsiaEstructuraLn'
 import { listOpsiaFixedLnMonthDocs } from '@/lib/costServeis/opsiaFixedLn'
+import { listOpsiaTransfersMonthDocs } from '@/lib/costServeis/opsiaTransfers'
 import { calculateIndirectPersonnelPool } from '@/lib/costServeis/fixedCostMath'
+import { sumOperationalTransfersForLn } from '@/lib/costServeis/transferCostMath'
 
 export const runtime = 'nodejs'
 
@@ -35,23 +37,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [docs, fixedDocs] = await Promise.all([
+    const [docs, fixedDocs, transferDocs] = await Promise.all([
       listOpsiaEstructuraLnMonthDocs({ fromYm: from, toYm: to }),
       listOpsiaFixedLnMonthDocs({ fromYm: from, toYm: to }),
+      listOpsiaTransfersMonthDocs({ fromYm: from, toYm: to }),
     ])
     const fixedByYm = new Map(fixedDocs.map((doc) => [doc.ym, doc]))
+    const transfersByYm = new Map(transferDocs.map((doc) => [doc.ym, doc]))
     const rows = flattenEstructuraLnMonthsToRows(docs).map((row) => {
       const fixedRow = fixedByYm.get(row.ym)?.byLn?.[row.lnCodi]
       const fixedDirecte = fixedRow
         ? Math.max(0, Number(fixedRow.costSalarial) || 0)
         : null
+      const operationalDirectTransfers = sumOperationalTransfersForLn(
+        transfersByYm.get(row.ym),
+        row.lnNom,
+        row.lnCodi
+      )
       return {
         ...row,
         fixedDirecte,
+        operationalDirectTransfers,
         personalIndirecteCalculat: calculateIndirectPersonnelPool({
           personalTotalLn: row.personalTotalLn,
           fixedDirect: fixedDirecte,
-          logisticsKitchen: row.personalExclosLogisticaCuina,
+          operationalDirectTransfers,
           mode: row.personalIndirecteMode,
           configuredFixed: row.personalIndirecteFixConfigurat,
         }),

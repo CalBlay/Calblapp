@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       start,
       end,
       returned: base.length,
-      collections: 2,
+      collections: 3,
     })
 
     return NextResponse.json({ events: base }, { status: 200 })

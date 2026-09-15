@@ -257,6 +257,10 @@ export type OpsiaStructureRow = {
   deptCodi: string
   deptNom: string
   costPersonal: number
+  costPersonalGross?: number
+  transferOut?: number
+  transferIn?: number
+  transfersStatus?: 'CONFIRMAT' | 'BORRADOR' | 'SENSE_DADES' | 'NO_IMPORTAT'
   pot: OpsiaPotKey | null
   syncedAt?: string
 }

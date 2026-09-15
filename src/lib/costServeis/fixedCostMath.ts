@@ -30,7 +30,7 @@ export function allocateCostPool<T>(
 export function calculateIndirectPersonnelPool(input: {
   personalTotalLn: number | null | undefined
   fixedDirect: number | null | undefined
-  logisticsKitchen: number
+  operationalDirectTransfers: number | null | undefined
   mode?: 'FIX_DEPARTAMENTS' | 'RESIDUAL_LN'
   configuredFixed?: number | null
 }): number | null {
@@ -46,6 +46,17 @@ export function calculateIndirectPersonnelPool(input: {
   if (input.fixedDirect == null || !Number.isFinite(input.fixedDirect)) return null
   const total = Math.max(0, input.personalTotalLn)
   const direct = Math.max(0, Number(input.fixedDirect) || 0)
-  const logisticsKitchen = Math.max(0, Number(input.logisticsKitchen) || 0)
-  return Math.round((Math.max(0, total - direct - logisticsKitchen) + Number.EPSILON) * 100) / 100
+  if (
+    input.operationalDirectTransfers == null ||
+    !Number.isFinite(input.operationalDirectTransfers)
+  ) {
+    return null
+  }
+  const operationalDirectTransfers = Math.max(
+    0,
+    Number(input.operationalDirectTransfers) || 0
+  )
+  return Math.round(
+    (Math.max(0, total - direct - operationalDirectTransfers) + Number.EPSILON) * 100
+  ) / 100
 }

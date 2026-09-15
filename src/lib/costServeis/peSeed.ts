@@ -6,8 +6,11 @@ import { buildCostServeisListItems } from '@/lib/costServeis/buildListItems'
 import type { ServiceCostListItem } from '@/lib/costServeis/types'
 import { listOpsiaFixedLnMonthDocs } from '@/lib/costServeis/opsiaFixedLn'
 import { listOpsiaEstructuraLnMonthDocs } from '@/lib/costServeis/opsiaEstructuraLn'
+import { listOpsiaTransfersMonthDocs } from '@/lib/costServeis/opsiaTransfers'
 import { getOpsiaPctAnualDoc } from '@/lib/costServeis/opsiaPctAnual'
 import { normalizeManualLnName } from '@/lib/costServeis/manualLnOptions'
+import { calculateIndirectPersonnelPool } from '@/lib/costServeis/fixedCostMath'
+import { sumOperationalTransfersForLn } from '@/lib/costServeis/transferCostMath'
 import { splitServiceTypeLabels } from '@/lib/serveis/utils'
 import {
   peFromInputs,
@@ -99,7 +102,16 @@ export function resolveOpsiaLnCodi(
   // A CalBlapp aquesta LN es diu Agenda; a OpsiaFinance es diu CENTRAL.
   if (fold(raw) === 'agenda' && byLn.LN00000) return 'LN00000'
 
-  const f = fold(normalizeManualLnName(raw) || raw)
+  // Correspondències de negoci entre els noms de CalBlapp i els codis d'Opsia.
+  const normalized = normalizeManualLnName(raw)
+  if (normalized === 'Empresa' && byLn.LN00002) return 'LN00002'
+  if (normalized === 'Casaments' && byLn.LN00003) return 'LN00003'
+  if (normalized === 'Foodlovers') {
+    if (byLn.LN00005) return 'LN00005' // FIRES & FESTIVALS
+    if (byLn.LN00007) return 'LN00007'
+  }
+
+  const f = fold(normalized || raw)
   if (!f) return null
 
   for (const [codi, row] of Object.entries(byLn)) {
@@ -151,12 +163,14 @@ async function allocateFixos(opts: {
   const fromYm = yms[0] || opts.from.slice(0, 7)
   const toYm = yms[yms.length - 1] || opts.to.slice(0, 7)
 
-  const [fixedDocs, estructuraDocs] = await Promise.all([
+  const [fixedDocs, estructuraDocs, transferDocs] = await Promise.all([
     listOpsiaFixedLnMonthDocs({ fromYm, toYm }),
     listOpsiaEstructuraLnMonthDocs({ fromYm, toYm }),
+    listOpsiaTransfersMonthDocs({ fromYm, toYm }),
   ])
   const fixedByYm = new Map(fixedDocs.map((d) => [d.ym, d]))
   const estByYm = new Map(estructuraDocs.map((d) => [d.ym, d]))
+  const transfersByYm = new Map(transferDocs.map((d) => [d.ym, d]))
 
   let fixDirecte = 0
   let fixIndirecte = 0
@@ -179,6 +193,7 @@ async function allocateFixos(opts: {
 
     const fixedDoc = fixedByYm.get(ym)
     const estDoc = estByYm.get(ym)
+    const transferDoc = transfersByYm.get(ym)
     if (!fixedDoc) monthsMissingFixed.push(ym)
     if (!estDoc) monthsMissingEstructura.push(ym)
 
@@ -209,8 +224,28 @@ async function allocateFixos(opts: {
         const codi = resolveOpsiaLnCodi(estDoc.byLn, lnName)
         if (codi) {
           opsiaLnCodi = opsiaLnCodi || codi
-          const pot = Number(estDoc.byLn[codi]?.estructuraNeta) || 0
-          fixIndirecte += pot * quota
+          const row = estDoc.byLn[codi]
+          const directCode = fixedDoc?.byLn
+            ? resolveOpsiaLnCodi(fixedDoc.byLn, lnName)
+            : null
+          const pot = calculateIndirectPersonnelPool({
+            personalTotalLn: row?.personalTotalLn,
+            fixedDirect: directCode
+              ? Number(fixedDoc?.byLn[directCode]?.costSalarial) || 0
+              : null,
+            operationalDirectTransfers: sumOperationalTransfersForLn(
+              transferDoc,
+              lnName,
+              codi
+            ),
+            mode: row?.personalIndirecteMode,
+            configuredFixed: row?.personalIndirecteFixConfigurat,
+          })
+          if (pot != null) {
+            fixIndirecte += pot * quota
+          } else if (!monthsMissingEstructura.includes(ym)) {
+            monthsMissingEstructura.push(ym)
+          }
         }
       }
     }

@@ -1,6 +1,6 @@
 import type { CostServeisDepartment } from '@/lib/costServeis/types'
 
-export const MONTHLY_INDICATOR_VERSION = 2
+export const MONTHLY_INDICATOR_VERSION = 3
 
 export const MONTHLY_POT_KEYS = ['gestio', 'preparacio', 'rentat'] as const
 export type MonthlyPotKey = (typeof MONTHLY_POT_KEYS)[number]
@@ -34,6 +34,9 @@ export type MonthlySourceLine = {
   deptCodi: string
   deptNom: string
   costPersonal: number
+  costPersonalGross?: number
+  transferOut?: number
+  transferIn?: number
   pot: MonthlyPotKey | null
 }
 
@@ -47,6 +50,12 @@ export type MonthlyCostIndicatorRow = {
   pots: Record<MonthlyPotKey, MonthlyPotMetrics>
   totals: MonthlyPotMetrics
   sourceLines: MonthlySourceLine[]
+  transferAdjustment?: {
+    transferOut: number
+    transferIn: number
+    netAdjustment: number
+    unappliedTransfers: number
+  }
   status: 'complete' | 'warning' | 'incomplete'
   warnings: string[]
   opsiaSyncedAt: string

@@ -11,6 +11,8 @@ import { queryStageCollectionDocsInDateRange } from '@/lib/firestoreStageRangeQu
 import { listServeis } from '@/lib/serveis/server'
 import { listOpsiaFixedLnMonthDocs } from '@/lib/costServeis/opsiaFixedLn'
 import { listOpsiaEstructuraLnMonthDocs } from '@/lib/costServeis/opsiaEstructuraLn'
+import { listOpsiaTransfersMonthDocs } from '@/lib/costServeis/opsiaTransfers'
+import { sumOperationalTransfersForLn } from '@/lib/costServeis/transferCostMath'
 import { resolveOpsiaLnCodi } from '@/lib/costServeis/peSeed'
 import { getOpsiaPctAnualDoc } from '@/lib/costServeis/opsiaPctAnual'
 import { pctPointsToRatio } from '@/lib/costServeis/peCalc'
@@ -201,10 +203,11 @@ export async function allocateResultatsFixedCosts(opts: {
       opts.monthlyItems.map((item) => Number(item.eventDate.slice(0, 4))).filter(Boolean)
     ),
   ].sort()
-  const [fixedDocs, indirectDocs, catalogFull, weightRows, annualEntries] =
+  const [fixedDocs, indirectDocs, transferDocs, catalogFull, weightRows, annualEntries] =
     await Promise.all([
       listOpsiaFixedLnMonthDocs({ fromYm: opts.fromYm, toYm: opts.toYm }),
       listOpsiaEstructuraLnMonthDocs({ fromYm: opts.fromYm, toYm: opts.toYm }),
+      listOpsiaTransfersMonthDocs({ fromYm: opts.fromYm, toYm: opts.toYm }),
       listServeis(),
       listServeiWeightRows({ dept: 'all' }),
       Promise.all(years.map(async (year) => [year, await loadYearActivity(year)] as const)),
@@ -223,6 +226,7 @@ export async function allocateResultatsFixedCosts(opts: {
   }
   const fixedByYm = new Map(fixedDocs.map((doc) => [doc.ym, doc]))
   const indirectByYm = new Map(indirectDocs.map((doc) => [doc.ym, doc]))
+  const transfersByYm = new Map(transferDocs.map((doc) => [doc.ym, doc]))
   const result = new Map<string, EventFixedCosts>()
   for (const item of opts.monthlyItems) {
     result.set(item.eventId, {
@@ -245,6 +249,7 @@ export async function allocateResultatsFixedCosts(opts: {
     const ln = lnName(first.ln)
     const fixedDoc = fixedByYm.get(ym)
     const indirectDoc = indirectByYm.get(ym)
+    const transferDoc = transfersByYm.get(ym)
     const directCode = fixedDoc ? resolveOpsiaLnCodi(fixedDoc.byLn || {}, ln) : null
     const indirectCode = indirectDoc
       ? resolveOpsiaLnCodi(indirectDoc.byLn || {}, ln)
@@ -255,11 +260,16 @@ export async function allocateResultatsFixedCosts(opts: {
     // Fix indirecte pur: personal central net. Compres i gestió es calculen
     // separadament amb els seus percentatges teòrics i no poden entrar aquí.
     const indirectRow = indirectCode ? indirectDoc?.byLn[indirectCode] : null
+    const operationalTransfers = sumOperationalTransfersForLn(
+      transferDoc,
+      ln,
+      indirectCode
+    )
     const indirectPoolCalculated = indirectRow
       ? calculateIndirectPersonnelPool({
           personalTotalLn: indirectRow.personalTotalLn,
           fixedDirect: directCode ? fixedDirectPool : null,
-          logisticsKitchen: indirectRow.personalExclosLogisticaCuina,
+          operationalDirectTransfers: operationalTransfers,
           mode: indirectRow.personalIndirecteMode,
           configuredFixed: indirectRow.personalIndirecteFixConfigurat,
         })
@@ -296,7 +306,7 @@ export async function allocateResultatsFixedCosts(opts: {
       fixedIndirectConfigured:
         indirectRow?.personalIndirecteFixConfigurat ?? null,
       fixedIndirectExcludedOperational: round2(
-        Number(indirectRow?.personalExclosLogisticaCuina) || 0
+        operationalTransfers || 0
       ),
       fixedIndirectPool: round2(fixedIndirectPool),
       fixedIndirectAllocated: round2(
@@ -313,6 +323,9 @@ export async function allocateResultatsFixedCosts(opts: {
         ? 'missing_month'
         : !indirectCode
           ? 'missing_ln'
+          : indirectRow?.personalIndirecteMode !== 'FIX_DEPARTAMENTS' &&
+              operationalTransfers == null
+            ? 'missing_base'
           : indirectPoolCalculated == null
             ? 'missing_base'
           : rows.length <= 0
@@ -325,7 +338,7 @@ export async function allocateResultatsFixedCosts(opts: {
   const yearsMissingPercentages: number[] = []
   const annualData = await Promise.all(
     annualEntries.map(async ([year, annualRows]) => {
-      const [annualFixed, annualIndirect, pctDoc] = await Promise.all([
+      const [annualFixed, annualIndirect, annualTransfers, pctDoc] = await Promise.all([
         listOpsiaFixedLnMonthDocs({
           fromYm: `${year}-01`,
           toYm: `${year}-12`,
@@ -334,15 +347,27 @@ export async function allocateResultatsFixedCosts(opts: {
           fromYm: `${year}-01`,
           toYm: `${year}-12`,
         }),
+        listOpsiaTransfersMonthDocs({
+          fromYm: `${year}-01`,
+          toYm: `${year}-12`,
+        }),
         getOpsiaPctAnualDoc(year, 'calblay'),
       ])
-      return { year, annualRows, annualFixed, annualIndirect, pctDoc }
+      return { year, annualRows, annualFixed, annualIndirect, annualTransfers, pctDoc }
     })
   )
-  for (const { year, annualRows, annualFixed, annualIndirect, pctDoc } of annualData) {
+  for (const {
+    year,
+    annualRows,
+    annualFixed,
+    annualIndirect,
+    annualTransfers,
+    pctDoc,
+  } of annualData) {
     if (!pctDoc) yearsMissingPercentages.push(year)
     const annualFixedByYm = new Map(annualFixed.map((doc) => [doc.ym, doc]))
     const annualIndirectByYm = new Map(annualIndirect.map((doc) => [doc.ym, doc]))
+    const annualTransfersByYm = new Map(annualTransfers.map((doc) => [doc.ym, doc]))
     const byLn = new Map<string, ActivityRow[]>()
     for (const row of annualRows) {
       const key = fold(lnName(row.ln))
@@ -373,7 +398,11 @@ export async function allocateResultatsFixedCosts(opts: {
                 fixedDirect: directCode
                   ? Number(fixedDoc?.byLn[directCode]?.costSalarial) || 0
                   : null,
-                logisticsKitchen: indirectRow.personalExclosLogisticaCuina,
+                operationalDirectTransfers: sumOperationalTransfersForLn(
+                  annualTransfersByYm.get(ym),
+                  ln,
+                  code
+                ),
                 mode: indirectRow.personalIndirecteMode,
                 configuredFixed: indirectRow.personalIndirecteFixConfigurat,
               })
@@ -400,8 +429,11 @@ export async function allocateResultatsFixedCosts(opts: {
             fixedDirect: directCode
               ? Number(directDoc?.byLn[directCode]?.costSalarial) || 0
               : null,
-            logisticsKitchen:
-              Number(indirectRow?.personalExclosLogisticaCuina) || 0,
+            operationalDirectTransfers: sumOperationalTransfersForLn(
+              annualTransfersByYm.get(doc.ym),
+              ln,
+              code
+            ),
             mode: indirectRow?.personalIndirecteMode,
             configuredFixed: indirectRow?.personalIndirecteFixConfigurat,
           })
@@ -453,7 +485,8 @@ export async function allocateResultatsFixedCosts(opts: {
           (row) =>
             (row.personalIndirecteMode === 'FIX_DEPARTAMENTS' &&
               row.personalIndirecteFixConfigurat != null) ||
-            row.personalTotalLn != null
+            (row.personalTotalLn != null &&
+              annualTransfersByYm.get(doc.ym)?.estat === 'CONFIRMAT')
         )
       ).length,
     })
@@ -474,7 +507,8 @@ export async function allocateResultatsFixedCosts(opts: {
             (row) =>
               (row.personalIndirecteMode === 'FIX_DEPARTAMENTS' &&
                 row.personalIndirecteFixConfigurat != null) ||
-              row.personalTotalLn != null
+              (row.personalTotalLn != null &&
+                transfersByYm.get(ym)?.estat === 'CONFIRMAT')
           )
         )
       }),

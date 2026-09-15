@@ -18,6 +18,11 @@ import {
 import { resolveGoogleMapsApiKey } from '@/lib/costServeis/googleMapsDistance'
 import type { ServiceCostSheet } from '@/lib/costServeis/types'
 import { getOpsiaMonthDoc } from '@/lib/costServeis/opsiaFinance'
+import { getOpsiaTransfersMonthDoc } from '@/lib/costServeis/opsiaTransfers'
+import {
+  adjustStructureLinesWithTransfers,
+  sumAdjustedStructurePots,
+} from '@/lib/costServeis/transferCostMath'
 import { listServeiWeightRows, PONDERACIO_DEPTS } from '@/lib/costServeis/serveiWeights'
 import {
   allocateStructurePotsToEvents,
@@ -190,14 +195,15 @@ export async function GET(
       const from = `${ym}-01`
       const to = `${ym}-${String(last).padStart(2, '0')}`
       if (isIsoDateDayParam(from) && isIsoDateDayParam(to)) {
-        const [opsia, catalog, weightRows, stageDocs, monthManuals] = await Promise.all([
+        const [opsia, transferDoc, catalog, weightRows, stageDocs, monthManuals] = await Promise.all([
           getOpsiaMonthDoc(y, m),
+          getOpsiaTransfersMonthDoc(y, m),
           listServeis(),
           listServeiWeightRows({ dept: 'all' }),
           queryStageCollectionDocsInDateRange(db, 'stage_verd', from, to),
           listManualServicesByDateRange(from, to),
         ])
-        if (opsia?.departments) {
+        if (opsia?.departments && transferDoc?.estat === 'CONFIRMAT') {
           const catalogIndex = catalog.map((s) => ({
             id: s.id,
             nom: s.nom,
@@ -234,7 +240,21 @@ export async function GET(
             Record<(typeof PONDERACIO_DEPTS)[number], { managementCost: number; preparationCost: number; washingCost: number }>
           > = {}
           for (const dept of PONDERACIO_DEPTS) {
-            const potsRaw = resolveStructurePots(opsia.departments[dept])
+            const block = opsia.departments[dept]
+            const adjustment = adjustStructureLinesWithTransfers({
+              department: dept,
+              sourceLines: (block?.lines || []).map((line) => ({
+                deptCodi: line.deptCodi,
+                deptNom: line.deptNom,
+                costPersonal: line.costPersonal,
+                pot: line.pot,
+              })),
+              transfers: transferDoc.lines,
+            })
+            const potsRaw =
+              adjustment.lines.length > 0
+                ? sumAdjustedStructurePots(adjustment.lines)
+                : resolveStructurePots(block)
             if (!potsRaw) continue
             // Conserva valors desats si ja hi ha gestió/prep/rentat > 0
             const prev = sheet.departments[dept]

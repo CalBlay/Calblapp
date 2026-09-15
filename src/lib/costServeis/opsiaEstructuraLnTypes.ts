@@ -63,6 +63,7 @@ export type OpsiaEstructuraLnTableRow = {
   personalIndirecteMode: OpsiaPersonalIndirecteMode
   personalIndirecteFixConfigurat: number | null
   fixedDirecte: number | null
+  operationalDirectTransfers?: number | null
   personalIndirecteCalculat: number | null
   personalExclosLogisticaCuina: number
   gestioImputada: number
