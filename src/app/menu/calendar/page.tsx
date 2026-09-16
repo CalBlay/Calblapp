@@ -83,6 +83,8 @@ const MOBILE_BREAKPOINT = 768
 const DESKTOP_BREAKPOINT = 1024
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
+const normalizeFilterValue = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -247,7 +249,6 @@ export default function CalendarPage() {
     ln,
     stage,
     commercial,
-    location,
     start,
     end,
   })
@@ -263,24 +264,35 @@ export default function CalendarPage() {
   })
 
   /* Comercials disponibles */
-  const comercialOptions = Array.from(
-    new Set(
-      dealsForFilters
-        .map((d) => d.Comercial)
-        .filter((x) => x && x.trim() !== '')
-        .map((x) => x.trim())
-    )
-  ).sort()
+  const comercialOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          dealsForFilters
+            .map((d) => d.Comercial)
+            .filter((x) => x && x.trim() !== '')
+            .map((x) => x.trim())
+        )
+      ).sort(),
+    [dealsForFilters]
+  )
 
   /* Ubicacions disponibles */
-  const locationOptions = Array.from(
-    new Set(
-      dealsForFilters
-        .map((deal) => deal.Ubicacio)
-        .filter((value): value is string => Boolean(value?.trim()))
-        .map((value) => value.trim())
-    )
-  ).sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+  const locationOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          dealsForFilters
+            .map((deal) => deal.Ubicacio)
+            .filter(
+              (value): value is string =>
+                typeof value === 'string' && Boolean(value.trim())
+            )
+            .map((value) => value.trim())
+        )
+      ).sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' })),
+    [dealsForFilters]
+  )
 
   /* Netejar comercial si deixa de ser vàlid */
   useEffect(() => {
@@ -347,10 +359,18 @@ export default function CalendarPage() {
   }, [deals, start])
 
   const visibleDeals = useMemo(() => {
-    if (!canManageCodes) return deals
-    if (codeStatus === 'all') return deals
-    return deals.filter((d) => d.codeStatus === codeStatus)
-  }, [deals, codeStatus, canManageCodes])
+    let filteredDeals = deals
+
+    if (location.length) {
+      const selectedLocations = new Set(location.map(normalizeFilterValue))
+      filteredDeals = filteredDeals.filter((deal) =>
+        selectedLocations.has(normalizeFilterValue(deal.Ubicacio || ''))
+      )
+    }
+
+    if (!canManageCodes || codeStatus === 'all') return filteredDeals
+    return filteredDeals.filter((deal) => deal.codeStatus === codeStatus)
+  }, [deals, location, codeStatus, canManageCodes])
 
   const periodStats = useMemo(() => {
     const stats = { confirmed: 0, review: 0, missing: 0 }

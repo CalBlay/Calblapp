@@ -60,7 +60,7 @@ export async function computeCalendarEventsInRange(
 
       const summary = rawSummary.split('/')[0].trim()
 
-      const location = (d.Ubicacio ?? '')
+      const location = (typeof d.Ubicacio === 'string' ? d.Ubicacio : '')
         .split('(')[0]
         .split('/')[0]
         .replace(/^ZZ\s*/i, '')
