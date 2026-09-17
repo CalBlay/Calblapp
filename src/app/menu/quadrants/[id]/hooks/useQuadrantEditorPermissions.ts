@@ -19,8 +19,12 @@ export function useQuadrantEditorPermissions() {
       hasAction(PERM.action('/menu/quadrants', 'draft:confirm')))
 
   const canDeleteDraft = canView && hasAction(PERM.action('/menu/quadrants', 'draft:delete'))
+  const canUnconfirm =
+    canConfirm ||
+    canDeleteDraft ||
+    (canView && hasAction(PERM.action('/menu/quadrants', 'draft:unconfirm')))
 
-  return { ready, canSave, canConfirm, canDeleteDraft }
+  return { ready, canSave, canConfirm, canUnconfirm, canDeleteDraft }
 }
 
 export function quadrantEditorDisabledReason(params: {

@@ -5,24 +5,13 @@ import { Clock3, GraduationCap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import GenerationScopeToggle from './GenerationScopeToggle'
-import QuadrantEditorIconActions from './QuadrantEditorIconActions'
-import type { AutoPreviewResponse, GenerationScope, QuadrantMode } from './quadrantModalTypes'
+import QuadrantEditorIconActions, {
+  type QuadrantEditorIconActionsProps,
+} from './QuadrantEditorIconActions'
+import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import { mergeResponsibleCandidatePools } from '../lib/quadrantPayloadShared'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
-
-type EditorActionsProps = {
-  loading: boolean
-  canAutoGen: boolean
-  mode: QuadrantMode
-  isQuadrantCoreDept: boolean
-  autoPreview: AutoPreviewResponse | null
-  autoPreviewLoading: boolean
-  onDelete: () => void | Promise<void>
-  onSave: (confirmAfterSave: boolean) => void
-  deleting?: boolean
-  hasPersistedDraft?: boolean
-}
 
 type Props = {
   mode: QuadrantMode
@@ -38,7 +27,7 @@ type Props = {
   generationScope: GenerationScope
   setGenerationScope: (value: GenerationScope) => void
   surveySlot?: ReactNode
-  editorActions?: EditorActionsProps
+  editorActions?: QuadrantEditorIconActionsProps
   embedded?: boolean
 }
 

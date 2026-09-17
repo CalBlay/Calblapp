@@ -4,24 +4,13 @@ import { useState, type ReactNode } from 'react'
 import { GraduationCap, Shirt } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import GenerationScopeToggle from './GenerationScopeToggle'
-import QuadrantEditorIconActions from './QuadrantEditorIconActions'
-import type { AutoPreviewResponse, GenerationScope, QuadrantMode } from './quadrantModalTypes'
+import QuadrantEditorIconActions, {
+  type QuadrantEditorIconActionsProps,
+} from './QuadrantEditorIconActions'
+import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import { mergeResponsibleCandidatePools } from '../lib/quadrantPayloadShared'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
-
-type EditorActionsProps = {
-  loading: boolean
-  canAutoGen: boolean
-  mode: QuadrantMode
-  isQuadrantCoreDept: boolean
-  autoPreview: AutoPreviewResponse | null
-  autoPreviewLoading: boolean
-  onDelete: () => void | Promise<void>
-  onSave: (confirmAfterSave: boolean) => void
-  deleting?: boolean
-  hasPersistedDraft?: boolean
-}
 
 type Props = {
   mode: QuadrantMode
@@ -36,7 +25,7 @@ type Props = {
   setVestimentModelChoice: (value: string) => void
   serveisVestimentModels: string[]
   surveySlot?: ReactNode
-  editorActions?: EditorActionsProps
+  editorActions?: QuadrantEditorIconActionsProps
   embedded?: boolean
 }
 

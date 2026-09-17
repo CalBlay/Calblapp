@@ -27,9 +27,10 @@ export default function DraftActions({
   const { ready, canViewPath, hasAction } = useUiPermissions()
   const canView = canViewPath('/menu/quadrants')
   const canConfirm = canView && hasAction(PERM.action('/menu/quadrants', 'draft:confirm'))
-  const canUnconfirm = canView && hasAction(PERM.action('/menu/quadrants', 'draft:unconfirm'))
   const canSave = canView && hasAction(PERM.action('/menu/quadrants', 'draft:save'))
   const canDelete = canView && hasAction(PERM.action('/menu/quadrants', 'draft:delete'))
+  const canUnconfirm =
+    canConfirm || canDelete || (canView && hasAction(PERM.action('/menu/quadrants', 'draft:unconfirm')))
 
   return (
     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">

@@ -1,7 +1,7 @@
 ﻿// file: src/components/calendar/CalendarFilters.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Select,
   SelectTrigger,
@@ -68,6 +68,8 @@ const CODE_STATUS_OPTIONS: { label: string; value: CalendarCodeStatus }[] = [
   { label: 'Confirmats', value: 'confirmed' },
 ]
 
+const FILTER_CHANGE_DELAY_MS = 180
+
 const normalize = (v = '') =>
   v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
@@ -127,7 +129,15 @@ export default function CalendarFilters({
     [comercialOptions]
   )
 
-  const [initialized, setInitialized] = useState(false)
+  const lastEmittedFilters = useRef(
+    JSON.stringify({
+      ln: lnValues,
+      stage,
+      commercial: commercialValues,
+      location: locationValues,
+      codeStatus,
+    })
+  )
 
   // Si la pagina canvia valors (ex: reset), sincronitza aqui
   useEffect(() => setLnValues(toArray(lnProp) as CalendarLN[]), [lnProp])
@@ -145,19 +155,32 @@ export default function CalendarFilters({
     () => Array.isArray(locationOptions) && locationOptions.length > 0,
     [locationOptions]
   )
+  const selectedCommercials = useMemo(
+    () => new Set(commercialValues),
+    [commercialValues]
+  )
+  const selectedLocations = useMemo(
+    () => new Set(locationValues),
+    [locationValues]
+  )
 
   useEffect(() => {
-    if (!initialized) {
-      setInitialized(true)
-      return
-    }
-    onChange({
+    const nextFilters = {
       ln: lnValues,
       stage,
       commercial: commercialValues,
       location: locationValues,
       codeStatus,
-    })
+    }
+    const fingerprint = JSON.stringify(nextFilters)
+    if (fingerprint === lastEmittedFilters.current) return
+
+    const timeout = window.setTimeout(() => {
+      lastEmittedFilters.current = fingerprint
+      onChange(nextFilters)
+    }, FILTER_CHANGE_DELAY_MS)
+
+    return () => window.clearTimeout(timeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lnValues, stage, commercialValues, locationValues, codeStatus])
 
@@ -287,8 +310,8 @@ export default function CalendarFilters({
             {comercialOptions!.map((c) => (
               <label key={c} className="flex items-center gap-2 text-sm">
                 <input
-                  type="checkbox"
-                  checked={commercialValues.includes(c)}
+                type="checkbox"
+                  checked={selectedCommercials.has(c)}
                   onChange={() => toggleCommercial(c)}
                 />
                 {c}
@@ -315,7 +338,7 @@ export default function CalendarFilters({
               <label key={location} className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={locationValues.includes(location)}
+                  checked={selectedLocations.has(location)}
                   onChange={() => toggleLocation(location)}
                 />
                 {location}

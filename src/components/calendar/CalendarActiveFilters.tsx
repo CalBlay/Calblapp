@@ -85,13 +85,21 @@ export default function CalendarActiveFilters({
           onRemove={() => onRemoveCommercial(name)}
         />
       ))}
-      {location.map((name) => (
+      {location.slice(0, 3).map((name) => (
         <FilterChip
           key={`location-${name}`}
           label={name}
           onRemove={() => onRemoveLocation(name)}
         />
       ))}
+      {location.length > 3 && (
+        <span
+          className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-800"
+          title={location.slice(3).join(', ')}
+        >
+          +{location.length - 3} ubicacions
+        </span>
+      )}
       {hasCode && (
         <FilterChip
           label={CODE_LABELS[codeStatus as CalendarCodeStatus] || codeStatus}

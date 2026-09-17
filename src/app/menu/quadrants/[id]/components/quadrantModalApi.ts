@@ -97,6 +97,31 @@ export const deleteQuadrantDraft = async (params: {
   return data
 }
 
+export const reopenQuadrantDraft = async (params: {
+  department: string
+  eventId: string
+}) => {
+  const res = await fetch('/api/quadrantsDraft/unconfirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      department: params.department,
+      eventId: params.eventId,
+    }),
+  })
+  const text = await res.text()
+  let data: { ok?: boolean; error?: string }
+  try {
+    data = text ? (JSON.parse(text) as { ok?: boolean; error?: string }) : {}
+  } catch {
+    throw new Error('Resposta invàlida del servidor')
+  }
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `Error ${res.status}`)
+  }
+  return data
+}
+
 export const loadDepartmentPremises = async (department: string) => {
   const cachedGroups = surveyPremisesCache.get(department)
   const cachedModels = surveyPremisesModelsCache.get(department)

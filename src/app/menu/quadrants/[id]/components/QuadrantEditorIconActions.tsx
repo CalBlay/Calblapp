@@ -1,14 +1,14 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { CheckCircle2, Loader2, Save, Trash2 } from 'lucide-react'
+import { CheckCircle2, Loader2, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
 import {
   quadrantEditorDisabledReason,
   useQuadrantEditorPermissions,
 } from '../hooks/useQuadrantEditorPermissions'
 
-type Props = {
+export type QuadrantEditorIconActionsProps = {
   loading: boolean
   canAutoGen: boolean
   mode: QuadrantMode
@@ -16,9 +16,12 @@ type Props = {
   autoPreview: AutoPreviewResponse | null
   autoPreviewLoading: boolean
   onDelete: () => void | Promise<void>
+  onReopen: () => void | Promise<void>
   onSave: (confirmAfterSave: boolean) => void
   deleting?: boolean
+  reopening?: boolean
   hasPersistedDraft?: boolean
+  confirmed?: boolean
 }
 
 export default function QuadrantEditorIconActions({
@@ -29,11 +32,14 @@ export default function QuadrantEditorIconActions({
   autoPreview,
   autoPreviewLoading,
   onDelete,
+  onReopen,
   onSave,
   deleting = false,
+  reopening = false,
   hasPersistedDraft = false,
-}: Props) {
-  const { ready, canSave, canConfirm, canDeleteDraft } = useQuadrantEditorPermissions()
+  confirmed = false,
+}: QuadrantEditorIconActionsProps) {
+  const { ready, canSave, canConfirm, canUnconfirm, canDeleteDraft } = useQuadrantEditorPermissions()
 
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
   const autoInsufficient = Boolean(
@@ -43,10 +49,11 @@ export default function QuadrantEditorIconActions({
       !autoPreview.learningStatus.hasEnoughData
   )
   const showManualLikeButtons = mode === 'manual' || autoHasEnoughData
-  const busy = loading || deleting
+  const busy = loading || deleting || reopening
   const saveDisabled =
-    !canAutoGen || busy || autoPreviewLoading || autoInsufficient === true || !ready || !canSave
+    confirmed || !canAutoGen || busy || autoPreviewLoading || autoInsufficient === true || !ready || !canSave
   const confirmDisabled =
+    confirmed ||
     !canAutoGen ||
     busy ||
     autoPreviewLoading ||
@@ -55,8 +62,10 @@ export default function QuadrantEditorIconActions({
     !canSave ||
     !canConfirm
   const deleteDisabled = busy || !ready || (hasPersistedDraft && !canDeleteDraft)
-  const saveDisabledReason = saveDisabled
-    ? quadrantEditorDisabledReason({
+  const saveDisabledReason = confirmed
+    ? 'Reobre el quadrant abans de desar canvis.'
+    : saveDisabled
+      ? quadrantEditorDisabledReason({
         canAutoGen,
         ready,
         canSave,
@@ -65,9 +74,11 @@ export default function QuadrantEditorIconActions({
         autoInsufficient,
         kind: 'save',
       })
-    : null
-  const confirmDisabledReason = confirmDisabled
-    ? quadrantEditorDisabledReason({
+      : null
+  const confirmDisabledReason = confirmed
+    ? 'El quadrant ja està confirmat.'
+    : confirmDisabled
+      ? quadrantEditorDisabledReason({
         canAutoGen,
         ready,
         canSave,
@@ -77,7 +88,7 @@ export default function QuadrantEditorIconActions({
         autoInsufficient,
         kind: 'confirm',
       })
-    : null
+      : null
 
   return (
     <div className="flex items-center gap-2" data-quadrant-editor-command>
@@ -104,7 +115,7 @@ export default function QuadrantEditorIconActions({
             title={confirmDisabledReason || 'Confirmar quadrant'}
             aria-label="Confirmar quadrant"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
           </Button>
         ) : null}
 
@@ -117,7 +128,19 @@ export default function QuadrantEditorIconActions({
           title={saveDisabledReason || (showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa')}
           aria-label={showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa'}
         >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          className="h-9 w-9 rounded-full bg-amber-500 p-0 text-white shadow hover:bg-amber-600"
+          onClick={() => void onReopen()}
+          disabled={!hasPersistedDraft || busy || !ready || !canUnconfirm}
+          title={ready && !canUnconfirm ? 'Sense permís per reobrir quadrants' : 'Reobrir quadrant'}
+          aria-label="Reobrir quadrant"
+        >
+          {reopening ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
         </Button>
       </div>
 

@@ -42,6 +42,7 @@ export function draftToQuadrantEvent(draft: Draft): QuadrantEvent {
     numPax: draft.numPax ?? null,
     code: draft.code,
     department: draft.department,
+    state: draft.status === 'confirmed' ? 'confirmed' : 'draft',
     responsable:
       typeof draft.responsableName === 'string'
         ? draft.responsableName
@@ -78,5 +79,6 @@ export function unifiedPhaseToQuadrantEvent(phase: UnifiedEvent): QuadrantEvent 
     code: phase.code,
     responsable: phase.responsable ?? null,
     department: phase.department,
+    state: phase.quadrantStatus || phase.state,
   }
 }

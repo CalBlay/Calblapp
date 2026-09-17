@@ -327,6 +327,22 @@ export async function GET() {
     }
   }
 
+  // Reobrir és la contrapartida de confirmar: si l'usuari pot confirmar
+  // quadrants, també pot reobrir-los, llevat que tingui un deny explícit.
+  const quadrantConfirmKey = PERM.action('/menu/quadrants', 'confirm')
+  const quadrantDraftConfirmKey = PERM.action('/menu/quadrants', 'draft:confirm')
+  const quadrantDraftDeleteKey = PERM.action('/menu/quadrants', 'draft:delete')
+  const quadrantUnconfirmKey = PERM.action('/menu/quadrants', 'draft:unconfirm')
+  if (
+    map['/menu/quadrants'] === true &&
+    effectFor(assignment, quadrantUnconfirmKey) !== 'deny' &&
+    (actions[quadrantConfirmKey] === true ||
+      actions[quadrantDraftConfirmKey] === true ||
+      actions[quadrantDraftDeleteKey] === true)
+  ) {
+    actions[quadrantUnconfirmKey] = true
+  }
+
   // Legacy: consulta com a acció → visibilitat de submòdul
   const legacyReservesEff = effectFor(
     assignment,

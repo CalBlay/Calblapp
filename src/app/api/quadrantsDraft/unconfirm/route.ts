@@ -1,6 +1,5 @@
 // src/app/api/quadrantsDraft/unconfirm/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
@@ -39,34 +38,6 @@ async function resolveDeptCollection(dept: string) {
   return canonicalCollectionFor(dept)
 }
 
-type TokenLike = {
-  email?: string
-  role?: string
-  department?: string
-  user?: {
-    email?: string
-    role?: string
-    department?: string
-  }
-}
-
-async function getRoleAndDept(token: TokenLike) {
-  const email: string | undefined = token?.email || token?.user?.email
-  let role = String(token?.role || token?.user?.role || '').toLowerCase()
-  let dept = norm(token?.department || token?.user?.department || '')
-
-  // Si falta rol/dept, intenta llegir-ho de Firestore (users/{email})
-  if ((!role || !dept) && email) {
-    const snap = await db.collection('users').doc(email).get()
-    if (snap.exists) {
-      const u = snap.data() as { role?: string; department?: string; dept?: string } | undefined
-      role = role || String(u?.role || '').toLowerCase()
-      dept = dept || norm(u?.department || u?.dept || '')
-    }
-  }
-  return { role, dept, email }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth()
@@ -78,41 +49,35 @@ export async function POST(req: NextRequest) {
       role: auth.user.role,
       permission: PERM.action('/menu/quadrants', 'draft:unconfirm'),
     })
-    if (canUnconfirm !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
-
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-    }
+    const [canConfirmDraft, canConfirm, canDeleteDraft] = await Promise.all([
+      isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/quadrants', 'draft:confirm'),
+      }),
+      isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/quadrants', 'confirm'),
+      }),
+      isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/quadrants', 'draft:delete'),
+      }),
+    ])
+    const canReopen =
+      canUnconfirm === true ||
+      canConfirmDraft === true ||
+      canConfirm === true ||
+      canDeleteDraft === true
+    if (!canReopen) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
 
     const payload = (await req.json()) as { department: string; eventId: string }
     const department = payload.department
     const eventId = normalizeEventId(payload.eventId)
     if (!department || !eventId) {
       return NextResponse.json({ ok: false, error: 'Bad payload' }, { status: 400 })
-    }
-
-    const reqDept = norm(department)
-    const { role, dept } = await getRoleAndDept(token as TokenLike)
-
-    // ✅ Mateixa política que a confirm:
-    //  - Admin/Direcció → tot
-    //  - Cap Departament → el seu dept
-    //  - Rol desconegut → PERMESSIU si tenim dept i coincideix amb el de la petició
-    const isAdminLike = ['admin', 'direccio', 'direcció'].includes(role)
-    const isCapDept =
-      role === 'cap departament' ||
-      role === 'capdepartament' ||
-      role === 'cap'
-
-    const permissiveWhenUnknown =
-      (!role || role === 'unknown' || role === '') && !!dept && dept === reqDept
-
-    if (!(isAdminLike || (isCapDept && dept === reqDept) || permissiveWhenUnknown)) {
-      return NextResponse.json(
-        { ok: false, error: `Forbidden: rol ${role || '(unknown)'} sense permís al departament ${reqDept}` },
-        { status: 403 }
-      )
     }
 
     const coll = await resolveDeptCollection(department)

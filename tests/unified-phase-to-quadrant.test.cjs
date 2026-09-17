@@ -27,6 +27,7 @@ test('unifiedPhaseToQuadrantEvent keeps the base event id before __ phase suffix
     code: 'CB1',
     department: 'serveis',
     responsable: 'Anna',
+    quadrantStatus: 'confirmed',
   })
 
   assert.equal(event.id, 'evt123')
@@ -39,6 +40,7 @@ test('unifiedPhaseToQuadrantEvent keeps the base event id before __ phase suffix
   assert.equal(event.meetingPoint, 'Masía')
   assert.equal(event.phaseKey, 'muntatge')
   assert.equal(event.phaseType, 'muntatge')
+  assert.equal(event.state, 'confirmed')
 })
 
 test('unifiedPhaseToQuadrantEvent falls back to phaseDate and a dash summary', () => {
@@ -74,6 +76,7 @@ test('draftToQuadrantEvent strips composite ids and reads location objects', () 
     department: 'cuina',
     service: null,
     numPax: 12,
+    status: 'confirmed',
   })
 
   assert.equal(fromAddress.id, 'draft-9')
@@ -86,6 +89,7 @@ test('draftToQuadrantEvent strips composite ids and reads location objects', () 
   assert.equal(fromAddress.phaseType, 'event')
   assert.equal(fromAddress.phaseKey, 'event')
   assert.equal(fromAddress.responsable, 'Pau')
+  assert.equal(fromAddress.state, 'confirmed')
 })
 
 test('draftToQuadrantEvent prefers nested responsable name and location.name', () => {

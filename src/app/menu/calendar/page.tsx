@@ -34,6 +34,10 @@ import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { CALENDAR_MAIL_GROUPS_PATH, CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
+import {
+  buildCalendarLocationOptions,
+  filterCalendarDealsByLocations,
+} from '@/lib/calendar/calendarLocationFilter'
 
 import {
   addMonths,
@@ -83,8 +87,6 @@ const MOBILE_BREAKPOINT = 768
 const DESKTOP_BREAKPOINT = 1024
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
-const normalizeFilterValue = (value: string) =>
-  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -279,18 +281,7 @@ export default function CalendarPage() {
 
   /* Ubicacions disponibles */
   const locationOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          dealsForFilters
-            .map((deal) => deal.Ubicacio)
-            .filter(
-              (value): value is string =>
-                typeof value === 'string' && Boolean(value.trim())
-            )
-            .map((value) => value.trim())
-        )
-      ).sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' })),
+    () => buildCalendarLocationOptions(dealsForFilters),
     [dealsForFilters]
   )
 
@@ -359,14 +350,7 @@ export default function CalendarPage() {
   }, [deals, start])
 
   const visibleDeals = useMemo(() => {
-    let filteredDeals = deals
-
-    if (location.length) {
-      const selectedLocations = new Set(location.map(normalizeFilterValue))
-      filteredDeals = filteredDeals.filter((deal) =>
-        selectedLocations.has(normalizeFilterValue(deal.Ubicacio || ''))
-      )
-    }
+    const filteredDeals = filterCalendarDealsByLocations(deals, location)
 
     if (!canManageCodes || codeStatus === 'all') return filteredDeals
     return filteredDeals.filter((deal) => deal.codeStatus === codeStatus)

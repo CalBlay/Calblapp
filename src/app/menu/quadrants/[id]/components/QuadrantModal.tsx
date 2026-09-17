@@ -32,7 +32,7 @@ import type {
   SessionUserInfo,
 } from './quadrantModalTypes'
 import { extractDate, getDateRange, splitTitle } from './quadrantModalUtils'
-import { deleteQuadrantDraft } from './quadrantModalApi'
+import { deleteQuadrantDraft, reopenQuadrantDraft } from './quadrantModalApi'
 import { cn } from '@/lib/utils'
 
 export type QuadrantEditorProps = {
@@ -305,11 +305,35 @@ export function QuadrantEditor({
   const handleClose = useCallback(() => onCancel?.(), [onCancel])
 
   const [deleting, setDeleting] = useState(false)
+  const [reopening, setReopening] = useState(false)
 
   const hasPersistedDraft = Boolean(
     String((existingDraft as { id?: string } | null)?.id || '').trim() ||
       event.state === 'draft'
   )
+  const isConfirmed = String(existingDraft?.status || event.state || '').toLowerCase() === 'confirmed'
+
+  const handleReopen = useCallback(async () => {
+    if (!isConfirmed || reopening) return
+
+    setReopening(true)
+    try {
+      const eventId = String(event.id || existingDraft?.id || '')
+        .trim()
+        .split('__')[0]
+      await reopenQuadrantDraft({ department, eventId })
+      toast.success('Quadrant reobert com a esborrany')
+      window.dispatchEvent(new CustomEvent('quadrant:updated', { detail: { status: 'draft' } }))
+      dirtyRef.current = false
+      await onSaved?.()
+      handleClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error reobrint el quadrant'
+      toast.error(message)
+    } finally {
+      setReopening(false)
+    }
+  }, [department, event.id, existingDraft?.id, handleClose, isConfirmed, onSaved, reopening])
 
   const handleDelete = useCallback(async () => {
     if (hasPersistedDraft) {
@@ -433,13 +457,16 @@ export function QuadrantEditor({
   const editorActions = {
     loading,
     deleting,
+    reopening,
     hasPersistedDraft,
+    confirmed: isConfirmed,
     canAutoGen,
     mode,
     isQuadrantCoreDept,
     autoPreview,
     autoPreviewLoading,
     onDelete: handleDelete,
+    onReopen: handleReopen,
     onSave: runSave,
   }
 
