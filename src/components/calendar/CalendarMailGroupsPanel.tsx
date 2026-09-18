@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Pencil, Plus, Trash2, Users, X } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { ArrowLeft, Copy, Pencil, Plus, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +20,8 @@ type UserOption = {
 
 type EditorState = {
   id?: string
+  /** True quan s’obre des de «Copiar» (create mode amb membres clonats). */
+  isCopy?: boolean
   name: string
   description: string
   ln: string
@@ -33,6 +36,8 @@ const emptyEditor = (): EditorState => ({
 })
 
 export default function CalendarMailGroupsPanel() {
+  const { data: session } = useSession()
+  const currentUserId = String(session?.user?.id || '').trim()
   const [groups, setGroups] = useState<CalendarMailGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -41,6 +46,12 @@ export default function CalendarMailGroupsPanel() {
   const [userOptions, setUserOptions] = useState<UserOption[]>([])
   const [memberEmail, setMemberEmail] = useState('')
   const [memberName, setMemberName] = useState('')
+
+  const isOwnGroup = useCallback(
+    (group: CalendarMailGroup) =>
+      Boolean(currentUserId) && group.createdByUserId === currentUserId,
+    [currentUserId]
+  )
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
@@ -107,6 +118,19 @@ export default function CalendarMailGroupsPanel() {
       description: group.description || '',
       ln: group.ln || '',
       members: group.members,
+    })
+    setMemberEmail('')
+    setMemberName('')
+    setEditorOpen(true)
+  }
+
+  const openCopy = (group: CalendarMailGroup) => {
+    setEditor({
+      isCopy: true,
+      name: `${group.name} (còpia)`,
+      description: group.description || '',
+      ln: group.ln || '',
+      members: group.members.map((member) => ({ ...member })),
     })
     setMemberEmail('')
     setMemberName('')
@@ -204,7 +228,8 @@ export default function CalendarMailGroupsPanel() {
           </Link>
           <h1 className="text-xl font-semibold">Grups d’enviament</h1>
           <p className="text-sm text-slate-500">
-            Creeu llistes de destinataris reutilitzables per enviar documents des del calendari.
+            Llistes compartides entre usuaris amb permís. Podeu copiar el grup d’un altre i desar-lo
+            amb un altre nom o línia de negoci; només el creador pot editar o eliminar el seu.
           </p>
         </div>
         <Button type="button" onClick={openCreate} className="bg-blue-600 text-white hover:bg-blue-700">
@@ -221,7 +246,13 @@ export default function CalendarMailGroupsPanel() {
         </div>
       ) : (
         <div className="space-y-3">
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const own = isOwnGroup(group)
+            const ownerLabel =
+              group.createdByName ||
+              (own ? 'Jo' : group.createdByUserId ? 'Un altre usuari' : null)
+
+            return (
             <div
               key={group.id}
               className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -231,7 +262,17 @@ export default function CalendarMailGroupsPanel() {
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 shrink-0 text-slate-500" />
                     <h2 className="truncate font-semibold text-slate-900">{group.name}</h2>
+                    {!own ? (
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600">
+                        Compartit
+                      </span>
+                    ) : null}
                   </div>
+                  {ownerLabel ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Creat per: {own ? 'vosaltres' : ownerLabel}
+                    </p>
+                  ) : null}
                   {group.ln ? (
                     <p className="mt-1 text-xs text-slate-500">Línia de negoci: {group.ln}</p>
                   ) : null}
@@ -246,22 +287,46 @@ export default function CalendarMailGroupsPanel() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button type="button" size="sm" variant="outline" onClick={() => openEdit(group)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="text-red-600 hover:text-red-700"
-                    onClick={() => void deleteGroup(group)}
+                    title="Copiar grup"
+                    aria-label={`Copiar grup ${group.name}`}
+                    onClick={() => openCopy(group)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Copy className="h-4 w-4" />
                   </Button>
+                  {own ? (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        title="Editar grup"
+                        aria-label={`Editar grup ${group.name}`}
+                        onClick={() => openEdit(group)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:text-red-700"
+                        title="Eliminar grup"
+                        aria-label={`Eliminar grup ${group.name}`}
+                        onClick={() => void deleteGroup(group)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -270,7 +335,11 @@ export default function CalendarMailGroupsPanel() {
           <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 className="text-base font-semibold">
-                {editor.id ? 'Editar grup' : 'Nou grup d’enviament'}
+                {editor.id
+                  ? 'Editar grup'
+                  : editor.isCopy
+                    ? 'Copiar grup'
+                    : 'Nou grup d’enviament'}
               </h2>
               <button
                 type="button"
@@ -290,6 +359,11 @@ export default function CalendarMailGroupsPanel() {
                   onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}
                   placeholder="Ex. Casaments · Producció"
                 />
+                {editor.isCopy ? (
+                  <p className="text-xs text-slate-500">
+                    Podeu canviar el nom i la línia de negoci abans de desar la còpia.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -388,7 +462,7 @@ export default function CalendarMailGroupsPanel() {
                 className="bg-blue-600 text-white hover:bg-blue-700"
                 onClick={() => void saveGroup()}
               >
-                {saving ? 'Desant…' : 'Desar grup'}
+                {saving ? 'Desant…' : editor.isCopy ? 'Desar còpia' : 'Desar grup'}
               </Button>
             </div>
           </div>

@@ -32,13 +32,16 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const ln = String(searchParams.get('ln') || '').trim()
 
-    const snap = await db
-      .collection(CALENDAR_MAIL_GROUPS_COLLECTION)
-      .where('createdByUserId', '==', auth.user.id)
-      .get()
+    const snap = await db.collection(CALENDAR_MAIL_GROUPS_COLLECTION).get()
 
-    let groups = snap.docs.map((doc) => serializeMailGroup(doc.id, doc.data() as Record<string, unknown>))
-    groups.sort((a, b) => a.name.localeCompare(b.name, 'ca'))
+    let groups = snap.docs.map((doc) =>
+      serializeMailGroup(doc.id, doc.data() as Record<string, unknown>)
+    )
+    groups.sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, 'ca')
+      if (byName !== 0) return byName
+      return String(a.createdByName || '').localeCompare(String(b.createdByName || ''), 'ca')
+    })
 
     if (ln) {
       groups = groups.filter((group) => !group.ln || group.ln === ln)

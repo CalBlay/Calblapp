@@ -464,7 +464,8 @@ export default function CalendarSendDocumentsDialog({
                   </option>
                   {mailGroups.map((group) => (
                     <option key={group.id} value={group.id}>
-                      {group.name} ({group.members.length})
+                      {group.name} ({group.members.length}
+                      {group.createdByName ? ` · ${group.createdByName}` : ''})
                     </option>
                   ))}
                 </select>
