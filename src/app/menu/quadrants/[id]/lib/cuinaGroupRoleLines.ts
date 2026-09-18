@@ -346,11 +346,97 @@ export function syncCuinaGroupFromRoleLines(
 
 export function patchCuinaGroupRoleLines(
   group: CuinaGroup,
-  updater: (lines: ServeiGroupRoleLine[]) => ServeiGroupRoleLine[]
+  updater: (lines: ServeiGroupRoleLine[]) => ServeiGroupRoleLine[],
+  precomputed?: {
+    roleLines?: ServeiGroupRoleLine[]
+    assignments?: VehicleAssignment[]
+  }
 ): CuinaGroup {
-  const assignments = ensureCuinaVehicleAssignments(group)
-  const current = ensureCuinaRoleLines(group, assignments)
+  // Important: si el render ja ha fet `ensureCuinaRoleLines` sense persistir
+  // `roleLines`, cal reutilitzar aquelles mateixes línies. Un segon `ensure`
+  // regeneraria `slotId`s i el patch per `slotId` no aplicaria (caldria 2 clics).
+  const assignments =
+    precomputed?.assignments ?? ensureCuinaVehicleAssignments(group)
+  const current =
+    precomputed?.roleLines ?? ensureCuinaRoleLines(group, assignments)
   return syncCuinaGroupFromRoleLines(group, updater(current), assignments)
+}
+
+const isCuinaStaffRole = (role: ServeiRoleKey) =>
+  role === 'treballador' || role === 'jamonero'
+
+const hasAssignedCuinaPerson = (line: ServeiGroupRoleLine) =>
+  Boolean(String(line.personId || '').trim() || String(line.personName || '').trim())
+
+/** Ajusta el nombre de línies de treballador (conserva conductor/responsable). */
+export function resizeCuinaGroupWorkerSlots(
+  group: CuinaGroup,
+  workerCount: number,
+  precomputed?: {
+    roleLines?: ServeiGroupRoleLine[]
+    assignments?: VehicleAssignment[]
+  }
+): CuinaGroup {
+  const target = Math.max(0, Math.min(30, Math.floor(Number(workerCount) || 0)))
+  const assignments =
+    precomputed?.assignments ?? ensureCuinaVehicleAssignments(group)
+  const current =
+    precomputed?.roleLines ?? ensureCuinaRoleLines(group, assignments)
+  const nonStaffLines = current.filter((line) => !isCuinaStaffRole(line.role))
+  const staffLines = current.filter((line) => isCuinaStaffRole(line.role))
+
+  if (staffLines.length === target) {
+    return syncCuinaGroupFromRoleLines(group, current, assignments)
+  }
+
+  if (staffLines.length < target) {
+    const added = Array.from({ length: target - staffLines.length }, () =>
+      createEmptyCuinaRoleLine(group, 'treballador')
+    )
+    return syncCuinaGroupFromRoleLines(
+      group,
+      [...nonStaffLines, ...staffLines, ...added],
+      assignments
+    )
+  }
+
+  const assigned = staffLines.filter(hasAssignedCuinaPerson)
+  const empty = staffLines.filter((line) => !hasAssignedCuinaPerson(line))
+  const keptStaff =
+    assigned.length >= target
+      ? assigned.slice(0, target)
+      : [...assigned, ...empty.slice(0, target - assigned.length)]
+
+  return syncCuinaGroupFromRoleLines(
+    group,
+    [...nonStaffLines, ...keptStaff],
+    assignments
+  )
+}
+
+/**
+ * Ajusta les línies perquè el total de persones (conductor/responsable + treballadors)
+ * coincideixi amb `totalCount`. Comportament alineat amb Serveis.
+ */
+export function resizeCuinaGroupToTotalPersonSlots(
+  group: CuinaGroup,
+  totalCount: number,
+  precomputed?: {
+    roleLines?: ServeiGroupRoleLine[]
+    assignments?: VehicleAssignment[]
+  }
+): CuinaGroup {
+  const targetTotal = Math.max(0, Math.min(30, Math.floor(Number(totalCount) || 0)))
+  const assignments =
+    precomputed?.assignments ?? ensureCuinaVehicleAssignments(group)
+  const current =
+    precomputed?.roleLines ?? ensureCuinaRoleLines(group, assignments)
+  const nonStaffCount = current.filter((line) => !isCuinaStaffRole(line.role)).length
+  const staffTarget = Math.max(0, targetTotal - nonStaffCount)
+  return resizeCuinaGroupWorkerSlots(group, staffTarget, {
+    roleLines: current,
+    assignments,
+  })
 }
 
 export function applyCuinaDefaultsToRoleLines(group: CuinaGroup): CuinaGroup {

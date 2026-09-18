@@ -19,6 +19,7 @@ import {
   ensureCuinaVehicleAssignments,
   findCuinaAssignmentForLine,
   patchCuinaGroupRoleLines,
+  resizeCuinaGroupToTotalPersonSlots,
 } from '../lib/cuinaGroupRoleLines'
 import { buildReservedForRoleLine } from '../lib/quadrantPayloadShared'
 
@@ -67,8 +68,12 @@ export default function CuinaPhasePanel({
 
   const patchGroup = (
     group: CuinaGroup,
-    updater: Parameters<typeof patchCuinaGroupRoleLines>[1]
-  ) => patchCuinaGroupRoleLines(group, updater)
+    updater: Parameters<typeof patchCuinaGroupRoleLines>[1],
+    precomputed?: {
+      roleLines: ReturnType<typeof ensureCuinaRoleLines>
+      assignments: ReturnType<typeof ensureCuinaVehicleAssignments>
+    }
+  ) => patchCuinaGroupRoleLines(group, updater, precomputed)
 
   const patchAssignmentForLine = (
     group: CuinaGroup,
@@ -204,7 +209,8 @@ export default function CuinaPhasePanel({
                             group.id,
                             patchGroup(
                               { ...group, arrivalTime: value },
-                              (lines) => lines.map((entry) => ({ ...entry, arrivalTime: value }))
+                              (lines) => lines.map((entry) => ({ ...entry, arrivalTime: value })),
+                              { roleLines, assignments }
                             )
                           )
                         }}
@@ -215,6 +221,37 @@ export default function CuinaPhasePanel({
                         aria-label="Hora arribada"
                         title="Hora arribada"
                       />
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Label
+                          htmlFor={`cuina-workers-${group.id}`}
+                          className="mb-0 whitespace-nowrap text-xs text-slate-600"
+                        >
+                          Treb.
+                        </Label>
+                        <Input
+                          id={`cuina-workers-${group.id}`}
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={roleLines.length}
+                          onChange={(e) =>
+                            updateGroup(
+                              group.id,
+                              resizeCuinaGroupToTotalPersonSlots(
+                                group,
+                                Number(e.target.value),
+                                { roleLines, assignments }
+                              )
+                            )
+                          }
+                          className={cn(
+                            'w-[4.5rem] shrink-0 px-2 tabular-nums',
+                            compact ? 'h-8 text-xs' : 'h-9 text-sm'
+                          )}
+                          aria-label="Nombre total de persones del grup"
+                          title="Total de persones (ja descompta conductor/responsable)"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() =>
@@ -262,18 +299,26 @@ export default function CuinaPhasePanel({
                           onLinePatch={(patch) =>
                             updateGroup(
                               group.id,
-                              patchGroup(group, (lines) =>
-                                lines.map((entry) =>
-                                  entry.slotId === line.slotId ? { ...entry, ...patch } : entry
-                                )
+                              patchGroup(
+                                group,
+                                (lines) =>
+                                  lines.map((entry) =>
+                                    entry.slotId === line.slotId
+                                      ? { ...entry, ...patch }
+                                      : entry
+                                  ),
+                                { roleLines, assignments }
                               )
                             )
                           }
                           onLineRemove={() =>
                             updateGroup(
                               group.id,
-                              patchGroup(group, (lines) =>
-                                lines.filter((entry) => entry.slotId !== line.slotId)
+                              patchGroup(
+                                group,
+                                (lines) =>
+                                  lines.filter((entry) => entry.slotId !== line.slotId),
+                                { roleLines, assignments }
                               )
                             )
                           }
@@ -299,10 +344,14 @@ export default function CuinaPhasePanel({
                       onClick={() =>
                         updateGroup(
                           group.id,
-                          patchGroup(group, (lines) => [
-                            ...lines,
-                            createEmptyCuinaRoleLine(group, 'treballador'),
-                          ])
+                          patchGroup(
+                            group,
+                            (lines) => [
+                              ...lines,
+                              createEmptyCuinaRoleLine(group, 'treballador'),
+                            ],
+                            { roleLines, assignments }
+                          )
                         )
                       }
                     >
@@ -320,10 +369,14 @@ export default function CuinaPhasePanel({
                         onClick={() =>
                           updateGroup(
                             group.id,
-                            patchGroup(group, (lines) => [
-                              ...lines,
-                              createCenterExternalExtraLine(group),
-                            ])
+                            patchGroup(
+                              group,
+                              (lines) => [
+                                ...lines,
+                                createCenterExternalExtraLine(group),
+                              ],
+                              { roleLines, assignments }
+                            )
                           )
                         }
                       >

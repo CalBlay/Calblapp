@@ -11,6 +11,7 @@ import { extractDate, makeGroupId } from '../components/quadrantModalUtils'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import {
+  ensureCuinaRoleLines,
   ensureCuinaVehicleAssignments,
   syncCuinaGroupFromRoleLines,
   countCuinaStaffTotals,
@@ -138,7 +139,7 @@ export function useCuinaState({
       const needsDriver = seed.needsDriver ?? seedDrivers > 0
       const driverAssignments = buildDriverAssignments(seedDrivers, seed.driverAssignments, seed)
 
-      return normalizeGroupDrivers({
+      const base = normalizeGroupDrivers({
         id: seed.id || makeGroupId(),
         meetingPoint: seed.meetingPoint || meetingPoint || 'CENTRAL',
         serviceDate: seed.serviceDate || eventServiceDate,
@@ -158,6 +159,20 @@ export function useCuinaState({
         roleLines: seed.roleLines,
         vehicleAssignments: seed.vehicleAssignments,
       })
+
+      // Materialitza roleLines (com Serveis) perquè els slotId es mantinguin estables
+      // entre render i el primer patch de persona.
+      if (Array.isArray(seed.roleLines) && seed.roleLines.length > 0) {
+        return syncCuinaGroupFromRoleLines(
+          base,
+          seed.roleLines,
+          seed.vehicleAssignments || ensureCuinaVehicleAssignments(base, seed.roleLines)
+        )
+      }
+
+      const lines = ensureCuinaRoleLines(base)
+      const assignments = ensureCuinaVehicleAssignments(base, lines)
+      return syncCuinaGroupFromRoleLines(base, lines, assignments)
     },
     [
       arrivalTime,
@@ -252,21 +267,27 @@ export function useCuinaState({
     [cuinaGroups]
   )
 
+  const hydratedDraftIdRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (!isCuina || !open) return
-    if (!existingDraft?.id) return
+    if (!isCuina || !open) {
+      hydratedDraftIdRef.current = null
+      return
+    }
+    const draftId = String(existingDraft?.id || '').trim()
+    if (!draftId || !existingDraft) return
+    // Només rehidratar quan canvia el borrador o s'obre el modal.
+    // Dependre de `createCuinaGroup` / objecte `existingDraft` tornava a carregar
+    // el draft i esborrava la selecció de treballador en curs.
+    if (hydratedDraftIdRef.current === draftId) return
+    hydratedDraftIdRef.current = draftId
     setCuinaGroups(
       hydrateCuinaGroupsFromDraft({
         draft: existingDraft,
         fallback: createCuinaGroup(),
       })
     )
-  }, [
-    createCuinaGroup,
-    existingDraft,
-    isCuina,
-    open,
-  ])
+  }, [createCuinaGroup, existingDraft, isCuina, open])
 
   useEffect(() => {
     if (!isCuina) return
