@@ -5,6 +5,7 @@ import { QuadrantEditor } from '@/app/menu/quadrants/[id]/components/QuadrantMod
 import type { UnifiedEvent } from '@/app/menu/quadrants/types'
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import { unifiedPhaseToQuadrantEvent } from '@/lib/unifiedPhaseToQuadrantEvent'
+import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 
 type Props = {
   phase: UnifiedEvent
@@ -25,12 +26,16 @@ export default function PendingQuadrantEditor({
     return resolvedDepartment ? { ...base, department: resolvedDepartment } : base
   }, [phase, department])
   const existingDraft = useMemo(() => {
-    if (phase.quadrantStatus !== 'draft' || !phase.draft) return null
+    if (!phase.draft || phase.quadrantStatus === 'pending') return null
     const draft = phase.draft as EditorDraftInput
     return {
       ...draft,
       department: String(phase.department || draft.department || ''),
       phaseType: String(draft.phaseType || phase.phaseType || phase.phaseKey || 'event'),
+      status:
+        phase.quadrantStatus === 'confirmed' || isQuadrantRecordConfirmed(draft)
+          ? 'confirmed'
+          : draft.status || 'draft',
     }
   }, [phase.draft, phase.department, phase.phaseKey, phase.phaseType, phase.quadrantStatus])
   const editorKey = `${event.id}-${event.phaseKey || 'event'}-${event.start?.slice(0, 10) || 'nodate'}`

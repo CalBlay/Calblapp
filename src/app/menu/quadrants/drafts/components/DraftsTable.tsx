@@ -20,6 +20,7 @@ import {
   pruneEditorGroups,
   type EditorGroup,
 } from '@/lib/quadrantsDraftEditor'
+import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { mapDraftToEditorModel } from '@/lib/quadrantsDraftAdapters'
 import {
   confirmDraftTable,
@@ -128,9 +129,7 @@ export default function DraftsTable({
   }
 
   // --- Estat de confirmaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³
-  const [confirmed, setConfirmed] = useState<boolean>(
-    draft.status === 'confirmed'
-  )
+  const [confirmed, setConfirmed] = useState<boolean>(isQuadrantRecordConfirmed(draft))
   const [confirming] = useState(false) // ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“Ãƒâ€¹Ã¢â‚¬Â  eliminat setConfirming no usat
   const isLocked = confirmed || confirming
 

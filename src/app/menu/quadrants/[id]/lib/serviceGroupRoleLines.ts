@@ -178,6 +178,21 @@ export function resizeServiceGroupWorkerSlots(
   return syncGroupFromRoleLines(group, [...nonStaffLines, ...keptStaff])
 }
 
+/**
+ * Ajusta les línies perquè el total de persones (conductor/responsable + treballadors)
+ * coincideixi amb `totalCount`. Descompta les línies no-staff ja creades per defecte.
+ */
+export function resizeServiceGroupToTotalPersonSlots(
+  group: ServeiGroup,
+  totalCount: number
+): ServeiGroup {
+  const targetTotal = Math.max(0, Math.min(30, Math.floor(Number(totalCount) || 0)))
+  const current = ensureGroupRoleLines(group)
+  const nonStaffCount = current.filter((line) => !isStaffRole(line.role)).length
+  const staffTarget = Math.max(0, targetTotal - nonStaffCount)
+  return resizeServiceGroupWorkerSlots(group, staffTarget)
+}
+
 export function getPrimaryServiceRoleLines(roleLines: ServeiGroupRoleLine[]) {
   const filled = roleLines.filter(
     (line) => String(line.personId || '').trim() || String(line.personName || '').trim()

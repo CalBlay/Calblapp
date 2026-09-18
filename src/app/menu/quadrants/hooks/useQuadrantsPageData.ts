@@ -4,6 +4,7 @@ import type { FiltersState } from '@/components/layout/FiltersBar'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
 import { incidentMatchesLnFilter } from '@/lib/incidentLn'
+import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 
 interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
@@ -55,6 +56,8 @@ type QuadrantDraft = {
   startTime?: string
   endTime?: string
   status?: string
+  confirmed?: boolean
+  confirmedAt?: string | null
   phaseType?: string
   phaseLabel?: string
   phaseDate?: string
@@ -377,8 +380,8 @@ export function useQuadrantsPageData({
 
       const s = String(q?.status || '').toLowerCase()
       let quadrantStatus: QuadrantStatus = 'pending'
-      if (s === 'draft') quadrantStatus = 'draft'
-      else if (s === 'confirmed') quadrantStatus = 'confirmed'
+      if (s === 'confirmed' || isQuadrantRecordConfirmed(q)) quadrantStatus = 'confirmed'
+      else if (s === 'draft') quadrantStatus = 'draft'
 
       const displayStartTime = q.startTime || eventStartTime || undefined
       const displayEndTime = q.endTime || eventEndTime || undefined
@@ -431,6 +434,7 @@ export function useQuadrantsPageData({
         numPax: ev?.numPax ?? q?.numPax ?? null,
         service: cleanText(q.service || ev?.service || '') || null,
         commercial: ev?.commercial || null,
+        hasDocuments: Boolean(ev?.hasDocuments),
         workersSummary: buildWorkersSummary(q),
         displayStartTime,
         displayEndTime,
@@ -514,6 +518,7 @@ export function useQuadrantsPageData({
         numPax: event.numPax ?? null,
         service: cleanText(event.service || '') || null,
         commercial: event.commercial || null,
+        hasDocuments: Boolean(event.hasDocuments),
         workersSummary: '',
         displayStartTime: eventStartTime || undefined,
         displayEndTime: eventEndTime || undefined,

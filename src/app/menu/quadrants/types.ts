@@ -14,6 +14,7 @@ export interface UnifiedEvent extends QuadrantEvent {
   responsable?: string | null
   commercial?: string | null
   numPax?: number | null
+  hasDocuments?: boolean
   workersSummary?: string
   displayStartTime?: string | null
   displayEndTime?: string | null

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Save, RotateCcw, Trash2, CheckCircle2 } from 'lucide-react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { hasQuadrantsReopenAction } from '@/lib/quadrantsPermissions'
 
 export default function DraftActions({
   confirmed,
@@ -29,8 +30,7 @@ export default function DraftActions({
   const canConfirm = canView && hasAction(PERM.action('/menu/quadrants', 'draft:confirm'))
   const canSave = canView && hasAction(PERM.action('/menu/quadrants', 'draft:save'))
   const canDelete = canView && hasAction(PERM.action('/menu/quadrants', 'draft:delete'))
-  const canUnconfirm =
-    canConfirm || canDelete || (canView && hasAction(PERM.action('/menu/quadrants', 'draft:unconfirm')))
+  const canReopen = canView && hasQuadrantsReopenAction(hasAction)
 
   return (
     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -52,10 +52,20 @@ export default function DraftActions({
       {/* Reobrir */}
       <Button
         size="sm"
-        className="rounded-full bg-amber-500 hover:bg-amber-600 text-white shadow"
+        className={`rounded-full text-white shadow ${
+          confirmed && ready && canReopen && !confirming
+            ? 'bg-amber-500 hover:bg-amber-600 ring-2 ring-amber-200'
+            : 'bg-amber-500 hover:bg-amber-600'
+        }`}
         onClick={onUnconfirm}
-        disabled={!confirmed || confirming || !ready || !canUnconfirm}
-        title="Reobrir quadrant"
+        disabled={!confirmed || confirming || !ready || !canReopen}
+        title={
+          !confirmed
+            ? 'Només es pot reobrir un quadrant confirmat.'
+            : ready && !canReopen
+              ? 'Sense permís per reobrir quadrants'
+              : 'Reobrir quadrant'
+        }
       >
         <RotateCcw size={18} />
       </Button>

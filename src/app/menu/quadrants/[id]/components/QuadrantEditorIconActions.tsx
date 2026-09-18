@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { CheckCircle2, Loader2, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
 import {
@@ -39,7 +40,7 @@ export default function QuadrantEditorIconActions({
   hasPersistedDraft = false,
   confirmed = false,
 }: QuadrantEditorIconActionsProps) {
-  const { ready, canSave, canConfirm, canUnconfirm, canDeleteDraft } = useQuadrantEditorPermissions()
+  const { ready, canSave, canConfirm, canReopen, canDeleteDraft } = useQuadrantEditorPermissions()
 
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
   const autoInsufficient = Boolean(
@@ -62,6 +63,16 @@ export default function QuadrantEditorIconActions({
     !canSave ||
     !canConfirm
   const deleteDisabled = busy || !ready || (hasPersistedDraft && !canDeleteDraft)
+  const reopenDisabled = !confirmed || busy || !ready || !canReopen
+  const reopenDisabledReason = !confirmed
+    ? 'Només es pot reobrir un quadrant confirmat.'
+    : !ready
+      ? 'Carregant permisos…'
+      : !canReopen
+        ? 'Sense permís per reobrir quadrants'
+        : busy
+          ? 'Processant…'
+          : null
   const saveDisabledReason = confirmed
     ? 'Reobre el quadrant abans de desar canvis.'
     : saveDisabled
@@ -134,10 +145,15 @@ export default function QuadrantEditorIconActions({
         <Button
           type="button"
           size="sm"
-          className="h-9 w-9 rounded-full bg-amber-500 p-0 text-white shadow hover:bg-amber-600"
+          className={cn(
+            'h-9 w-9 rounded-full p-0 text-white shadow',
+            confirmed && !reopenDisabled
+              ? 'bg-amber-500 hover:bg-amber-600 ring-2 ring-amber-200'
+              : 'bg-amber-500 hover:bg-amber-600'
+          )}
           onClick={() => void onReopen()}
-          disabled={!hasPersistedDraft || busy || !ready || !canUnconfirm}
-          title={ready && !canUnconfirm ? 'Sense permís per reobrir quadrants' : 'Reobrir quadrant'}
+          disabled={reopenDisabled}
+          title={reopenDisabledReason || 'Reobrir quadrant'}
           aria-label="Reobrir quadrant"
         >
           {reopening ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}

@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { colorByLN } from '@/lib/colors'
 import { INCIDENTS_LN_OPTIONS } from '@/lib/incidentLn'
 import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
+import { cn } from '@/lib/utils'
 
 type Props = {
   value: string
@@ -32,7 +33,7 @@ export default function QuadrantsLnFilterBadges({ value, onChange }: Props) {
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+    <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 sm:gap-2">
       {INCIDENTS_LN_OPTIONS.map((opt) => {
         const active = selected.has(opt.key)
         return (
@@ -40,7 +41,10 @@ export default function QuadrantsLnFilterBadges({ value, onChange }: Props) {
             key={opt.key}
             type="button"
             onClick={() => toggle(opt.key)}
-            className={corporateFilterBadgeClass(active, active ? colorByLN(opt.key) : undefined)}
+            className={cn(
+              'shrink-0',
+              corporateFilterBadgeClass(active, active ? colorByLN(opt.key) : undefined)
+            )}
           >
             {opt.label}
           </button>

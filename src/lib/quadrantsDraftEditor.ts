@@ -76,6 +76,8 @@ export type EditorDraftInput = {
   numDrivers?: number
   totalWorkers?: number
   status?: string
+  confirmed?: boolean
+  confirmedAt?: string | number | { toDate?: () => Date } | null
   responsableId?: string
   responsableName?: string | Record<string, unknown>
   responsable?: Partial<EditorRow> | null

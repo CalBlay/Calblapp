@@ -217,7 +217,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     id: 'quadrantsActions',
     title: 'Quadrants · Accions',
     subtitle:
-      'Accions especials dins del mòdul Quadrants. «Premisses» permet el botó i editar la configuració.',
+      'Accions especials dins del mòdul Quadrants. «Premisses» permet el botó i editar la configuració. «Reobrir quadrant» no s’atorga amb confirmar: cal assignar-lo a l’usuari.',
     visibleWhen: { path: '/menu/quadrants' },
     actions: [
       {
@@ -228,7 +228,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/quadrants', 'confirm'), label: 'Confirmar quadrant' },
       { key: PERM.action('/menu/quadrants', 'draft:save'), label: 'Esborranys · desar' },
       { key: PERM.action('/menu/quadrants', 'draft:confirm'), label: 'Esborranys · confirmar' },
-      { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Esborranys · desconfirmar' },
+      { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Reobrir quadrant' },
       { key: PERM.action('/menu/quadrants', 'draft:delete'), label: 'Esborranys · eliminar' },
     ],
   },

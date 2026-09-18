@@ -91,7 +91,9 @@ export async function normalizeZohoDeals(
     const dateISO =
       deps.parseZohoDate(deal.Fecha_del_evento) ||
       deps.parseZohoDate(deal.Fecha_y_hora_del_evento)
-    const hora = deps.parseZohoTime(deal.Fecha_y_hora_del_evento)
+    const hora =
+      deps.parseZohoTime(deal.Hora_esdeveniment) ||
+      deps.parseZohoTime(deal.Fecha_y_hora_del_evento)
 
     let dataFiISO = dateISO
     const duracio = Number(deal.Duraci_n_del_evento ?? 1)

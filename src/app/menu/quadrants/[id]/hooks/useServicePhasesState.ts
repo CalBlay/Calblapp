@@ -169,8 +169,12 @@ export function useServicePhasesState({
     }
     if (seed.roleLines?.length) return syncGroupFromRoleLines(base, seed.roleLines)
 
+    // Sempre hi ha 1 línia de conductor per defecte: si `workers` és el total de
+    // persones demanat, les places de treballador són total − 1.
     const withConductor = syncGroupFromRoleLines(base, [createEmptyRoleLine(base, 'conductor')])
-    return resizeServiceGroupWorkerSlots(withConductor, base.workers)
+    const requestedTotal = Math.max(0, Math.floor(Number(base.workers) || 0))
+    const staffTarget = requestedTotal === 0 ? 0 : Math.max(0, requestedTotal - 1)
+    return resizeServiceGroupWorkerSlots(withConductor, staffTarget)
   }, [defaultMeetingPoint, defaultServiceDate, endTime, startTime])
 
   const createServicePhaseGroups = useCallback(

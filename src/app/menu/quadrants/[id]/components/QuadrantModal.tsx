@@ -33,6 +33,7 @@ import type {
 } from './quadrantModalTypes'
 import { extractDate, getDateRange, splitTitle } from './quadrantModalUtils'
 import { deleteQuadrantDraft, reopenQuadrantDraft } from './quadrantModalApi'
+import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { cn } from '@/lib/utils'
 
 export type QuadrantEditorProps = {
@@ -309,18 +310,29 @@ export function QuadrantEditor({
 
   const hasPersistedDraft = Boolean(
     String((existingDraft as { id?: string } | null)?.id || '').trim() ||
-      event.state === 'draft'
+      event.state === 'draft' ||
+      event.state === 'confirmed'
   )
-  const isConfirmed = String(existingDraft?.status || event.state || '').toLowerCase() === 'confirmed'
+  const isConfirmed = isQuadrantRecordConfirmed({
+    status: existingDraft?.status,
+    state: event.state,
+    confirmed: existingDraft?.confirmed,
+    confirmedAt: existingDraft?.confirmedAt,
+  })
 
   const handleReopen = useCallback(async () => {
-    if (!isConfirmed || reopening) return
+    if (reopening) return
+    if (!isConfirmed) {
+      toast.error('Només es pot reobrir un quadrant confirmat.')
+      return
+    }
 
     setReopening(true)
     try {
       const eventId = String(event.id || existingDraft?.id || '')
         .trim()
         .split('__')[0]
+      if (!eventId) throw new Error('No s’ha pogut identificar el quadrant')
       await reopenQuadrantDraft({ department, eventId })
       toast.success('Quadrant reobert com a esborrany')
       window.dispatchEvent(new CustomEvent('quadrant:updated', { detail: { status: 'draft' } }))

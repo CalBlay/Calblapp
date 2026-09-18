@@ -23,6 +23,8 @@ export interface ZohoDeal {
   Espai_2?: string[] | null
   Fecha_del_evento?: string | null
   Fecha_y_hora_del_evento?: string | null
+  /** Camp Zoho «Hora esdeveniment» (hora sola, p.ex. "12:00 h"). */
+  Hora_esdeveniment?: string | null
   Duraci_n_del_evento?: number | string | null
   C_digo?: string | null
   Owner: ZohoOwner

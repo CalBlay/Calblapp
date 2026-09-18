@@ -25,6 +25,7 @@ import {
   type RoleSelectValue,
 } from '@/lib/manualAssignModel'
 import type { EditorGroup } from '@/lib/quadrantsDraftEditor'
+import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { GraduationCap, Truck, User, Users } from 'lucide-react'
 import type { DraftInput, Role, Row } from './types'
 import DraftManualToolbar from './DraftManualToolbar'
@@ -168,7 +169,7 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
   const [vestimentModel, setVestimentModel] = useState(initial.vestimentModel)
   const [serveisVestimentModels, setServeisVestimentModels] = useState<string[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [confirmed, setConfirmed] = useState(draft.status === 'confirmed')
+  const [confirmed, setConfirmed] = useState(isQuadrantRecordConfirmed(draft))
   const [appliedFlash, setAppliedFlash] = useState(false)
   const appliedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLocked = confirmed
@@ -194,7 +195,7 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
     setGlobalEndTime(next.globalEndTime)
     setGlobalMeetingPoint(next.globalMeetingPoint)
     setVestimentModel(next.vestimentModel)
-    setConfirmed(draft.status === 'confirmed')
+    setConfirmed(isQuadrantRecordConfirmed(draft))
     baselineRef.current = JSON.stringify({
       rows: next.rows,
       groups: next.groups,

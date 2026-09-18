@@ -7,6 +7,18 @@ const normHhMm = (raw: unknown): string => {
   return /^\d{2}:\d{2}$/.test(s) ? s : ''
 }
 
+/** Mateixos prefixes que `/api/events/[id]/documents?prefix=all`. */
+const ATTACHMENT_FIELD_RE = /^(?:file|zohoFile|cuinaFile|visitVideo)\d+$/i
+
+export function eventRecordHasAttachedDocuments(
+  data: Record<string, unknown>
+): boolean {
+  return Object.entries(data).some(
+    ([key, value]) =>
+      ATTACHMENT_FIELD_RE.test(key) && typeof value === 'string' && value.length > 0
+  )
+}
+
 export type QuadrantCalendarEvent = {
   id: string
   summary: string
@@ -20,6 +32,7 @@ export type QuadrantCalendarEvent = {
   horaInici: string
   horaFi: string
   status: 'confirmed' | 'draft' | 'pending'
+  hasDocuments: boolean
   start: string
   end: string
   originalStart: string
@@ -109,6 +122,7 @@ export async function listQuadrantEventsInRange(
           : stageGroup.includes('proposta')
           ? ('draft' as const)
           : ('pending' as const),
+        hasDocuments: eventRecordHasAttachedDocuments(d),
       }
 
       if (!base.code || !String(base.code).trim()) return []

@@ -153,7 +153,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/quadrants', action: 'draft:save' },
   { path: '/menu/quadrants', action: 'draft:confirm' },
   { path: '/menu/quadrants', action: 'draft:delete' },
-  { path: '/menu/quadrants', action: 'draft:unconfirm' },
+  { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.REOPEN },
   { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.PREMISSES_EDIT },
   { path: RESERVA_COMERCIALS_UI_PATH, action: 'request' },
   { path: RESERVA_COMERCIALS_UI_PATH, action: 'validate' },
@@ -325,22 +325,6 @@ export async function GET() {
       const actionEff = effectFor(assignment, key)
       if (actionEff !== 'deny') actions[key] = true
     }
-  }
-
-  // Reobrir és la contrapartida de confirmar: si l'usuari pot confirmar
-  // quadrants, també pot reobrir-los, llevat que tingui un deny explícit.
-  const quadrantConfirmKey = PERM.action('/menu/quadrants', 'confirm')
-  const quadrantDraftConfirmKey = PERM.action('/menu/quadrants', 'draft:confirm')
-  const quadrantDraftDeleteKey = PERM.action('/menu/quadrants', 'draft:delete')
-  const quadrantUnconfirmKey = PERM.action('/menu/quadrants', 'draft:unconfirm')
-  if (
-    map['/menu/quadrants'] === true &&
-    effectFor(assignment, quadrantUnconfirmKey) !== 'deny' &&
-    (actions[quadrantConfirmKey] === true ||
-      actions[quadrantDraftConfirmKey] === true ||
-      actions[quadrantDraftDeleteKey] === true)
-  ) {
-    actions[quadrantUnconfirmKey] = true
   }
 
   // Legacy: consulta com a acció → visibilitat de submòdul

@@ -130,25 +130,30 @@ export default function QuadrantsOperativaPage() {
       </div>
 
       <CorporateFiltersShell variant="toolbar" className="mb-2">
-        <SmartFilters
-          modeDefault="week"
-          role="Treballador"
-          showDepartment={false}
-          showWorker={false}
-          showLocation={false}
-          showStatus={false}
-          onChange={handleDatesChange}
-          resetSignal={dashboard.dateResetSignal}
-          initialStart={dashboard.filters.start}
-          initialEnd={dashboard.filters.end}
-          compact
-        />
-        <QuadrantsLnFilterBadges
-          value={dashboard.filters.ln || 'all'}
-          onChange={(ln) => dashboard.setFilters((prev) => ({ ...prev, ln }))}
-        />
-        <div className="min-w-[8px] flex-1" />
-        <FilterButton onClick={openFiltersPanel} />
+        <div className="flex w-full min-w-0 flex-nowrap items-center gap-2 sm:gap-3">
+          <div className="shrink-0">
+            <SmartFilters
+              modeDefault="week"
+              role="Treballador"
+              showDepartment={false}
+              showWorker={false}
+              showLocation={false}
+              showStatus={false}
+              onChange={handleDatesChange}
+              resetSignal={dashboard.dateResetSignal}
+              initialStart={dashboard.filters.start}
+              initialEnd={dashboard.filters.end}
+              compact
+            />
+          </div>
+          <QuadrantsLnFilterBadges
+            value={dashboard.filters.ln || 'all'}
+            onChange={(ln) => dashboard.setFilters((prev) => ({ ...prev, ln }))}
+          />
+          <span className="shrink-0">
+            <FilterButton onClick={openFiltersPanel} />
+          </span>
+        </div>
       </CorporateFiltersShell>
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

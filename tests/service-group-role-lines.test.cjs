@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   countServiceGroupRoleLineTotals,
   createEmptyRoleLine,
+  resizeServiceGroupToTotalPersonSlots,
   resizeServiceGroupWorkerSlots,
   syncGroupFromRoleLines,
 } = require('../src/app/menu/quadrants/[id]/lib/serviceGroupRoleLines')
@@ -43,6 +44,20 @@ test('resizing service workers creates the requested blank worker slots', () => 
       .filter((line) => line.role === 'treballador')
       .every((line) => line.personId === '' && line.personName === '')
   )
+})
+
+test('resizing to total person slots subtracts the default conductor line', () => {
+  const base = group()
+  const conductor = createEmptyRoleLine(base, 'conductor')
+  const resized = resizeServiceGroupToTotalPersonSlots(
+    syncGroupFromRoleLines(base, [conductor]),
+    5
+  )
+
+  assert.equal(resized.roleLines.length, 5)
+  assert.equal(resized.roleLines.filter((line) => line.role === 'conductor').length, 1)
+  assert.equal(resized.roleLines.filter((line) => line.role === 'treballador').length, 4)
+  assert.equal(resized.workers, 4)
 })
 
 test('resizing service workers preserves assigned staff before empty slots', () => {

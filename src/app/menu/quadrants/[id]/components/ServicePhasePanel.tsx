@@ -22,7 +22,7 @@ import {
   createEmptyRoleLine,
   ensureGroupRoleLines,
   patchGroupRoleLines,
-  resizeServiceGroupWorkerSlots,
+  resizeServiceGroupToTotalPersonSlots,
 } from "../lib/serviceGroupRoleLines"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { DriverCrewPremise } from "@/services/premises"
@@ -150,9 +150,8 @@ export default function ServicePhasePanel({
                 <>
                   {groupsForPhase.map((group) => {
                     const roleLines = ensureGroupRoleLines(group)
-                    const workerSlotCount = roleLines.filter(
-                      (line) => line.role === 'treballador' || line.role === 'jamonero'
-                    ).length
+                    // Total de persones del grup (inclou conductor/responsable per defecte).
+                    const totalPersonSlots = roleLines.length
                     const allPhaseLines = groupsForPhase.flatMap((entry) =>
                       ensureGroupRoleLines(entry)
                     )
@@ -241,18 +240,22 @@ export default function ServicePhasePanel({
                                 type="number"
                                 min={0}
                                 max={30}
-                                value={workerSlotCount}
+                                value={totalPersonSlots}
                                 onChange={(e) =>
                                   updateGroup(
                                     group.id,
-                                    resizeServiceGroupWorkerSlots(group, Number(e.target.value))
+                                    resizeServiceGroupToTotalPersonSlots(
+                                      group,
+                                      Number(e.target.value)
+                                    )
                                   )
                                 }
                                 className={cn(
                                   "w-[4.5rem] shrink-0 px-2 tabular-nums",
                                   compact ? "h-8 text-xs" : "h-9 text-sm"
                                 )}
-                                aria-label="Nombre de treballadors del grup"
+                                aria-label="Nombre total de persones del grup"
+                                title="Total de persones (ja descompta la línia per defecte)"
                               />
                             </div>
                             <button

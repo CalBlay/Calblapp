@@ -9,6 +9,7 @@ export type GroupedQuadrantEvent = {
   numPax: number | null
   commercial: string | null
   service: string | null
+  hasDocuments: boolean
   phases: UnifiedEvent[]
 }
 
@@ -41,8 +42,11 @@ export function groupQuadrantsByDayAndEvent(rows: UnifiedEvent[]): GroupedQuadra
         numPax: ev.numPax ?? null,
         commercial: ev.commercial ?? null,
         service: ev.service ?? null,
+        hasDocuments: Boolean(ev.hasDocuments),
         phases: [],
       })
+    } else if (ev.hasDocuments) {
+      eventMap.get(eventId)!.hasDocuments = true
     }
 
     eventMap.get(eventId)!.phases.push(ev)

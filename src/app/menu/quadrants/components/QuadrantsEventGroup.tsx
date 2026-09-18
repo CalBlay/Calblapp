@@ -278,6 +278,7 @@ export default function QuadrantsEventGroup({
         assignedStaffCount={assignedStaffCount}
         showConfirm={showConfirm}
         showDocuments={canViewDocuments}
+        hasDocuments={Boolean(event.hasDocuments)}
         confirmLoading={confirmLoading}
         expanded={expanded}
         hidePersonnel={expanded}

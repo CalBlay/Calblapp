@@ -4,7 +4,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
-import { PERM } from '@/lib/permissionKeys'
+import { QUADRANTS_REOPEN_PERM } from '@/lib/quadrantsPermissions'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
@@ -44,34 +44,12 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.res
     const canView = await canViewUiPath({ user: auth.user, path: '/menu/quadrants' })
     if (!canView) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
-    const canUnconfirm = await isAllowedByClientOverride({
+    const canReopen = await isAllowedByClientOverride({
       userId: auth.user.id,
       role: auth.user.role,
-      permission: PERM.action('/menu/quadrants', 'draft:unconfirm'),
+      permission: QUADRANTS_REOPEN_PERM,
     })
-    const [canConfirmDraft, canConfirm, canDeleteDraft] = await Promise.all([
-      isAllowedByClientOverride({
-        userId: auth.user.id,
-        role: auth.user.role,
-        permission: PERM.action('/menu/quadrants', 'draft:confirm'),
-      }),
-      isAllowedByClientOverride({
-        userId: auth.user.id,
-        role: auth.user.role,
-        permission: PERM.action('/menu/quadrants', 'confirm'),
-      }),
-      isAllowedByClientOverride({
-        userId: auth.user.id,
-        role: auth.user.role,
-        permission: PERM.action('/menu/quadrants', 'draft:delete'),
-      }),
-    ])
-    const canReopen =
-      canUnconfirm === true ||
-      canConfirmDraft === true ||
-      canConfirm === true ||
-      canDeleteDraft === true
-    if (!canReopen) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+    if (canReopen !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
 
     const payload = (await req.json()) as { department: string; eventId: string }
     const department = payload.department

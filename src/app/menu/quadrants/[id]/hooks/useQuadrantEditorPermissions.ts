@@ -2,6 +2,7 @@
 
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { hasQuadrantsReopenAction } from '@/lib/quadrantsPermissions'
 
 /** Permisos d’accions de l’editor de quadrants (modal + vista operativa). */
 export function useQuadrantEditorPermissions() {
@@ -19,12 +20,9 @@ export function useQuadrantEditorPermissions() {
       hasAction(PERM.action('/menu/quadrants', 'draft:confirm')))
 
   const canDeleteDraft = canView && hasAction(PERM.action('/menu/quadrants', 'draft:delete'))
-  const canUnconfirm =
-    canConfirm ||
-    canDeleteDraft ||
-    (canView && hasAction(PERM.action('/menu/quadrants', 'draft:unconfirm')))
+  const canReopen = canView && hasQuadrantsReopenAction(hasAction)
 
-  return { ready, canSave, canConfirm, canUnconfirm, canDeleteDraft }
+  return { ready, canSave, canConfirm, canReopen, canDeleteDraft }
 }
 
 export function quadrantEditorDisabledReason(params: {

@@ -131,10 +131,20 @@ const parseZohoDate = (raw?: string | null): string | null => {
 
 const parseZohoTime = (raw?: string | null): string | null => {
   if (!raw) return null
-  const value = String(raw)
-  const timePart = value.split('T')[1] || value.split(' ')[1] || ''
-  const match = timePart.match(/(\d{2}:\d{2})/)
-  return match ? match[1] : null
+  const value = String(raw).trim()
+  if (!value) return null
+
+  // Datetime Zoho: "2026-09-18T12:00:00+02:00" o "2026-09-18 12:00:00"
+  // Hora sola: "12:00", "12:00 h", "12:00:00"
+  const timePart = value.includes('T')
+    ? value.split('T')[1] || ''
+    : /^\d{4}[/-]/.test(value)
+      ? value.split(/\s+/)[1] || ''
+      : value
+
+  const match = timePart.match(/(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  return `${match[1].padStart(2, '0')}:${match[2]}`
 }
 const normalizeCommercialName = (value?: string | null) =>
   String(value || '')
@@ -888,7 +898,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     attachmentsDeletedFromStorage: 0,
   }
   const baseFields =
-    'id,Deal_Name,Modified_Time,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast'
+    'id,Deal_Name,Modified_Time,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Hora_esdeveniment,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields

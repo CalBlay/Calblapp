@@ -448,11 +448,11 @@ if (key !== lastPayloadRef.current) {
   }, [resetSignal, modeDefault])
 
   const containerClass = compact
-    ? 'flex w-full min-w-0 items-center gap-2'
+    ? 'flex w-auto shrink-0 items-center gap-2'
     : 'flex flex-col md:flex-row md:flex-wrap gap-2 w-full'
 
   const dateBarClass = compact
-    ? 'flex min-w-0 flex-1 items-center gap-2 overflow-hidden'
+    ? 'flex shrink-0 items-center gap-2'
     : 'flex items-center gap-2 flex-shrink-0 py-1.5 px-1.5 whitespace-nowrap'
 
   /* ==================== RENDER ==================== */

@@ -29,6 +29,8 @@ export interface QuadrantEvent {
   vestimentModel?: string | null
   numPax?: number | null
   commercial?: string | null
+  /** True si el document stage_verd té algun adjunt (file/zohoFile/cuinaFile/visitVideo). */
+  hasDocuments?: boolean
   phaseKey?: string
   phaseLabel?: string
   phaseType?: string

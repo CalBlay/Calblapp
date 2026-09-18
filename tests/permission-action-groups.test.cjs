@@ -32,6 +32,7 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(byId.mediaDelete.requireViewOnly, undefined)
   assert.equal(byId.decoTicketsActions.visibleWhen.path, '/menu/deco/tickets')
   assert.equal(byId.decoTicketsActions.actions.length, 6)
+  assert.equal(byId.quadrantsActions.actions.find((a) => a.key.includes('draft:unconfirm'))?.label, 'Reobrir quadrant')
 
   assert.equal(
     shouldShowActionGroup(true, false, byId.eventsComanda.requireViewOnly),

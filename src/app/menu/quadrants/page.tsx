@@ -603,28 +603,33 @@ export default function QuadrantsPage() {
       </div>
 
       <CorporateFiltersShell variant="toolbar" className="mb-2">
-        <SmartFilters
-          modeDefault="week"
-          role="Treballador"
-          showDepartment={false}
-          showWorker={false}
-          showLocation={false}
-          showStatus={false}
-          onChange={handleDatesChange}
-          resetSignal={dateResetSignal}
-          initialStart={filters.start}
-          initialEnd={filters.end}
-          compact
-        />
-        <QuadrantsLnFilterBadges
-          value={filters.ln || 'all'}
-          onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
-        />
-        <span title="Neteja filtres" className="shrink-0">
-          <ResetFilterButton onClick={clearAllFilters} />
-        </span>
-        <div className="min-w-[8px] flex-1" />
-        <FilterButton onClick={openFiltersPanel} />
+        <div className="flex w-full min-w-0 flex-nowrap items-center gap-2 sm:gap-3">
+          <div className="shrink-0">
+            <SmartFilters
+              modeDefault="week"
+              role="Treballador"
+              showDepartment={false}
+              showWorker={false}
+              showLocation={false}
+              showStatus={false}
+              onChange={handleDatesChange}
+              resetSignal={dateResetSignal}
+              initialStart={filters.start}
+              initialEnd={filters.end}
+              compact
+            />
+          </div>
+          <QuadrantsLnFilterBadges
+            value={filters.ln || 'all'}
+            onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
+          />
+          <span title="Neteja filtres" className="shrink-0">
+            <ResetFilterButton onClick={clearAllFilters} />
+          </span>
+          <span className="shrink-0">
+            <FilterButton onClick={openFiltersPanel} />
+          </span>
+        </div>
       </CorporateFiltersShell>
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

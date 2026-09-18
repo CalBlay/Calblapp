@@ -38,6 +38,7 @@ interface Props {
   assignedStaffCount?: number
   showConfirm?: boolean
   showDocuments?: boolean
+  hasDocuments?: boolean
   confirmLoading?: boolean
   className?: string
   headerClassName?: string
@@ -90,6 +91,7 @@ export default function QuadrantsEventHeader({
   assignedStaffCount = 0,
   showConfirm = false,
   showDocuments = false,
+  hasDocuments = false,
   confirmLoading = false,
   className,
   headerClassName,
@@ -137,13 +139,26 @@ export default function QuadrantsEventHeader({
               type="button"
               size="sm"
               variant="outline"
-              className="h-8 w-8 rounded-full border-blue-200 bg-blue-50 p-0 text-blue-700 shadow-sm hover:border-blue-300 hover:bg-blue-100"
+              className={cn(
+                'h-8 w-8 rounded-full p-0 shadow-sm',
+                hasDocuments
+                  ? 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100'
+                  : 'border-slate-200 bg-slate-50 text-slate-400 opacity-55 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-500'
+              )}
               onClick={(e) => {
                 e.stopPropagation()
                 onOpenDocuments?.()
               }}
-              title="Veure documents adjunts"
-              aria-label="Veure documents adjunts"
+              title={
+                hasDocuments
+                  ? 'Veure documents adjunts'
+                  : 'Sense documents adjunts'
+              }
+              aria-label={
+                hasDocuments
+                  ? 'Veure documents adjunts'
+                  : 'Sense documents adjunts'
+              }
             >
               <FileText className="h-4 w-4" aria-hidden />
             </Button>

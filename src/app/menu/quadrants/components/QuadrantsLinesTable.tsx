@@ -198,7 +198,12 @@ export default function QuadrantsLinesTable({
                             {canViewDocuments ? (
                               <button
                                 type="button"
-                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
+                                className={cn(
+                                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border shadow-sm transition',
+                                  ev.hasDocuments
+                                    ? 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100'
+                                    : 'border-slate-200 bg-slate-50 text-slate-400 opacity-55 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-500'
+                                )}
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setDocumentsEvent({
@@ -206,8 +211,16 @@ export default function QuadrantsLinesTable({
                                     eventCode: ev.eventCode || ev.code || null,
                                   })
                                 }}
-                                title="Veure documents adjunts"
-                                aria-label={`Veure documents adjunts de ${ev.summary}`}
+                                title={
+                                  ev.hasDocuments
+                                    ? 'Veure documents adjunts'
+                                    : 'Sense documents adjunts'
+                                }
+                                aria-label={
+                                  ev.hasDocuments
+                                    ? `Veure documents adjunts de ${ev.summary}`
+                                    : `Sense documents adjunts de ${ev.summary}`
+                                }
                               >
                                 <FileText className="h-3.5 w-3.5" aria-hidden />
                               </button>
