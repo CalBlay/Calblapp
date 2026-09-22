@@ -9,6 +9,7 @@ import {
   queryStageCollectionDocsInDateRange,
 } from '@/lib/firestoreStageRangeQuery'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
+import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
@@ -346,6 +347,7 @@ const getEventsListCached = unstable_cache(
         horaInici,
         fincaId: d?.FincaId ?? null,
         fincaCode: d?.FincaCode ?? null,
+        hasDocuments: eventRecordHasAttachedDocuments(d),
       }
     })
 
@@ -476,7 +478,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v2'],
+  ['api-events-list-v3-documents'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC }
 )
 

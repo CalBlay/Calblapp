@@ -17,6 +17,7 @@ export interface SpaceCellEvent {
   discarded?: boolean
   reason?: string
   warning?: boolean
+  cancelled?: boolean
 }
 
 interface SpaceCellProps {
@@ -45,13 +46,16 @@ export default function SpaceCell({ event }: SpaceCellProps) {
   const isDiscarded = event.discarded ?? false
   const hasWarning = event.warning ?? false
   const reason = event.reason ?? ''
+  const isCancelled = event.cancelled === true
 
   /* ──────────────────────────────
      Colors i estats visuals
      ────────────────────────────── */
-  const baseColor = isDiscarded
-    ? 'bg-red-50 text-red-800 border border-red-200'
-    : `${colorByStage(stage)} text-gray-800 border border-black/5`
+  const baseColor = isCancelled
+    ? 'border border-red-500 bg-red-100 text-red-950 ring-1 ring-inset ring-red-500'
+    : isDiscarded
+      ? 'bg-red-50 text-red-800 border border-red-200'
+      : `${colorByStage(stage)} text-gray-800 border border-black/5`
 
   /* ──────────────────────────────
      Textos i tooltip
@@ -65,6 +69,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
     eventName,
     commercial,
     numPax ? `${numPax} pax` : '',
+    isCancelled ? 'CANCEL·LADA' : '',
     hasWarning && reason ? `⚠️ ${reason}` : '',
   ]
     .filter(Boolean)
@@ -88,21 +93,28 @@ export default function SpaceCell({ event }: SpaceCellProps) {
         transition
       `}
       title={tooltip || 'Esdeveniment'}
+      aria-label={isCancelled ? `${eventName || 'Esdeveniment'} · Cancel·lada` : undefined}
     >
+      {isCancelled ? (
+        <span className="mb-0.5 text-[9px] font-bold uppercase tracking-wide text-red-800 lg:text-[10px]">
+          Cancel·lada
+        </span>
+      ) : null}
+
       {/* Nom de l’esdeveniment */}
       {eventName && (
         <div className="flex items-center justify-center sm:justify-start gap-1 leading-tight">
           <span
             className={`font-semibold lg:hidden truncate ${
               isDiscarded ? 'text-red-800' : 'text-inherit'
-            }`}
+            } ${isCancelled ? 'line-through decoration-red-700' : ''}`}
           >
             {shortEventMobile}
           </span>
           <span
             className={`font-semibold hidden lg:block line-clamp-2 ${
               isDiscarded ? 'text-red-800' : 'text-inherit'
-            }`}
+            } ${isCancelled ? 'line-through decoration-red-700' : ''}`}
           >
             {shortEventDesktop}
           </span>

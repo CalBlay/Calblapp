@@ -2,7 +2,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { MotionDiv } from '@/lib/lazyMotion'
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
@@ -11,6 +11,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import FilterButton from '@/components/ui/filter-button'
 import {
   CorporateFilterField,
+  CorporateFilterSearch,
   CorporateFilterSelect,
   CorporateFiltersShell,
 } from '@/components/layout/corporate-filters'
@@ -31,10 +32,13 @@ import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
+import { countSpacesSearchEvents, filterSpacesRows } from '@/lib/spacesSearch'
 
 export default function SpacesPage() {
   const { ready: permsReady, canEditPath, uiActions } = useUiPermissions()
   const [refreshKey, setRefreshKey] = useState(0)
+  const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search)
   const canPremisses = !permsReady || canEditPath(SPACES_PREMISSES_PATH)
   const toISODate = (date: Date) => date.toISOString().split('T')[0]
   const [headerRule, setHeaderRule] = useState<SpacesHeaderRuleConfig>(
@@ -82,20 +86,35 @@ const {
       PERM.action(SPACES_RESERVES_PATH, SPACES_ACTION.RESERVES_MANUAL_CREATE)
     ] === true
 
-  const normalizedSpaces: Array<{
+  const normalizedSpaces = useMemo<Array<{
     fincaId?: string
+    isOwn?: boolean
     finca: string
     dies: Array<{ date: string; events: Array<Record<string, unknown>> }>
-  }> = spaces.map((row: SpaceApiRow) => ({
-    fincaId: row.fincaId,
-    finca: row.finca ?? '',
-    dies: Array.isArray(row.dies)
-      ? row.dies.map((day) => ({
-          date: day?.date ?? '',
-          events: Array.isArray(day?.events) ? day.events : [],
-        }))
-      : [],
-  }))
+  }>>(
+    () =>
+      spaces.map((row: SpaceApiRow) => ({
+        fincaId: row.fincaId,
+        isOwn: row.isOwn,
+        finca: row.finca ?? '',
+        dies: Array.isArray(row.dies)
+          ? row.dies.map((day) => ({
+              date: day?.date ?? '',
+              events: Array.isArray(day?.events) ? day.events : [],
+            }))
+          : [],
+      })),
+    [spaces]
+  )
+
+  const visibleSpaces = useMemo(
+    () => filterSpacesRows(normalizedSpaces, deferredSearch),
+    [deferredSearch, normalizedSpaces]
+  )
+  const visibleEventCount = useMemo(
+    () => countSpacesSearchEvents(visibleSpaces),
+    [visibleSpaces]
+  )
 
   const monthFormatter = new Intl.DateTimeFormat('ca-ES', { month: 'long' })
   const monthOptions = Array.from({ length: 12 }, (_, month) => ({
@@ -272,7 +291,24 @@ const {
             </CorporateFilterSelect>
           </CorporateFilterField>
 
-          <div className="flex justify-end lg:ml-auto">
+          <CorporateFilterField
+            label="Cerca intel·ligent"
+            className="min-w-0 flex-1 lg:min-w-[280px]"
+          >
+            <CorporateFilterSearch
+              id="spaces-reserves-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setSearch('')
+              }}
+              placeholder="Finca, event, client, comercial, codi..."
+              aria-label="Cerca intel·ligent de reserves d'espais"
+              autoComplete="off"
+            />
+          </CorporateFilterField>
+
+          <div className="flex justify-end">
             <FilterButton
               onClick={() => {
                 setFiltersContent(
@@ -295,6 +331,23 @@ const {
           </div>
         </CorporateFiltersShell>
 
+        {search.trim() && !loading ? (
+          <div className="mx-2 flex items-center justify-between gap-3 px-1 text-xs text-slate-500 sm:mx-4">
+            <span>
+              {visibleEventCount === 1
+                ? '1 coincidència visible'
+                : `${visibleEventCount} coincidències visibles`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="font-medium text-slate-700 underline-offset-2 hover:underline"
+            >
+              Neteja la cerca
+            </button>
+          </div>
+        ) : null}
+
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
              â³ Loading
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
@@ -315,10 +368,15 @@ const {
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {!loading && (
           <SpaceGrid
-            data={normalizedSpaces}
+            data={visibleSpaces}
             totals={totals}
             baseDate={filters.baseDate}
             headerRule={headerRule}
+            emptyMessage={
+              deferredSearch.trim()
+                ? 'Cap reserva coincideix amb la cerca en aquesta setmana.'
+                : undefined
+            }
             onEventMutated={() => setRefreshKey((value) => value + 1)}
           />
         )}
@@ -341,4 +399,3 @@ const {
     </SpacesSectionGate>
   )
 }
-

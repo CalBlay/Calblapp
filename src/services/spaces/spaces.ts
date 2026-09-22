@@ -4,6 +4,12 @@ import { SPACES_MANUAL_RESERVES_COLLECTION } from '@/lib/spacesPermissions'
 import { manualIdToCreatedAtIso } from '@/services/spaces/manualReserveZohoMatch'
 import type { Timestamp } from 'firebase-admin/firestore'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
+import {
+  indexSpaceOwnershipDocs,
+  resolveSpaceKind,
+} from '@/lib/costServeis/spaceOwnership'
+import { compareSpaceReservationRows } from '@/lib/spacesReservationSort'
+import { isActiveSpaceReservation } from '@/lib/spacesReservationStatus'
 
 type FirestoreDateLike = { toDate: () => Date }
 
@@ -125,6 +131,9 @@ interface RawEvent {
   dateEnd?: string
   ln?: string
   stage: 'verd' | 'taronja' | 'groc' | 'lila'
+  cancelled?: boolean
+  cancelledAt?: string
+  cancelledByName?: string
   isManual?: boolean
   eventName: string
   commercial: string
@@ -157,6 +166,7 @@ interface DayOut {
 
 interface SpaceRow {
   fincaId?: string
+  isOwn?: boolean
   finca: string
   dies: DayOut[]
 }
@@ -212,6 +222,12 @@ export async function getSpacesByWeek(
 
     const finquesSnap = await db.collection('finques').get()
     const fincaIdMap = new Map<string, string>()
+    const fincaOwnershipIndex = indexSpaceOwnershipDocs(
+      finquesSnap.docs.map((doc) => ({
+        id: doc.id,
+        data: doc.data() as Record<string, unknown>,
+      }))
+    )
 
     finquesSnap.forEach((doc) => {
       const data = doc.data() as { nom?: string }
@@ -264,6 +280,9 @@ export async function getSpacesByWeek(
           dateEnd: format(end, 'yyyy-MM-dd'),
           ln,
           stage: collection.replace('stage_', '') as RawEvent['stage'],
+          cancelled: data.cancelled === true,
+          cancelledAt: normalizeText(data.cancelledAt),
+          cancelledByName: normalizeText(data.cancelledByName),
           eventName: normalizeText(data.NomEvent),
           commercial,
           numPax: Number(data.NumPax) || 0,
@@ -393,19 +412,28 @@ export async function getSpacesByWeek(
           let reason = ''
 
           const weddingGreen = events.find(
-            (candidate) => candidate.stage === 'verd' && isWedding(candidate.ln)
+            (candidate) =>
+              isActiveSpaceReservation(candidate) &&
+              candidate.stage === 'verd' &&
+              isWedding(candidate.ln)
           )
 
-          if (weddingGreen && event.id !== weddingGreen.id) {
+          if (isActiveSpaceReservation(event) && weddingGreen && event.id !== weddingGreen.id) {
             warning = true
             reason = 'Casament verd en el mateix dia i finca'
           }
 
-          if (event.stage === 'verd' && isRestaurant(event.ln)) {
+          if (
+            isActiveSpaceReservation(event) &&
+            event.stage === 'verd' &&
+            isRestaurant(event.ln)
+          ) {
             const totalPax = events
               .filter(
                 (candidate) =>
-                  candidate.stage === 'verd' && isRestaurant(candidate.ln)
+                  isActiveSpaceReservation(candidate) &&
+                  candidate.stage === 'verd' &&
+                  isRestaurant(candidate.ln)
               )
               .reduce((sum, candidate) => sum + (candidate.numPax || 0), 0)
 
@@ -415,11 +443,16 @@ export async function getSpacesByWeek(
             }
           }
 
-          if (event.stage === 'verd' && isCorporateOrGroups(event.ln)) {
+          if (
+            isActiveSpaceReservation(event) &&
+            event.stage === 'verd' &&
+            isCorporateOrGroups(event.ln)
+          ) {
             const eventMinutes = parseHourToMinutes(event.startTime)
             if (eventMinutes != null) {
               const other = events.find((candidate) => {
                 if (candidate.id === event.id) return false
+                if (!isActiveSpaceReservation(candidate)) return false
                 const candidateMinutes = parseHourToMinutes(candidate.startTime)
                 return (
                   candidate.stage === 'verd' &&
@@ -441,7 +474,7 @@ export async function getSpacesByWeek(
             warning: event.stage === 'lila' ? false : warning,
             reason: event.stage === 'lila' ? '' : reason,
           })
-          if (event.stage !== 'lila') {
+          if (event.stage !== 'lila' && isActiveSpaceReservation(event)) {
             totalPaxPerDia[index] += event.numPax || 0
           }
         }
@@ -457,11 +490,13 @@ export async function getSpacesByWeek(
       result.push({
         finca,
         fincaId: fincaIdMap.get(finca.toLowerCase()),
+        isOwn:
+          resolveSpaceKind(fincaOwnershipIndex, { location: finca }) === 'Propi',
         dies,
       })
     }
 
-    result.sort((a, b) => a.finca.localeCompare(b.finca, 'ca', { sensitivity: 'base' }))
+    result.sort(compareSpaceReservationRows)
 
     return { data: result, totalPaxPerDia }
   } catch (error) {

@@ -19,6 +19,7 @@ import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyMod
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
+import { PERM } from '@/lib/permissionKeys'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -153,6 +154,8 @@ export default function EventsPage() {
   const scope: 'all' | 'mine' =
     role === 'treballador' && !productionWorker && !hasFullEventsAccess ? 'mine' : 'all'
   const includeQuadrants = role === 'treballador' && !productionWorker
+  const canViewDocuments =
+    !permsReady || hasAction(PERM.action('/menu/events', 'docs:view'))
 
   const initial: FiltersState = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -472,7 +475,7 @@ export default function EventsPage() {
     []
   )
 
-  const _openDocuments = (data: { eventId: string; eventCode?: string | null }) => {
+  const openDocuments = (data: { eventId: string; eventCode?: string | null }) => {
     if (suppressMenuInteraction) return
     const now = Date.now()
     if (
@@ -798,6 +801,13 @@ export default function EventsPage() {
                     onEventClick={comandaPreparerOnly ? undefined : handleEventClick}
                     onEventChat={handleEventChat}
                     onEventComanda={handleEventComanda}
+                    onEventDocuments={(event) =>
+                      openDocuments({
+                        eventId: String(event.id),
+                        eventCode: event.eventCode ?? null,
+                      })
+                    }
+                    showDocuments={!comandaPreparerOnly && canViewDocuments}
                     isAdmin={isAdmin}
                     comandaOnly={comandaPreparerOnly}
                   />

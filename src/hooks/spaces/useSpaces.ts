@@ -5,7 +5,12 @@ import { SpacesFilterState } from '@/components/spaces/SpacesFilters'
 
 type SpaceEventRow = Record<string, unknown>
 type SpaceDayRow = { date?: string; events?: SpaceEventRow[] }
-export type SpaceApiRow = { finca?: string; dies?: SpaceDayRow[]; fincaId?: string }
+export type SpaceApiRow = {
+  finca?: string
+  dies?: SpaceDayRow[]
+  fincaId?: string
+  isOwn?: boolean
+}
 
 function buildFacetValues(rows: SpaceApiRow[]) {
   const fincasSet = new Set<string>()

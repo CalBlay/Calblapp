@@ -12,6 +12,7 @@ import { SPACES_RESERVES_PATH } from '@/lib/spacesPermissions'
 import SpacesManualReserveModal, {
   type ManualReserveEditPayload,
 } from '@/components/spaces/SpacesManualReserveModal'
+import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
 
 type SpaceEvent = Record<string, unknown>
 
@@ -102,9 +103,13 @@ export default function SpaceEventModal({
   const comercial = readDisplay(event.Comercial, '') || readDisplay(event.commercial)
   const servei = readDisplay(event.Servei, '') || readDisplay(event.service)
   const dataInici = readDisplay(event.DataInici, '') || readDisplay(event.date)
+  const dataIniciLabel = formatDateOnly(dataInici, '-')
   const horaInici = readDisplay(event.HoraInici, '') || readDisplay(event.startTime)
   const pax = readNumber(event.NumPax, Number.NaN)
   const fallbackPax = Number.isFinite(pax) ? pax : readNumber(event.numPax)
+  const isCancelled = event.cancelled === true
+  const cancelledAt = readString(event.cancelledAt)
+  const cancelledByName = readString(event.cancelledByName)
 
   const createdBy = readString(event.createdBy)
   const isOwner = Boolean(sessionUserId && createdBy && sessionUserId === createdBy)
@@ -151,6 +156,19 @@ export default function SpaceEventModal({
           </DialogHeader>
 
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain text-[13px] sm:text-sm">
+            {isCancelled ? (
+              <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+                <p className="text-xs font-bold uppercase tracking-wide">Esdeveniment cancel·lat</p>
+                {cancelledAt || cancelledByName ? (
+                  <p className="mt-1 text-[11px] text-red-800">
+                    {cancelledAt ? formatDateTimeValue(cancelledAt, '') : ''}
+                    {cancelledAt && cancelledByName ? ' · ' : ''}
+                    {cancelledByName}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {isManual ? (
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Tipus:</span>
@@ -190,7 +208,7 @@ export default function SpaceEventModal({
 
             <div className="flex justify-between">
               <span className="text-gray-500">Data:</span>
-              <span>{dataInici || '-'}</span>
+              <span>{dataIniciLabel}</span>
             </div>
 
             {!isManual && (

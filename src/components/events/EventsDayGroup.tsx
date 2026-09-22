@@ -32,6 +32,7 @@ export interface EventData {
     createdAt: string
   } | null
   warehouseBatches?: WarehouseComandaEventBatchChip[]
+  hasDocuments?: boolean
 }
 
 interface Props {
@@ -40,8 +41,10 @@ interface Props {
   onEventClick?: (ev: EventData, mode?: 'menu' | 'avisos') => void
   onEventChat?: (ev: EventData) => void
   onEventComanda?: (ev: EventData) => void
+  onEventDocuments?: (ev: EventData) => void
   isAdmin?: boolean
   comandaOnly?: boolean
+  showDocuments?: boolean
 }
 
 export default function EventsDayGroup({
@@ -50,8 +53,10 @@ export default function EventsDayGroup({
   onEventClick,
   onEventChat,
   onEventComanda,
+  onEventDocuments,
   isAdmin,
   comandaOnly = false,
+  showDocuments = false,
 }: Props) {
   const totalPax = events.reduce((sum, e) => sum + (Number(e.pax) || 0), 0)
   const totalEvents = events.length
@@ -92,6 +97,8 @@ export default function EventsDayGroup({
             onOpenAvisos={comandaOnly ? undefined : () => onEventClick?.(event, 'avisos')}
             onOpenChat={() => onEventChat?.(event)}
             onOpenComanda={() => onEventComanda?.(event)}
+            onOpenDocuments={() => onEventDocuments?.(event)}
+            showDocuments={showDocuments}
             showChat={
               comandaOnly
                 ? true

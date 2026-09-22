@@ -34,6 +34,7 @@ export interface EventData {
   conductors?: string[]
   treballadors?: string[]
   horaInici?: string
+  hasDocuments?: boolean
   lastAviso?: {
     content: string
     department: string
@@ -68,6 +69,7 @@ interface EventPayload {
   horaInici?: string
   Hora?: string
   hora?: string
+  hasDocuments?: boolean
   lastAviso?: {
     content: string
     department: string
@@ -171,6 +173,7 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
       horaInici:
         String(ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || '').slice(0, 5) ||
         undefined,
+      hasDocuments: ev.hasDocuments === true,
     } as EventData
   })
 

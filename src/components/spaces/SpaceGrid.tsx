@@ -12,9 +12,11 @@ import {
   evaluateSpacesHeaderRule,
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
+import { isActiveSpaceReservation } from '@/lib/spacesReservationStatus'
 
 type SpaceRow = {
   fincaId?: string
+  isOwn?: boolean
   finca: string
   dies: Array<{
     date: string
@@ -48,6 +50,7 @@ function adaptEventForCell(ev: RawSpaceEvent) {
     Comercial: readString(ev.Comercial) || readString(ev.commercial),
     NumPax: readNumber(ev.NumPax, Number.NaN),
     StageGroup: readStage(ev.StageGroup, readStage(ev.stage)),
+    cancelled: ev.cancelled === true,
   }
 }
 
@@ -56,6 +59,7 @@ interface SpaceGridProps {
   totals?: number[]
   baseDate?: string
   headerRule?: SpacesHeaderRuleConfig
+  emptyMessage?: string
   onEventMutated?: () => void
 }
 
@@ -69,6 +73,7 @@ export default function SpaceGrid({
   totals = [],
   baseDate,
   headerRule = DEFAULT_SPACES_HEADER_RULE,
+  emptyMessage = 'No hi ha dades disponibles per aquesta setmana.',
   onEventMutated,
 }: SpaceGridProps) {
   void totals
@@ -157,6 +162,7 @@ export default function SpaceGrid({
                 if (!cell?.events) continue
 
                 const scopedEvents = cell.events.filter((e: RawSpaceEvent) => {
+                  if (!isActiveSpaceReservation(e)) return false
                   const s = String(e.stage ?? e.StageGroup ?? '').toLowerCase()
                   return (
                     (s === 'verd' && headerRule.stages.includes('verd')) ||
@@ -267,6 +273,7 @@ export default function SpaceGrid({
                               commercial: cellEvent.Comercial,
                               numPax: Number.isFinite(cellEvent.NumPax) ? cellEvent.NumPax : 0,
                               stage: cellEvent.StageGroup,
+                              cancelled: cellEvent.cancelled,
                             }}
                           />
                         </div>
@@ -279,7 +286,7 @@ export default function SpaceGrid({
           ) : (
             <tr>
               <td colSpan={8} className="text-center text-gray-400 py-6">
-                No hi ha dades disponibles per aquesta setmana.
+                {emptyMessage}
               </td>
             </tr>
           )}

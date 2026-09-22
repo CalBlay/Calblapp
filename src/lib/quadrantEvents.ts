@@ -1,22 +1,11 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
 
 const normHhMm = (raw: unknown): string => {
   if (raw == null || typeof raw !== 'string') return ''
   const s = raw.trim().slice(0, 5)
   return /^\d{2}:\d{2}$/.test(s) ? s : ''
-}
-
-/** Mateixos prefixes que `/api/events/[id]/documents?prefix=all`. */
-const ATTACHMENT_FIELD_RE = /^(?:file|zohoFile|cuinaFile|visitVideo)\d+$/i
-
-export function eventRecordHasAttachedDocuments(
-  data: Record<string, unknown>
-): boolean {
-  return Object.entries(data).some(
-    ([key, value]) =>
-      ATTACHMENT_FIELD_RE.test(key) && typeof value === 'string' && value.length > 0
-  )
 }
 
 export type QuadrantCalendarEvent = {
