@@ -22,6 +22,8 @@ after(() => {
 
 test('classifyStage routes calentet to taronja and payment/RQ to verd', () => {
   assert.equal(classifyStage('Calentet'), 'taronja')
+  assert.equal(classifyStage('Prereserva'), 'taronja')
+  assert.equal(classifyStage('Pre-reserva'), 'taronja')
   assert.equal(classifyStage('Prereserva calentet'), 'taronja')
   assert.equal(classifyStage('Pagament confirmat'), 'verd')
   assert.equal(classifyStage('Cerrada ganada'), 'verd')
@@ -30,9 +32,9 @@ test('classifyStage routes calentet to taronja and payment/RQ to verd', () => {
 
 test('classifyStage maps proposal/pending stages to groc and drops unknown', () => {
   assert.equal(classifyStage('Pendent client'), 'groc')
-  assert.equal(classifyStage('Prereserva'), 'groc')
   assert.equal(classifyStage('Proposta enviada'), 'groc')
   assert.equal(classifyStage('Propuesta'), 'groc')
+  assert.equal(classifyStage('Pressupost'), 'groc')
   assert.equal(classifyStage('Pressupost enviat'), 'groc')
   assert.equal(classifyStage('Qualificació'), null)
   assert.equal(classifyStage(''), null)

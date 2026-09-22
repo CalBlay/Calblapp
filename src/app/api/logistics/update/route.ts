@@ -17,6 +17,7 @@ type UpdateItem = {
   PreparacioHora?: string
   EventCode?: string
   NomEvent?: string
+  PreparacioNomEvent?: string
   NumPax?: string | number | null
   Ubicacio?: string
   DataInici?: string
@@ -113,14 +114,18 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      if (item.PreparacioNomEvent !== undefined) {
+        updateFields.PreparacioNomEvent = trimOrEmpty(item.PreparacioNomEvent)
+      }
+
       if (item.NomEvent !== undefined) {
         const value = trimOrEmpty(item.NomEvent)
-        updateFields.NomEvent = value
-        if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
-          updateFields.ParentEventName = value
-        }
-        if (targetCollection(item) === 'stage_verd') {
-          protectManualField(updateFields, 'NomEvent', value)
+        if (item.isNew) {
+          updateFields.NomEvent = value
+        } else {
+          // Compatibilitat amb clients antics: editar el nom des de Preparació mai
+          // no ha de modificar el nom global compartit amb la resta de mòduls.
+          updateFields.PreparacioNomEvent = value
         }
       }
 

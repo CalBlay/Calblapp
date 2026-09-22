@@ -156,13 +156,13 @@ export const COLORS_STAGE: Record<string, string> = {
   guanyat: 'bg-emerald-200',
 
   // Calentet / prereserva
-  calentet: 'bg-orange-200',
-  prereserva: 'bg-orange-200',
+  calentet: 'bg-orange-500',
+  prereserva: 'bg-orange-500',
 
   // Pressupost
-  pressupost: 'bg-yellow-200',
-  proposta: 'bg-yellow-200',
-  pendent: 'bg-yellow-200',
+  pressupost: 'bg-yellow-300',
+  proposta: 'bg-yellow-300',
+  pendent: 'bg-yellow-300',
 }
 
 export const MAINTENANCE_STATUS_BADGES: Record<string, string> = {

@@ -17,6 +17,7 @@ type RawEvent = {
   codi?: string
   Codi?: string
   NomEvent?: string
+  PreparacioNomEvent?: string
   eventName?: string
   Ubicacio?: string
   finca?: string
@@ -51,6 +52,7 @@ type LogisticsEvent = {
   planningMode: 'event' | 'service'
   EventCode: string
   NomEvent: string
+  PreparacioNomEvent: string
   Ubicacio: string
   NumPax: number
   DataInici: string
@@ -314,6 +316,7 @@ export async function GET(req: NextRequest) {
         planningMode: 'service',
         EventCode: eventCode,
         NomEvent: formatEventName(row.ParentEventName ?? row.NomEvent ?? row.eventName ?? ''),
+        PreparacioNomEvent: String(row.PreparacioNomEvent ?? '').trim(),
         Ubicacio: String(row.Ubicacio ?? row.finca ?? '').trim(),
         NumPax: Number(row.NumPax ?? row.numPax ?? row.Pax ?? 0) || 0,
         DataInici: dataIniciIso,
@@ -367,6 +370,7 @@ export async function GET(req: NextRequest) {
         planningMode: 'event',
         EventCode: eventCode,
         NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
+        PreparacioNomEvent: String(ev.PreparacioNomEvent ?? '').trim(),
         Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
         NumPax: Number(ev.NumPax ?? ev.numPax ?? ev.Pax ?? 0) || 0,
         DataInici: dataIniciIso,

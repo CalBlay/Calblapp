@@ -15,7 +15,7 @@ const LN_LABELS: Record<string, string> = {
 const STAGE_LABELS: Record<CalendarStage, string> = {
   all: 'Tots',
   confirmat: 'Confirmats',
-  pressupost: 'Pressupost enviat',
+  pressupost: 'Pressupost / Pendent',
   calentet: 'Prereserva / Calentet',
 }
 

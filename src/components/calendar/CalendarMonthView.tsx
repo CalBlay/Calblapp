@@ -16,14 +16,7 @@ import {
   CALENDAR_EVENT_TEXT,
 } from '@/lib/calendarTypography'
 import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
-
-function dotColorByCollection(collection?: string) {
-  const c = (collection || '').toLowerCase()
-  if (c.includes('verd')) return 'bg-green-500'
-  if (c.includes('taronja')) return 'bg-amber-500'
-  if (c.includes('groc')) return 'bg-yellow-500'
-  return 'bg-gray-300'
-}
+import { calendarStageDotClass } from '@/lib/calendar/calendarStage'
 
 const codeBadgeFor = (ev: Deal) => {
   const status = ev.codeStatus
@@ -340,7 +333,7 @@ export default function CalendarMonthView({
                           }}
                         >
                           <span
-                            className={`h-2 w-2 rounded-full ${span.ev.cancelled ? 'bg-red-700' : dotColorByCollection(span.ev.collection)}`}
+                            className={`h-2 w-2 rounded-full ${span.ev.cancelled ? 'bg-red-700' : calendarStageDotClass(span.ev.collection)}`}
                           />
                           <span
                             className={`truncate ${isSingleDay ? 'text-left' : 'text-center'} flex-1`}
@@ -467,7 +460,7 @@ function MoreEventsPopup({
                     `}
                   >
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : dotColorByCollection(ev.collection)}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : calendarStageDotClass(ev.collection)}`}
                     />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {ev.cancelled && (

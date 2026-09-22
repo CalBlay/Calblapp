@@ -57,7 +57,7 @@ const LN_OPTIONS: { label: string; value: CalendarLN }[] = [
 const STAGE_OPTIONS: { label: string; value: CalendarStage }[] = [
   { label: 'Tots', value: 'all' },
   { label: 'Confirmats', value: 'confirmat' },
-  { label: 'Pressupost enviat', value: 'pressupost' },
+  { label: 'Pressupost / Pendent', value: 'pressupost' },
   { label: 'Prereserva / Calentet', value: 'calentet' },
 ]
 

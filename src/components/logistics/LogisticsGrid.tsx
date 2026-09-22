@@ -26,6 +26,7 @@ import {
   type LogisticsEventPrepRow,
   type LogisticsPrepRow,
   type LogisticsWarehousePrepRow,
+  getPreparationEventName,
 } from '@/lib/logistics/prepTypes'
 import {
   WAREHOUSE_PREP_VIEW_ROLE_LABELS,
@@ -49,7 +50,7 @@ export type EditedFields = {
   PreparacioData?: string
   PreparacioHora?: string
   EventCode?: string
-  NomEvent?: string
+  PreparacioNomEvent?: string
   NumPax?: string
   Ubicacio?: string
   DataInici?: string
@@ -483,7 +484,7 @@ function WorkerGroupedView({
                             : 'text-slate-900'
                         )}
                       >
-                        {ev.NomEvent || 'Sense nom'}
+                        {getPreparationEventName(ev) || 'Sense nom'}
                       </div>
                       {displayServiceName(ev) ? (
                         <div className="mt-1 text-xs font-semibold text-emerald-700">
@@ -557,7 +558,7 @@ function WorkerGroupedView({
                                 : 'text-slate-800'
                             )}
                           >
-                            {ev.NomEvent || 'Sense nom'}
+                            {getPreparationEventName(ev) || 'Sense nom'}
                           </td>
                           <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
@@ -648,7 +649,7 @@ function EditableTable({
             <th className="px-3 py-3 xl:px-4">Hora preparació</th>
             <th className="px-3 py-3 xl:px-4">Servei</th>
             <th className="px-3 py-3 xl:px-4">Codi event</th>
-            <th className="px-3 py-3 xl:px-4">Esdeveniment</th>
+            <th className="px-3 py-3 xl:px-4">Nom per a preparació</th>
             <th className="px-3 py-3 xl:px-4">Ubicació</th>
             <th className="px-3 py-3 xl:px-4">Pax</th>
             <th className="px-3 py-3 xl:px-4">Data servei</th>
@@ -669,7 +670,7 @@ function EditableTable({
               const prepDate = edited[ev.id]?.PreparacioData ?? (ev.PreparacioData || '')
               const prepH = edited[ev.id]?.PreparacioHora ?? (ev.PreparacioHora || '')
               const eventCode = edited[ev.id]?.EventCode ?? (ev.EventCode || '')
-              const eventName = edited[ev.id]?.NomEvent ?? (ev.NomEvent || '')
+              const eventName = edited[ev.id]?.PreparacioNomEvent ?? getPreparationEventName(ev)
               const pax = edited[ev.id]?.NumPax ?? (ev.NumPax != null ? String(ev.NumPax) : '')
               const ubicacio = edited[ev.id]?.Ubicacio ?? (ev.Ubicacio || '')
               const dataInici = edited[ev.id]?.DataInici ?? (ev.DataInici || '')
@@ -734,7 +735,7 @@ function EditableTable({
                       <input
                         type="text"
                         value={eventName}
-                        onChange={(e) => setField(ev.id, 'NomEvent', e.target.value)}
+                        onChange={(e) => setField(ev.id, 'PreparacioNomEvent', e.target.value)}
                         className="w-full min-w-[260px] rounded border p-1 text-xs xl:min-w-[320px]"
                       />
                     ) : (

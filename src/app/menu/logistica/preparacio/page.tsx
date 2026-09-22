@@ -14,7 +14,11 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { LogisticsGrid } from '@/components/logistics'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
-import type { LogisticsEventPrepRow, LogisticsWarehousePrepRow } from '@/lib/logistics/prepTypes'
+import {
+  getPreparationEventName,
+  type LogisticsEventPrepRow,
+  type LogisticsWarehousePrepRow,
+} from '@/lib/logistics/prepTypes'
 import {
   EVENT_COMANDA_BATCH_STATUS_LABELS,
   normalizeEventComandaBatchStatus,
@@ -441,6 +445,7 @@ export default function LogisticsPage() {
         planningMode: 'event',
         EventCode: '',
         NomEvent: '',
+        PreparacioNomEvent: '',
         Ubicacio: '',
         NumPax: undefined,
         DataInici: baseDate,
@@ -548,6 +553,7 @@ export default function LogisticsPage() {
         PreparacioHora?: string
         EventCode?: string
         NomEvent?: string
+        PreparacioNomEvent?: string
         NumPax?: string
         Ubicacio?: string
         DataInici?: string
@@ -570,6 +576,7 @@ export default function LogisticsPage() {
           PreparacioHora?: string
           EventCode?: string
           NomEvent?: string
+          PreparacioNomEvent?: string
           NumPax?: string
           Ubicacio?: string
           DataInici?: string
@@ -583,7 +590,8 @@ export default function LogisticsPage() {
         const nextPreparacioData = rowEdit.PreparacioData ?? original.PreparacioData ?? ''
         const nextPreparacioHora = rowEdit.PreparacioHora ?? original.PreparacioHora ?? ''
         const nextEventCode = rowEdit.EventCode ?? original.EventCode ?? ''
-        const nextNomEvent = rowEdit.NomEvent ?? original.NomEvent ?? ''
+        const nextPreparacioNomEvent =
+          rowEdit.PreparacioNomEvent ?? getPreparationEventName(original)
         const nextNumPax = rowEdit.NumPax ?? (original.NumPax != null ? String(original.NumPax) : '')
         const nextUbicacio = rowEdit.Ubicacio ?? original.Ubicacio ?? ''
         const nextDataInici = rowEdit.DataInici ?? original.DataInici ?? ''
@@ -603,7 +611,10 @@ export default function LogisticsPage() {
         if (isNew || rowEdit.PreparacioData !== undefined) payload.PreparacioData = nextPreparacioData
         if (isNew || rowEdit.PreparacioHora !== undefined) payload.PreparacioHora = nextPreparacioHora
         if (isNew || rowEdit.EventCode !== undefined) payload.EventCode = nextEventCode
-        if (isNew || rowEdit.NomEvent !== undefined) payload.NomEvent = nextNomEvent
+        if (isNew) payload.NomEvent = nextPreparacioNomEvent
+        else if (rowEdit.PreparacioNomEvent !== undefined) {
+          payload.PreparacioNomEvent = nextPreparacioNomEvent
+        }
         if (isNew || rowEdit.NumPax !== undefined) payload.NumPax = nextNumPax
         if (isNew || rowEdit.Ubicacio !== undefined) payload.Ubicacio = nextUbicacio
         if (isNew || rowEdit.DataInici !== undefined) payload.DataInici = nextDataInici
@@ -654,7 +665,7 @@ export default function LogisticsPage() {
       PreparacioData: formatDayMonthValue(ev.PreparacioData, ''),
       PreparacioHora: ev.PreparacioHora || '',
       CodiEvent: ev.EventCode || '',
-      Event: ev.NomEvent || '',
+      Event: getPreparationEventName(ev),
       Servei: ev.ServiceName || '',
       Ubicacio: ev.Ubicacio || '',
       Pax: ev.NumPax ?? '',

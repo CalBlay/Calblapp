@@ -15,6 +15,7 @@ import {
   CALENDAR_WEEK_HEADER,
 } from '@/lib/calendarTypography'
 import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
+import { calendarStageDotClass } from '@/lib/calendar/calendarStage'
 
 const VISIBLE_LANES_MOBILE = 4
 const BREAKPOINT_TABLET = 1024
@@ -30,15 +31,6 @@ const pickDateIso = (ev: Deal, keys: string[]) => {
     if (typeof v === 'string' && v.length >= 10) return v.slice(0, 10)
   }
   return ''
-}
-
-function dotColorByCollection(collection?: string) {
-  const c = (collection || '').toLowerCase()
-  if (c.includes('verd')) return 'bg-green-500'
-  if (c.includes('taronja')) return 'bg-amber-500'
-  if (c.includes('groc')) return 'bg-yellow-500'
-  if (c.includes('blau')) return 'bg-blue-500'
-  return 'bg-gray-300'
 }
 
 const codeBadgeFor = (ev: Deal) => {
@@ -228,7 +220,7 @@ export default function CalendarWeekView({
                         transform: 'translateZ(0)',
                       }}
                     >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : dotColorByCollection(span.ev.collection)}`} />
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : calendarStageDotClass(span.ev.collection)}`} />
                       <span className="min-w-0 flex-1 text-left leading-tight line-clamp-2">
                         {span.ev.NomEvent}
                       </span>
@@ -331,7 +323,7 @@ function MoreEventsPopup({
                     className={`flex items-center gap-2 truncate rounded-md px-2 py-1 ${CALENDAR_EVENT_TEXT} ${ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : 'bg-white ring-1 ring-inset ring-slate-200'}`}
                     style={{ transform: 'translateZ(0)' }}
                   >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : dotColorByCollection(ev.collection)}`} />
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : calendarStageDotClass(ev.collection)}`} />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {ev.cancelled && (
                       <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">

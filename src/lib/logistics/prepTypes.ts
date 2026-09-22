@@ -18,6 +18,8 @@ export type LogisticsEventPrepRow = {
   planningMode?: 'event' | 'service'
   EventCode: string
   NomEvent: string
+  /** Nom personalitzat visible només dins del flux de preparació logística. */
+  PreparacioNomEvent?: string
   Ubicacio: string
   NumPax?: number
   DataInici: string
@@ -70,4 +72,8 @@ export function isWarehousePrepRow(row: LogisticsPrepRow): row is LogisticsWareh
 
 export function isEventPrepRow(row: LogisticsPrepRow): row is LogisticsEventPrepRow {
   return row.rowType === 'event'
+}
+
+export function getPreparationEventName(row: Pick<LogisticsEventPrepRow, 'NomEvent' | 'PreparacioNomEvent'>) {
+  return String(row.PreparacioNomEvent || row.NomEvent || '').trim()
 }

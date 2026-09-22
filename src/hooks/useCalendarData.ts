@@ -1,6 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import {
+  calendarStageFilterForCollection,
+  calendarStagePresentation,
+  normalizeCalendarStageCollection,
+} from '@/lib/calendar/calendarStage'
 
 export interface Deal {
   id: string
@@ -66,21 +71,6 @@ export function useCalendarData(filters?: {
     if (!single) return []
     if (isAll(single)) return []
     return [single]
-  }
-
-  const normalizeCollection = (
-    c?: string
-  ): 'stage_verd' | 'stage_taronja' | 'stage_groc' | '' => {
-    const n = normalize(c || '')
-    if (!n) return ''
-    if (n.startsWith('stage_')) {
-      if (n === 'stage_verd' || n === 'stage_taronja' || n === 'stage_groc') return n
-      return ''
-    }
-    if (n === 'verd') return 'stage_verd'
-    if (n === 'taronja') return 'stage_taronja'
-    if (n === 'groc') return 'stage_groc'
-    return ''
   }
 
   const load = async () => {
@@ -156,6 +146,9 @@ export function useCalendarData(filters?: {
 
         const startStr = typeof ev.start === 'string' ? ev.start : ''
         const endStr = typeof ev.end === 'string' ? ev.end : ''
+        const collection = normalizeCalendarStageCollection(String(ev.collection ?? ''))
+        const stagePresentation = calendarStagePresentation(collection || undefined)
+
         return {
           id: String(ev.id ?? ''),
           NomEvent: String(ev.summary ?? '(Sense titol)'),
@@ -166,16 +159,16 @@ export function useCalendarData(filters?: {
           Responsable: String(ev.Responsable ?? ev.responsable ?? ''),
           LN: String(ev.LN ?? ev.lnLabel ?? 'Altres'),
           Servei: String(ev.Servei ?? ev.servei ?? ''),
-          StageGroup: String(ev.StageGroup ?? ''),
-          collection: normalizeCollection(String(ev.collection ?? '')) || undefined,
+          StageGroup: String(ev.StageGroup ?? ev.stageGroup ?? stagePresentation?.label ?? ''),
+          collection: collection || undefined,
 
           DataInici: startStr.slice(0, 10),
           DataFi: endStr.slice(0, 10),
           Ubicacio: String(
             ev.Ubicacio ?? ev.ubicacio ?? ev.location ?? ev.Location ?? ''
           ),
-          Color: String(ev.Color ?? ''),
-          StageDot: String(ev.StageDot ?? ''),
+          Color: String(ev.Color ?? stagePresentation?.colorClass ?? ''),
+          StageDot: String(ev.StageDot ?? stagePresentation?.dotClass ?? ''),
           HoraInici: horaInici,
           HoraFi: horaFi || undefined,
 
@@ -224,13 +217,7 @@ export function useCalendarData(filters?: {
       /* ---------- STAGE ---------- */
       if (!isAll(filters?.stage)) {
         const st = normalize(filters!.stage!)
-        data = data.filter((d) => {
-          const col = d.collection || ''
-          if (st === 'confirmat') return col === 'stage_verd'
-          if (st === 'calentet') return col === 'stage_taronja'
-          if (st === 'pressupost') return col === 'stage_groc'
-          return true
-        })
+        data = data.filter((d) => calendarStageFilterForCollection(d.collection) === st)
       }
 
       /* ---------- COMERCIAL ---------- */

@@ -1,7 +1,10 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { LogisticsEventPrepRow } from '@/lib/logistics/prepTypes'
+import {
+  getPreparationEventName,
+  type LogisticsEventPrepRow,
+} from '@/lib/logistics/prepTypes'
 import {
   computePreparationProgressSummary,
   statusLabel,
@@ -67,7 +70,9 @@ function PrepLineCard({ line }: { line: PrepLineProgress }) {
           <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
             {statusLabel(status, pct)}
           </div>
-          <h3 className="mt-1 text-base font-bold text-slate-900">{row.NomEvent || 'Sense nom'}</h3>
+          <h3 className="mt-1 text-base font-bold text-slate-900">
+            {getPreparationEventName(row) || 'Sense nom'}
+          </h3>
         </div>
         <div className="text-right">
           <div className="text-lg font-bold tabular-nums text-slate-900">{row.PreparacioHora || '--:--'}</div>

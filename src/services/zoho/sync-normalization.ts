@@ -37,16 +37,16 @@ type NormalizeZohoDealsDeps = {
 
 export function classifyStage(stage: string): StageCollection | null {
   const s = stage.toLowerCase()
-  if (s.includes('calentet')) return 'taronja'
+  const compact = s.replace(/[\s_-]+/g, '')
+  if (s.includes('calentet') || compact.includes('prereserva')) return 'taronja'
   if (s.includes('pagament') || s.includes('cerrada ganada') || s.includes('rq')) {
     return 'verd'
   }
   if (
     s.includes('pendent') ||
-    s.includes('prereserva') ||
     s.includes('proposta') ||
     s.includes('propuesta') ||
-    s.includes('pressupost enviat')
+    s.includes('pressupost')
   ) {
     return 'groc'
   }
