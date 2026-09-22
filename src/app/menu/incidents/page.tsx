@@ -6,7 +6,14 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { AlertTriangle, Clock3, FileText } from 'lucide-react'
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  Clock3,
+  FileText,
+  LayoutDashboard,
+  Tags,
+} from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import {
@@ -627,58 +634,89 @@ export default function IncidentsPage() {
         title="Incidències"
         subtitle="Tauler de treball setmanal"
         actions={
-          <div className="flex flex-wrap items-center gap-2 justify-end">
+          <div className="flex w-40 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
             <IncidentNotificationsBell />
-            <Link
-              href={INCIDENTS_ACCIONS_PATH}
-              className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+            <nav
+              aria-label="Seccions d'incidències"
+              className="flex items-center gap-0.5 rounded-xl border border-white/80 bg-white/55 p-1 shadow-sm"
             >
-              Les meves accions
-            </Link>
-            {canSeeQuadre ? (
               <Link
-                href={INCIDENTS_QUADRE_PATH}
-                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+                href={INCIDENTS_ACCIONS_PATH}
+                title="Les meves accions"
+                className={cn(
+                  typography('bodySm'),
+                  'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400'
+                )}
               >
-                Quadre de comandament
+                <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="hidden lg:inline">Meves accions</span>
               </Link>
-            ) : null}
-            {canEditTipologies ? (
-              <Link
-                href="/menu/incidents/tipologies"
-                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
-              >
-                Tipologies
-              </Link>
-            ) : null}
+              {canSeeQuadre ? (
+                <Link
+                  href={INCIDENTS_QUADRE_PATH}
+                  title="Quadre de comandament"
+                  className={cn(
+                    typography('bodySm'),
+                    'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400'
+                  )}
+                >
+                  <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden lg:inline">Quadre</span>
+                </Link>
+              ) : null}
+              {canEditTipologies ? (
+                <Link
+                  href="/menu/incidents/tipologies"
+                  title="Tipologies"
+                  className={cn(
+                    typography('bodySm'),
+                    'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400'
+                  )}
+                >
+                  <Tags className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden lg:inline">Tipologies</span>
+                </Link>
+              ) : null}
+            </nav>
             {canMeetingMinutes ? (
-              <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="whitespace-nowrap gap-1.5"
-                disabled={loading}
-                onClick={openActiveMeetingMinutes}
-              >
-                <FileText className="h-4 w-4 shrink-0" aria-hidden />
-                {meetingActaStatus === 'draft'
-                  ? 'Apunts reunió'
-                  : meetingActaStatus === 'finalized'
-                  ? 'Tancar acta'
-                  : 'Acta reunió'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="whitespace-nowrap gap-1.5"
-                onClick={() => setMeetingMinutesHistoryOpen(true)}
-              >
-                <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
-                Historial actes
-              </Button>
-              </>
+              <div className="flex items-center gap-0.5 rounded-xl border border-rose-200/70 bg-rose-50/70 p-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  title={
+                    meetingActaStatus === 'draft'
+                      ? 'Apunts de la reunió'
+                      : meetingActaStatus === 'finalized'
+                        ? 'Tancar acta'
+                        : 'Acta de la reunió'
+                  }
+                  className="h-8 gap-1.5 whitespace-nowrap px-2 text-slate-700 hover:bg-white hover:text-slate-950"
+                  disabled={loading}
+                  onClick={openActiveMeetingMinutes}
+                >
+                  <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden lg:inline">
+                    {meetingActaStatus === 'draft'
+                      ? 'Apunts'
+                      : meetingActaStatus === 'finalized'
+                        ? 'Tancar acta'
+                        : 'Acta'}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  title="Historial d'actes"
+                  aria-label="Historial d'actes"
+                  className="h-8 gap-1.5 whitespace-nowrap px-2 text-slate-700 hover:bg-white hover:text-slate-950"
+                  onClick={() => setMeetingMinutesHistoryOpen(true)}
+                >
+                  <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden lg:inline">Historial</span>
+                </Button>
+              </div>
             ) : null}
             <ExportMenu items={exportItems} />
           </div>
