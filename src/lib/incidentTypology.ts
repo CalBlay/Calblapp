@@ -50,6 +50,13 @@ export function familyLabelForCategoryId(
   return families[prefix] ?? `Grup ${prefix}XX`
 }
 
+export function replaceCategoryFamilyPrefix(categoryId: string, rawPrefix: string): string {
+  const prefix = normalizeFamilyPrefix(rawPrefix)
+  if (!prefix) return categoryId
+  const id = categoryId.trim()
+  return id ? `${prefix}${id.slice(1)}` : prefix
+}
+
 /** Grup 2XX (Maquinària): cal adjuntar com a mínim una foto o fitxer. */
 export function isIncidentCategoryGroup2xx(categoryId: string): boolean {
   return normalizeFamilyPrefix(categoryId || '') === '2'

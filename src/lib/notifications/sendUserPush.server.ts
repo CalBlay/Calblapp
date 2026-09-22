@@ -3,6 +3,10 @@ import 'server-only'
 import type { DocumentReference, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db, messagingAdmin } from '@/lib/firebaseAdmin'
 import webpush from 'web-push'
+import {
+  incidentActionNotificationHref,
+  incidentNotificationHref,
+} from '@/lib/incidentNotificationLinks'
 
 export type SendUserPushParams = {
   userId: string
@@ -31,6 +35,7 @@ export function defaultPushUrlForNotificationType(
     projectId?: string | null
     reservationId?: string | null
     incidentId?: string | null
+    actionId?: string | null
   }
 ): string {
   switch (String(type || '').trim()) {
@@ -67,10 +72,9 @@ export function defaultPushUrlForNotificationType(
         ? `/menu/deco/tickets?ticketId=${encodeURIComponent(String(extras.ticketId))}`
         : '/menu/deco/tickets'
     case 'incident_marketing_9xx_new':
+      return incidentNotificationHref(extras?.incidentId)
     case 'incident_action_assigned':
-      return extras?.incidentId
-        ? `/menu/incidents?incidentId=${encodeURIComponent(String(extras.incidentId))}`
-        : '/menu/incidents'
+      return incidentActionNotificationHref(extras?.actionId)
     case 'event_extras_registered':
       return '/menu/events'
     case 'event_comanda_warehouse':

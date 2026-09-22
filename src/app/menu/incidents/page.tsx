@@ -247,8 +247,13 @@ export default function IncidentsPage() {
     patchIncidentActionsLocal,
   } = useIncidents({
     ...filters,
-    categoryLabel: effectiveCategoryLabel,
-    limit: 800,
+    incidentId: deepLinkIncidentId || undefined,
+    dateMode: deepLinkIncidentId ? 'all' : filters.dateMode,
+    department: deepLinkIncidentId ? undefined : filters.department,
+    importance: deepLinkIncidentId ? 'all' : filters.importance,
+    categoryLabel: deepLinkIncidentId ? 'all' : effectiveCategoryLabel,
+    status: deepLinkIncidentId ? 'all' : filters.status,
+    limit: deepLinkIncidentId ? 1 : 800,
     light: true,
     enabled: defaultFiltersReady,
   })
@@ -287,8 +292,11 @@ export default function IncidentsPage() {
   }, [sessionStatus])
 
   const visibleIncidents = useMemo(
-    () => incidents.filter((inc) => incidentMatchesLnFilter(inc.ln, filters.ln)),
-    [incidents, filters.ln]
+    () =>
+      deepLinkIncidentId
+        ? incidents
+        : incidents.filter((inc) => incidentMatchesLnFilter(inc.ln, filters.ln)),
+    [deepLinkIncidentId, incidents, filters.ln]
   )
 
   const totalIncidencies = visibleIncidents.length
@@ -710,35 +718,43 @@ export default function IncidentsPage() {
         bodyClassName="overflow-x-auto"
       >
         <div className="flex w-max min-w-full items-center gap-3">
-          <span className={corporateFilterBadgeClass(true)}>
-            {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
-          </span>
+          {deepLinkIncidentId ? (
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800">
+              Sense filtre de data · incidència seleccionada
+            </span>
+          ) : (
+            <>
+              <span className={corporateFilterBadgeClass(true)}>
+                {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
+              </span>
 
-          <div className="shrink-0">
-            <SmartFilters
-              modeDefault="week"
-              modeOptions={['week', 'month', 'year', 'range']}
-              role="Direcció"
-              onChange={handleFilterChange}
-              showDepartment={false}
-              showWorker={false}
-              showLocation={false}
-              showStatus={false}
-              showImportance={false}
-              categoryOptions={categoryOptions}
-              showAdvanced={false}
-              compact
-              resetSignal={dateResetSignal}
-            />
-          </div>
+              <div className="shrink-0">
+                <SmartFilters
+                  modeDefault="week"
+                  modeOptions={['week', 'month', 'year', 'range']}
+                  role="Direcció"
+                  onChange={handleFilterChange}
+                  showDepartment={false}
+                  showWorker={false}
+                  showLocation={false}
+                  showStatus={false}
+                  showImportance={false}
+                  categoryOptions={categoryOptions}
+                  showAdvanced={false}
+                  compact
+                  resetSignal={dateResetSignal}
+                />
+              </div>
 
-          <div className="min-w-2 flex-1" />
+              <div className="min-w-2 flex-1" />
 
-          <IncidentsLnFilterBadges
-            value={filters.ln}
-            onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
-          />
-          <FilterButton onClick={openFiltersPanel} />
+              <IncidentsLnFilterBadges
+                value={filters.ln}
+                onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
+              />
+              <FilterButton onClick={openFiltersPanel} />
+            </>
+          )}
         </div>
       </CorporateFiltersShell>
 
@@ -756,7 +772,8 @@ export default function IncidentsPage() {
             incidents={visibleIncidents}
             actionsByIncident={actionsByIncident}
             daySort={filters.dateMode === 'event' ? 'chronological' : 'proximity'}
-            expandIncidentId={shouldExpandOps ? deepLinkIncidentId : undefined}
+            expandIncidentId={deepLinkIncidentId || undefined}
+            expandIncidentOperations={shouldExpandOps}
             onUpdate={updateIncident}
             onLocalPatch={patchIncidentLocal}
             onActionsLocalPatch={patchIncidentActionsLocal}

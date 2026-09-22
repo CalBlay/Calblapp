@@ -5,6 +5,7 @@ const {
   normalizeFamilyPrefix,
   mergeFamilyLabels,
   familyLabelForCategoryId,
+  replaceCategoryFamilyPrefix,
   isIncidentCategoryGroup2xx,
   incidentCategoryRequiresMedia,
   DEFAULT_INCIDENT_FAMILY_LABELS,
@@ -56,6 +57,12 @@ test('familyLabelForCategoryId falls back to Grup NXX when prefix missing', () =
   assert.equal(familyLabelForCategoryId('201', { '2': 'Maquinària' }), 'Maquinària')
   assert.equal(familyLabelForCategoryId('701', {}), 'Grup 7XX')
   assert.equal(familyLabelForCategoryId('', {}), '—')
+})
+
+test('replaceCategoryFamilyPrefix changes the family and preserves the category suffix', () => {
+  assert.equal(replaceCategoryFamilyPrefix('201', '4'), '401')
+  assert.equal(replaceCategoryFamilyPrefix(' 901 ', '2XX'), '201')
+  assert.equal(replaceCategoryFamilyPrefix('201', 'invalid'), '201')
 })
 
 test('buildIncidentDashboardStats aggregates status, priority, dept/cat charts, and dayMap', () => {

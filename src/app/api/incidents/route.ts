@@ -11,7 +11,8 @@ import {
   notifyForNewDecoTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
-import { canPostIncident, isIncidentCreatedByUser } from '@/lib/incidentPolicy'
+import { canPostIncident, canReadRestrictedIncident } from '@/lib/incidentPolicy'
+import { isIncidentActionAssignedToUser } from '@/lib/incidentActionsMine'
 import {
   canEditIncidentsModule,
   canViewIncidentsCommandBoard,
@@ -690,6 +691,7 @@ export async function GET(req: Request) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const importance = searchParams.get("importance");
+    const incidentId = searchParams.get("incidentId")?.trim() || "";
     const eventId = searchParams.get("eventId");
     const department = searchParams.get("department");
     const categoryLabel = searchParams.get("categoryLabel");
@@ -725,7 +727,9 @@ export async function GET(req: Request) {
     // Amb rang de dates: filtre i ordre per **data de l'esdeveniment** (reunió setmanal).
     // Sense rang: ordre per creació (tauler general).
     let ref: Query = firestoreAdmin.collection("incidents");
-    if (from && to) {
+    if (incidentId) {
+      ref = ref.where(admin.firestore.FieldPath.documentId(), "==", incidentId);
+    } else if (from && to) {
       ref = ref
         .where("eventDate", ">=", from)
         .where("eventDate", "<=", to)
@@ -777,8 +781,28 @@ export async function GET(req: Request) {
       !canEditModule &&
       !canViewCommandBoard &&
       !canViewEventScopedIncidents;
+
+    let hasAssignedActionForTarget = false;
+    if (restrictGeneralListToCreator && incidentId) {
+      const assignedActionsSnap = await firestoreAdmin
+        .collection('incident_actions')
+        .where('incidentId', '==', incidentId)
+        .get();
+      hasAssignedActionForTarget = assignedActionsSnap.docs.some((doc) =>
+        isIncidentActionAssignedToUser(doc.data(), {
+          id: user.id,
+          name: user.name,
+        })
+      );
+    }
+
     const raw = restrictGeneralListToCreator
-      ? unscopedRaw.filter((incident) => isIncidentCreatedByUser(user, incident))
+      ? unscopedRaw.filter((incident) =>
+          canReadRestrictedIncident(user, incident, {
+            directTarget: Boolean(incidentId && incident.id === incidentId),
+            hasAssignedAction: hasAssignedActionForTarget,
+          })
+        )
       : unscopedRaw;
 
     // 2️⃣ Recuperar esdeveniments stage_verd

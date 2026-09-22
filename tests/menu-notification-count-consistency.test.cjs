@@ -36,7 +36,7 @@ test('Incidents and Roba personal persist synthetic dismissals per user on the s
   const dismissalsApi = read('src/app/api/notifications/synthetic-dismissals/route.ts')
 
   assert.match(incidentCount, /useSyntheticNotificationDismissals\('incidents'\)/)
-  assert.match(incidentBell, /dismissSynthetic\(syntheticIds\)/)
+  assert.match(incidentBell, /dismissSynthetic\(\[\.\.\.new Set\(syntheticIds\)\]\)/)
   assert.match(robaCount, /useSyntheticNotificationDismissals\('roba_personal'\)/)
   assert.match(robaBell, /dismissSynthetic\(syntheticIds\)/)
   assert.match(dismissalsHook, /LEGACY_STORAGE_KEYS/)

@@ -30,6 +30,7 @@ interface Props {
   event: GroupedIncidentEvent
   actionsByIncident: Record<string, IncidentAction[]>
   expandIncidentId?: string
+  expandIncidentOperations?: boolean
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
   onLocalPatch: (id: string, d: Partial<Incident>) => void
   onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
@@ -48,6 +49,7 @@ export default function IncidentsEventGroup({
   event,
   actionsByIncident,
   expandIncidentId,
+  expandIncidentOperations = false,
   onUpdate,
   onLocalPatch,
   onActionsLocalPatch,
@@ -99,7 +101,7 @@ export default function IncidentsEventGroup({
   useEffect(() => {
     const id = String(expandIncidentId || '').trim()
     if (!id || !event.rows.some((row) => row.id === id)) return
-    setExpandedOpsId(id)
+    setExpandedOpsId(expandIncidentOperations ? id : null)
     setExpanded(true)
     window.requestAnimationFrame(() => {
       document.getElementById(`incident-row-${id}`)?.scrollIntoView({
@@ -107,7 +109,7 @@ export default function IncidentsEventGroup({
         block: 'center',
       })
     })
-  }, [expandIncidentId, event.rows])
+  }, [expandIncidentId, expandIncidentOperations, event.rows])
 
   const beginEdit = useCallback((row: Incident) => {
     setEditingId(row.id)

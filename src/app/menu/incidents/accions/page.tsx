@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { AlertTriangle, ExternalLink, ListChecks, Search } from 'lucide-react'
@@ -36,21 +36,13 @@ import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
+import { incidentOperationsHref } from '@/lib/incidentNotificationLinks'
 
 type StatusFilter = 'pending' | 'all' | 'open' | 'in_progress' | 'done' | 'cancelled'
 
 function shortDate(iso: string) {
   if (!iso) return '-'
   return formatDateString(iso) ?? iso.slice(0, 10)
-}
-
-function incidentBoardHref(incidentId: string) {
-  const qs = new URLSearchParams({
-    incidentId,
-    ops: '1',
-    dateMode: 'all',
-  })
-  return `${INCIDENTS_UI_PATH}?${qs.toString()}`
 }
 
 function KpiCard({
@@ -91,6 +83,8 @@ function isWithinDateRange(dateIso: string, from?: string, to?: string) {
 export default function IncidentActionsMinePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const deepLinkActionId = searchParams?.get('actionId')?.trim() || ''
   const { ready: uiPermsReady, canViewPath, hasAction } = useUiPermissions()
   const { setContent, setOpen } = useFilters()
   const canSeeBoard = uiPermsReady && canViewPath(INCIDENTS_UI_PATH)
@@ -107,17 +101,26 @@ export default function IncidentActionsMinePage() {
   )
 
   const [dateResetSignal, setDateResetSignal] = useState(0)
-  const [dateFilters, setDateFilters] = useState({
-    from: weekStart,
-    to: weekEnd,
-  })
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending')
+  const [dateFilters, setDateFilters] = useState<{ from?: string; to?: string }>(() =>
+    deepLinkActionId ? {} : { from: weekStart, to: weekEnd }
+  )
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() =>
+    deepLinkActionId ? 'all' : 'pending'
+  )
   const [search, setSearch] = useState('')
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [actions, setActions] = useState<IncidentActionMineRow[]>([])
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!deepLinkActionId) return
+    setDateFilters({})
+    setStatusFilter('all')
+    setSearch('')
+    setOverdueOnly(false)
+  }, [deepLinkActionId])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -216,6 +219,17 @@ export default function IncidentActionsMinePage() {
     [filteredActions]
   )
 
+  useEffect(() => {
+    if (loading || !deepLinkActionId) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`incident-action-${deepLinkActionId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [deepLinkActionId, loading, tableRows])
+
   const openFiltersPanel = useCallback(() => {
     setContent(
       <div className="space-y-4 p-4">
@@ -268,13 +282,14 @@ export default function IncidentActionsMinePage() {
               setDateFilters({ from: weekStart, to: weekEnd })
               setDateResetSignal((value) => value + 1)
               setOpen(false)
+              router.replace('/menu/incidents/accions', { scroll: false })
             }}
           />
         </div>
       </div>
     )
     setOpen(true)
-  }, [overdueOnly, search, setContent, setOpen, statusFilter, weekEnd, weekStart])
+  }, [overdueOnly, router, search, setContent, setOpen, statusFilter, weekEnd, weekStart])
 
   if (status === 'loading' || !uiPermsReady || (session && !canSeeAccions)) {
     return <p className={cn('py-16 text-center', typography('bodySm'))}>Carregant...</p>
@@ -315,23 +330,29 @@ export default function IncidentActionsMinePage() {
       />
 
       <CorporateFiltersShell variant="toolbar" className="mb-2">
-        <SmartFilters
-          modeDefault="week"
-          modeOptions={['week', 'month', 'year', 'range']}
-          role="Direcció"
-          onChange={handleDateFiltersChange}
-          showDepartment={false}
-          showCommercial={false}
-          showWorker={false}
-          showLocation={false}
-          showStatus={false}
-          showImportance={false}
-          showAdvanced={false}
-          compact
-          initialStart={dateFilters.from}
-          initialEnd={dateFilters.to}
-          resetSignal={dateResetSignal}
-        />
+        {deepLinkActionId ? (
+          <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800">
+            Sense filtre de data · acció seleccionada
+          </span>
+        ) : (
+          <SmartFilters
+            modeDefault="week"
+            modeOptions={['week', 'month', 'year', 'range']}
+            role="Direcció"
+            onChange={handleDateFiltersChange}
+            showDepartment={false}
+            showCommercial={false}
+            showWorker={false}
+            showLocation={false}
+            showStatus={false}
+            showImportance={false}
+            showAdvanced={false}
+            compact
+            initialStart={dateFilters.from}
+            initialEnd={dateFilters.to}
+            resetSignal={dateResetSignal}
+          />
+        )}
         <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
       </CorporateFiltersShell>
@@ -380,7 +401,14 @@ export default function IncidentActionsMinePage() {
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
-                    <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                    <tr
+                      key={row.id}
+                      id={`incident-action-${row.id}`}
+                      className={cn(
+                        'border-t border-slate-100 hover:bg-slate-50/80',
+                        row.id === deepLinkActionId && 'bg-violet-50 ring-2 ring-inset ring-violet-400'
+                      )}
+                    >
                       <td className="max-w-[280px] p-2 align-top">
                         <span className="font-medium text-slate-900">{row.title || '-'}</span>
                       </td>
@@ -413,13 +441,13 @@ export default function IncidentActionsMinePage() {
                       <td className="p-2 align-top">{row.assignedToName || '-'}</td>
                       <td className="p-2 align-top">
                         <Link
-                          href={incidentBoardHref(row.incidentId)}
+                          href={incidentOperationsHref(row.incidentId)}
                           className={cn(
                             typography('bodySm'),
                             'inline-flex items-center gap-1 font-medium text-violet-700 hover:underline'
                           )}
                         >
-                          Veure incidencia
+                          Veure incidència
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                         </Link>
                       </td>

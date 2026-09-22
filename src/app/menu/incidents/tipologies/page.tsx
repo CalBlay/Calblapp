@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { INCIDENTS_TYPOLOGIES_MANAGE_PERM } from '@/lib/incidentsPermissions'
-import { familyLabelForCategoryId, mergeFamilyLabels } from '@/lib/incidentTypology'
+import {
+  familyLabelForCategoryId,
+  mergeFamilyLabels,
+  replaceCategoryFamilyPrefix,
+} from '@/lib/incidentTypology'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
@@ -37,7 +41,9 @@ export default function IncidentTipologiesPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [edits, setEdits] = useState<Record<string, { label: string; sortOrder: string }>>({})
+  const [edits, setEdits] = useState<
+    Record<string, { id: string; label: string; sortOrder: string }>
+  >({})
   const [newId, setNewId] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [newSort, setNewSort] = useState('')
@@ -79,9 +85,9 @@ export default function IncidentTipologiesPage() {
 
       const list = Array.isArray(json.categories) ? (json.categories as CategoryRow[]) : []
       setRows(list)
-      const nextEdits: Record<string, { label: string; sortOrder: string }> = {}
+      const nextEdits: Record<string, { id: string; label: string; sortOrder: string }> = {}
       list.forEach((r) => {
-        nextEdits[r.id] = { label: r.label, sortOrder: String(r.sortOrder ?? '') }
+        nextEdits[r.id] = { id: r.id, label: r.label, sortOrder: String(r.sortOrder ?? '') }
       })
       setEdits(nextEdits)
     } catch (e) {
@@ -146,6 +152,7 @@ export default function IncidentTipologiesPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: e.id.trim(),
           label: e.label.trim(),
           sortOrder: Number.isFinite(sortOrder) ? sortOrder : undefined,
         }),
@@ -340,10 +347,10 @@ export default function IncidentTipologiesPage() {
         <p className={typography('bodySm')}>Carregant categories…</p>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto shadow-sm">
-          <table className={cn('w-full min-w-[640px]', typography('bodySm'))}>
+          <table className={cn('w-full min-w-[780px]', typography('bodySm'))}>
             <thead>
               <tr className="bg-slate-50 text-left">
-                <th className={`p-2 w-20 ${typography('label')}`}>Id</th>
+                <th className={`p-2 w-28 ${typography('label')}`}>Id</th>
                 <th className={`p-2 min-w-[140px] ${typography('label')}`}>Família</th>
                 <th className={`p-2 min-w-[180px] ${typography('label')}`}>Etiqueta</th>
                 <th className={`p-2 w-24 ${typography('label')}`}>Ordre</th>
@@ -353,12 +360,54 @@ export default function IncidentTipologiesPage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const e = edits[r.id] || { label: r.label, sortOrder: String(r.sortOrder) }
-                const fam = familyLabelForCategoryId(r.id, families)
+                const e = edits[r.id] || {
+                  id: r.id,
+                  label: r.label,
+                  sortOrder: String(r.sortOrder),
+                }
+                const familyPrefix = e.id.trim().charAt(0)
                 return (
                   <tr key={r.id} className="border-t border-gray-100">
-                    <td className={`p-2 font-mono align-middle ${typography('bodyXs')}`}>{r.id}</td>
-                    <td className={`p-2 align-middle ${typography('bodyMd')}`}>{fam}</td>
+                    <td className="p-2">
+                      <Input
+                        className="w-24 font-mono"
+                        value={e.id}
+                        aria-label={`Codi de ${r.label}`}
+                        onChange={(ev) =>
+                          setEdits((prev) => ({
+                            ...prev,
+                            [r.id]: { ...e, id: ev.target.value },
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="p-2 align-middle">
+                      <select
+                        className="h-10 w-full min-w-36 rounded-md border border-input bg-background px-3 text-sm"
+                        value={familyPrefix}
+                        aria-label={`Família de ${r.label}`}
+                        onChange={(ev) =>
+                          setEdits((prev) => ({
+                            ...prev,
+                            [r.id]: {
+                              ...e,
+                              id: replaceCategoryFamilyPrefix(e.id, ev.target.value),
+                            },
+                          }))
+                        }
+                      >
+                        {!familyEdits[familyPrefix] ? (
+                          <option value={familyPrefix}>
+                            {familyLabelForCategoryId(e.id, families)}
+                          </option>
+                        ) : null}
+                        {familyKeys.map((prefix) => (
+                          <option key={prefix} value={prefix}>
+                            {prefix}XX · {familyEdits[prefix]}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="p-2">
                       <Input
                         value={e.label}

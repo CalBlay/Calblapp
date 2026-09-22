@@ -116,7 +116,10 @@ async function notifyIncidentActionAssigned(params: {
   await sendPushToUsers([userId], {
     title: payload.title,
     body: payload.body,
-    url: defaultPushUrlForNotificationType(payload.type, { incidentId: payload.incidentId }),
+    url: defaultPushUrlForNotificationType(payload.type, {
+      incidentId: payload.incidentId,
+      actionId: payload.actionId,
+    }),
   })
 }
 

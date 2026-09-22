@@ -1,6 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { incidentNotificationHref } from '@/lib/incidentNotificationLinks'
 
 type IncidentNotificationPayload = {
   type: 'incident_marketing_9xx_new'
@@ -77,7 +78,6 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
   await sendPushToUsers(targets, {
     title: payload.title,
     body: payload.body,
-    url: '/menu/incidents',
+    url: incidentNotificationHref(payload.incidentId),
   })
 }
-

@@ -165,6 +165,7 @@ function applyActionSummaries(incidents: Incident[], actions: Array<{ incidentId
 export type IncidentsDateFilterMode = 'all' | 'event'
 
 export function useIncidents(_filters: {
+  incidentId?: string
   eventId?: string
   from?: string
   to?: string
@@ -199,6 +200,7 @@ export function useIncidents(_filters: {
   // 🧠 IMPORTANT — Filtre memoitzat (abans del derive d’incidents)
   const filters = useMemo(
     () => ({
+      incidentId: _filters.incidentId,
       eventId: _filters.eventId,
       from: _filters.from,
       to: _filters.to,
@@ -213,6 +215,7 @@ export function useIncidents(_filters: {
       enabled: _filters.enabled !== false,
     }),
     [
+      _filters.incidentId,
       _filters.eventId,
       _filters.from,
       _filters.to,
@@ -263,6 +266,7 @@ export function useIncidents(_filters: {
       try {
         const qs = new URLSearchParams()
 
+        if (filters.incidentId) qs.set('incidentId', filters.incidentId)
         if (filters.eventId) qs.set('eventId', filters.eventId)
 
         if (filters.dateMode !== 'all') {
@@ -336,6 +340,7 @@ export function useIncidents(_filters: {
       cancel = true
     }
   }, [
+    filters.incidentId,
     filters.eventId,
     filters.from,
     filters.to,

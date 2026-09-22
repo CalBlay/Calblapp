@@ -17,7 +17,10 @@ import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import ExportMenu from '@/components/export/ExportMenu'
 import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
+import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import EventNotificationsBell from './components/EventNotificationsBell'
 import {
@@ -53,6 +56,20 @@ const normalize = (s?: string | null) =>
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ')
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+const EVENT_STATE_LABELS: Record<EventData['state'], string> = {
+  pending: 'Pendent',
+  draft: 'Esborrany',
+  confirmed: 'Confirmat',
+}
 
 const departmentDefaultLn = (department?: string | null): LnKey | undefined => {
   const normalized = normalizeDept(department)
@@ -587,6 +604,108 @@ export default function EventsPage() {
     ? warehouseComandaLoading
     : loading || (eventIdsForWarehouseFilter.length > 0 && warehouseEventsLoading)
 
+  const exportRows = [...filteredEvents]
+    .sort((a, b) => {
+      const dayOrder = (a.day || a.start.slice(0, 10)).localeCompare(
+        b.day || b.start.slice(0, 10)
+      )
+      if (dayOrder !== 0) return dayOrder
+      return (a.horaInici || '').localeCompare(b.horaInici || '')
+    })
+    .map((event) => ({
+      Data: formatDateOnly(event.day || event.start.slice(0, 10), ''),
+      Hora: event.horaInici || '',
+      Esdeveniment: event.summary || event.name || '',
+      Ubicació: event.locationShort || event.location || '',
+      'Línia de negoci': event.lnLabel || event.lnKey || '',
+      Responsable: event.responsableName || '',
+      Comercial: event.commercial || '',
+      Pax: event.pax ?? '',
+      Codi: event.eventCode || '',
+      Estat: EVENT_STATE_LABELS[event.state] || event.state || '',
+    }))
+
+  const exportPeriodLabel = `${formatDateOnly(filters.start, filters.start)} - ${formatDateOnly(
+    filters.end,
+    filters.end
+  )}`
+
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
+    const worksheet = XLSX.utils.json_to_sheet(exportRows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Esdeveniments')
+    XLSX.writeFile(workbook, `esdeveniments-${filters.start}-${filters.end}.xlsx`)
+  }
+
+  const handleExportPdfView = () => {
+    if (!exportRows.length) return
+    window.print()
+  }
+
+  const buildPdfTableHtml = () => {
+    const columns = [
+      'Data',
+      'Hora',
+      'Esdeveniment',
+      'Ubicació',
+      'Línia de negoci',
+      'Responsable',
+      'Comercial',
+      'Pax',
+      'Codi',
+      'Estat',
+    ] as const
+    const header = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')
+    const body = exportRows
+      .map((row) => {
+        const cells = columns
+          .map((column) => `<td>${escapeHtml(String(row[column] ?? ''))}</td>`)
+          .join('')
+        return `<tr>${cells}</tr>`
+      })
+      .join('')
+
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Esdeveniments</title>
+    <style>
+      @page { size: A4 landscape; margin: 10mm; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #111; }
+      h1 { font-size: 16px; margin-bottom: 8px; }
+      .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 1px solid #ddd; padding: 4px 5px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+      th { background: #f3f4f6; }
+      tr:nth-child(even) td { background: #fafafa; }
+    </style>
+  </head>
+  <body>
+    <h1>Esdeveniments</h1>
+    <div class="meta">Període: ${escapeHtml(exportPeriodLabel)}</div>
+    <table>
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </body>
+</html>`
+  }
+
+  const handleExportPdfTable = () => {
+    if (!exportRows.length) return
+    printBrandedHtmlInNewWindow(buildPdfTableHtml())
+  }
+
+  const exportItems = [
+    { label: 'Excel (.xlsx)', onClick: handleExportExcel, disabled: exportRows.length === 0 },
+    { label: 'PDF (vista)', onClick: handleExportPdfView, disabled: exportRows.length === 0 },
+    { label: 'PDF (taula)', onClick: handleExportPdfTable, disabled: exportRows.length === 0 },
+  ]
+
   return (
     <div
       className={`flex w-full max-w-none flex-col gap-4 px-3 pb-6 sm:px-4 lg:gap-3 lg:px-2 lg:pb-8 xl:px-0 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}
@@ -603,6 +722,7 @@ export default function EventsPage() {
         }
         actions={
           <>
+            <ExportMenu items={exportItems} ariaLabel="Exportar esdeveniments" />
             <EventNotificationsBell />
             {!eventsListLoading && !error && visibleEventCount > 0 ? (
               <span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white">
@@ -612,6 +732,26 @@ export default function EventsPage() {
           </>
         }
       />
+
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 10mm; }
+          body * { visibility: hidden; }
+          #events-print-root, #events-print-root * { visibility: visible; }
+          #events-print-root {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            overflow: visible;
+          }
+          #events-print-root section {
+            box-shadow: none !important;
+            border: 0 !important;
+          }
+          #events-print-root button { display: none !important; }
+        }
+      `}</style>
 
       <EventsFiltersBar
         filters={filters}
@@ -627,7 +767,11 @@ export default function EventsPage() {
         onHistoryModeChange={comandaPreparerOnly ? handleHistoryModeChange : undefined}
       />
 
-      <div>
+      <div id="events-print-root">
+        <div className="hidden print:block">
+          <h1 className="text-xl font-semibold">Esdeveniments</h1>
+          <p className="mb-4 text-sm text-gray-600">Període: {exportPeriodLabel}</p>
+        </div>
         {eventsListLoading && <p className="text-gray-500">Carregant esdeveniments...</p>}
         {error && <p className="text-red-600">{String(error)}</p>}
 

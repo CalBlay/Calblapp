@@ -77,6 +77,19 @@ export function isIncidentCreatedByUser(
   return Boolean(createdBy && ownerAliases.has(createdBy))
 }
 
+export function canReadRestrictedIncident(
+  user: {
+    id?: string | null
+    name?: string | null
+    email?: string | null
+  },
+  incident: { createdById?: string | null; createdBy?: string | null },
+  options?: { directTarget?: boolean; hasAssignedAction?: boolean }
+): boolean {
+  if (isIncidentCreatedByUser(user, incident)) return true
+  return Boolean(options?.directTarget && options.hasAssignedAction)
+}
+
 export function canDeleteIncident(
   user: { id?: string | null; role?: string | null; department?: string | null; name?: string | null; email?: string | null },
   incident: { createdById?: string | null; createdBy?: string | null }

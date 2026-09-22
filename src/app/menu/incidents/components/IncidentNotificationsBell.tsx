@@ -12,7 +12,11 @@ import ModuleNotificationsBell, {
 import NotificationListItem from '@/components/layout/NotificationListItem'
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 import { INCIDENT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTypes'
-import { INCIDENTS_ACCIONS_PATH, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
+import { INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
+import {
+  incidentActionNotificationHref,
+  incidentNotificationHref,
+} from '@/lib/incidentNotificationLinks'
 import {
   buildIncidentActionMineLabel,
   isIncidentActionNotificationVisible,
@@ -103,15 +107,6 @@ function extractNotificationLabel(notification: IncidentNotification) {
   return { prefix: 'Incidencia', primary, secondary }
 }
 
-function incidentBoardHref(incidentId: string) {
-  const qs = new URLSearchParams({
-    incidentId,
-    ops: '1',
-    dateMode: 'all',
-  })
-  return `${INCIDENTS_UI_PATH}?${qs.toString()}`
-}
-
 function IncidentNotificationItems({
   notifications,
   onDismiss,
@@ -122,25 +117,24 @@ function IncidentNotificationItems({
   const router = useRouter()
   const closeBell = useCloseModuleNotificationsBell()
 
-  const openNotification = (notification: IncidentNotification) => {
+  const openNotification = async (notification: IncidentNotification) => {
     closeBell?.()
 
     const incidentId = String(notification.incidentId || '').trim()
+    let href = INCIDENTS_UI_PATH
     if (notification.type === 'incident_action_assigned') {
-      if (incidentId) {
-        router.push(incidentBoardHref(incidentId))
-        return
-      }
-      router.push(INCIDENTS_ACCIONS_PATH)
-      return
+      href = incidentActionNotificationHref(notification.actionId)
+    } else if (incidentId) {
+      href = incidentNotificationHref(incidentId)
     }
 
-    if (incidentId) {
-      router.push(incidentBoardHref(incidentId))
-      return
+    try {
+      await onDismiss(notification.id)
+    } catch (error) {
+      console.error('[incident-notifications] No s\'ha pogut marcar com a llegit', error)
+    } finally {
+      router.push(href)
     }
-
-    router.push(INCIDENTS_UI_PATH)
   }
 
   return (
@@ -250,6 +244,10 @@ export default function IncidentNotificationsBell() {
     }
 
     await markNotificationRead(notificationId)
+    const actionId = String(target?.actionId || '').trim()
+    if (target?.type === 'incident_action_assigned' && actionId) {
+      await dismissSynthetic([`synthetic-action-${actionId}`])
+    }
     await mutate()
   }
 
@@ -257,11 +255,18 @@ export default function IncidentNotificationsBell() {
     for (const type of INCIDENT_NOTIFICATION_TYPES) {
       await markAllNotificationsRead(type)
     }
-    const syntheticIds = notifications
-      .filter((notification) => notification.synthetic)
-      .map((notification) => notification.id)
+    const syntheticIds = [
+      ...notifications
+        .filter((notification) => notification.synthetic)
+        .map((notification) => notification.id),
+      ...notifications
+        .filter((notification) => notification.type === 'incident_action_assigned')
+        .map((notification) => String(notification.actionId || '').trim())
+        .filter(Boolean)
+        .map((actionId) => `synthetic-action-${actionId}`),
+    ]
     if (syntheticIds.length > 0) {
-      await dismissSynthetic(syntheticIds)
+      await dismissSynthetic([...new Set(syntheticIds)])
     }
     await mutate()
   }

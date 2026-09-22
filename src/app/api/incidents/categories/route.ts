@@ -32,6 +32,10 @@ function mergeCategories(fireDocs: QueryDocumentSnapshot<DocumentData>[]): Incid
   for (const doc of fireDocs) {
     const id = doc.id
     const data = doc.data() as Record<string, unknown>
+    if (data.deleted === true) {
+      byId.delete(id)
+      continue
+    }
     const prev = byId.get(id)
     const sortOrder =
       typeof data.sortOrder === 'number' && Number.isFinite(data.sortOrder)

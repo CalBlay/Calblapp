@@ -7,6 +7,7 @@ const {
   canManageIncidentCategories,
   canDeleteIncident,
   isIncidentCreatedByUser,
+  canReadRestrictedIncident,
   normalizeIncidentStatus,
   normalizeIncidentActionStatus,
 } = require('../src/lib/incidentPolicy')
@@ -29,6 +30,27 @@ test('isIncidentCreatedByUser prefers id and supports legacy name/email aliases'
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Gloria Rodriguez' }), true)
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'foodlovers@calblay.com' }), true)
   assert.equal(isIncidentCreatedByUser(user, { createdBy: 'Una altra persona' }), false)
+})
+
+test('restricted incident deep links allow the user assigned to an action', () => {
+  const user = { id: 'user-1', name: 'Jordi' }
+  const incident = { createdById: 'other-user', createdBy: 'Altra persona' }
+
+  assert.equal(canReadRestrictedIncident(user, incident), false)
+  assert.equal(
+    canReadRestrictedIncident(user, incident, {
+      directTarget: true,
+      hasAssignedAction: true,
+    }),
+    true
+  )
+  assert.equal(
+    canReadRestrictedIncident(user, incident, {
+      directTarget: false,
+      hasAssignedAction: true,
+    }),
+    false
+  )
 })
 
 test('canAccessIncidentsModule allows production workers and allowed dept roles', () => {
