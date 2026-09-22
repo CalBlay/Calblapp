@@ -311,6 +311,8 @@ export default function CalendarPage() {
   const { uiActions, ready: permsReady } = useUiPermissions()
   const canManageMailGroups =
     permsReady && uiActions[CALENDAR_PERM.manageMailGroups] === true
+  const canSyncZoho = permsReady && uiActions[CALENDAR_PERM.syncZoho] === true
+  const canSyncAda = permsReady && uiActions[CALENDAR_PERM.syncAda] === true
   const normalize = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
@@ -792,36 +794,36 @@ export default function CalendarPage() {
               </Link>
             </Button>
           ) : null}
-          {!isMobile && canManageCodes && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSync}
-                disabled={syncing}
-                className="flex items-center gap-1"
-              >
-                <RefreshCw
-                  size={14}
-                  className={syncing ? 'animate-spin text-blue-500' : ''}
-                />
-                {syncing ? 'Sincronitzant...' : 'Sincronitzar Zoho'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSyncAda}
-                disabled={syncingAda}
-                className="flex items-center gap-1"
-              >
-                <RefreshCw
-                  size={14}
-                  className={syncingAda ? 'animate-spin text-blue-500' : ''}
-                />
-                {syncingAda ? 'Sincronitzant...' : 'Sincronitzar ADA'}
-              </Button>
-            </>
-          )}
+          {canSyncZoho ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-1"
+            >
+              <RefreshCw
+                size={14}
+                className={syncing ? 'animate-spin text-blue-500' : ''}
+              />
+              {syncing ? 'Sincronitzant...' : 'Sincronitzar Zoho'}
+            </Button>
+          ) : null}
+          {canSyncAda ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncAda}
+              disabled={syncingAda}
+              className="flex items-center gap-1"
+            >
+              <RefreshCw
+                size={14}
+                className={syncingAda ? 'animate-spin text-blue-500' : ''}
+              />
+              {syncingAda ? 'Sincronitzant...' : 'Sincronitzar ADA'}
+            </Button>
+          ) : null}
         </div>
       </div>
 

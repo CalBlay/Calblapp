@@ -9,6 +9,8 @@ export const CALENDAR_ACTION = {
   deleteDocuments: 'documents:delete',
   sendDocuments: 'email:send-documents',
   manageMailGroups: 'mail-groups:manage',
+  syncZoho: 'sync:zoho',
+  syncAda: 'sync:ada',
 } as const
 
 export const CALENDAR_PERM = {
@@ -17,4 +19,6 @@ export const CALENDAR_PERM = {
   deleteDocuments: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.deleteDocuments),
   sendDocuments: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.sendDocuments),
   manageMailGroups: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.manageMailGroups),
+  syncZoho: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.syncZoho),
+  syncAda: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.syncAda),
 } as const
