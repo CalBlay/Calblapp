@@ -2,7 +2,7 @@
 
 import React from 'react'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
-import { TRANSPORT_TYPE_OPTIONS, type TransportType } from '@/lib/transportTypes'
+import type { TransportType, TransportTypeDefinition } from '@/lib/transportTypes'
 
 export type TransportFiltersState = {
   type: 'all' | TransportType
@@ -13,9 +13,10 @@ export type TransportFiltersState = {
 interface Props {
   filters: TransportFiltersState
   setFilters: (f: TransportFiltersState) => void
+  transportTypes: TransportTypeDefinition[]
 }
 
-export default function TransportFilters({ filters, setFilters }: Props) {
+export default function TransportFilters({ filters, setFilters, transportTypes }: Props) {
   const handleChange = <K extends keyof TransportFiltersState>(
     key: K,
     value: TransportFiltersState[K]
@@ -35,7 +36,7 @@ export default function TransportFilters({ filters, setFilters }: Props) {
           className="w-full border rounded-md px-2 py-1 bg-white"
         >
           <option value="all">Tots</option>
-          {TRANSPORT_TYPE_OPTIONS.map((option) => (
+          {transportTypes.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

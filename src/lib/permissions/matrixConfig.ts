@@ -34,6 +34,10 @@ import {
   DECO_TICKETS_VALIDATE_PERM,
 } from '@/lib/decoTicketsPermissions'
 import { SPACES_REQUESTS_MANAGE_PERM } from '@/lib/spacesPermissions'
+import {
+  TRANSPORTS_TYPES_MANAGE_PERM,
+  TRANSPORTS_UI_PATH,
+} from '@/lib/transportsPermissions'
 
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
@@ -83,6 +87,18 @@ export type PermissionActionGroup = {
 }
 
 export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
+  {
+    id: 'transportTypeActions',
+    title: 'Transports · Tipologies',
+    subtitle: 'Permet veure la pestanya i gestionar els tipus de vehicle i les seves característiques.',
+    visibleWhen: { path: TRANSPORTS_UI_PATH },
+    actions: [
+      {
+        key: TRANSPORTS_TYPES_MANAGE_PERM,
+        label: 'Gestionar tipologies de vehicles',
+      },
+    ],
+  },
   {
     id: 'mediaSources',
     title: 'Imatges · Fonts',

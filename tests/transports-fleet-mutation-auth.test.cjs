@@ -4,7 +4,11 @@ const path = require('node:path')
 const { test } = require('node:test')
 
 const { getVisibleModules } = require('../src/lib/accessControl')
-const { TRANSPORTS_UI_PATH } = require('../src/lib/transportsPermissions')
+const {
+  TRANSPORTS_TYPES_MANAGE_PERM,
+  TRANSPORTS_UI_PATH,
+} = require('../src/lib/transportsPermissions')
+const { PERMISSION_ACTION_GROUPS } = require('../src/lib/permissions/matrixConfig')
 
 const ROOT = path.join(__dirname, '..')
 
@@ -29,6 +33,19 @@ function seesTransportsModule(user) {
 
 test('TRANSPORTS_UI_PATH matches the Logistica Transports submenu', () => {
   assert.equal(TRANSPORTS_UI_PATH, '/menu/logistica/transports')
+})
+
+test('vehicle typologies have an explicit permission in the Settings matrix', () => {
+  assert.equal(
+    TRANSPORTS_TYPES_MANAGE_PERM,
+    'ui:action:/menu/logistica/transports:types-manage'
+  )
+  assert.equal(
+    PERMISSION_ACTION_GROUPS.some((group) =>
+      group.actions.some((action) => action.key === TRANSPORTS_TYPES_MANAGE_PERM)
+    ),
+    true
+  )
 })
 
 test('logistics cap can see the Transports submenu; workers and maintenance cannot', () => {
@@ -86,4 +103,37 @@ test('fleet PUT and DELETE require transports edit before Firestore writes', () 
     assert.ok(authIdx < editIdx, `${method}: auth before edit gate`)
     assert.ok(editIdx < writeIdx, `${method}: edit gate before Firestore write`)
   }
+})
+
+test('transport type mutations require the dedicated permission before Firestore writes', () => {
+  for (const [routePath, methods] of [
+    ['src/app/api/transport-types/route.ts', ['POST']],
+    ['src/app/api/transport-types/[id]/route.ts', ['PATCH', 'DELETE']],
+  ]) {
+    const source = readRoute(routePath)
+    for (const method of methods) {
+      const body = handlerBody(source, method)
+      assert.match(body, /await requireAuth\s*\(\s*\)/)
+      assert.match(body, /requireTransportsTypesManage/)
+      assert.ok(body.indexOf('requireTransportsTypesManage') < body.indexOf('firestoreAdmin.collection'))
+    }
+  }
+})
+
+test('transport typologies tab is gated by its action permission', () => {
+  const source = readRoute('src/app/menu/logistica/transports/page.tsx')
+  assert.match(source, /hasAction\(TRANSPORTS_TYPES_MANAGE_PERM\)/)
+  assert.match(source, /canManageTypes/)
+})
+
+test('fleet mutation controls are gated by the Transports edit permission', () => {
+  const page = readRoute('src/app/menu/logistica/transports/page.tsx')
+  const card = readRoute('src/components/transports/TransportCard.tsx')
+
+  assert.match(page, /canEditPath\(TRANSPORTS_UI_PATH\)/)
+  assert.match(page, /canEdit=\{canEditFleet\}/)
+  assert.match(page, /canEditFleet\s*\?\s*<FloatingAddButton/)
+  assert.match(page, /canEditFleet\s*\?\s*\(\s*<NewTransportModal/)
+  assert.match(card, /if\s*\(!canEdit\)\s*return/)
+  assert.match(card, /\{canEdit\s*\?\s*\(/)
 })

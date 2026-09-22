@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -11,25 +11,28 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useCreateTransport } from '@/hooks/useCreateTransport'
 import { usePersonnel } from '@/hooks/usePersonnel'
 import type { Transport, TransportMonthlyMileageEntry } from '@/hooks/useTransports'
 import { storage } from '@/lib/firebaseClient'
 import {
-  TRANSPORT_TYPE_OPTIONS,
   type TransportType,
+  type TransportTypeDefinition,
 } from '@/lib/transportTypes'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import {
+  getTachographReviewInfo,
+  normalizeTachographReviewDates,
+} from '@/lib/transportTachograph'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-
-const isTransportType = (value: string): value is TransportType =>
-  TRANSPORT_TYPE_OPTIONS.some((option) => option.value === value)
 
 interface NewTransportModalProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
   defaultValues?: Transport | null
+  transportTypes: TransportTypeDefinition[]
 }
 
 type TransportDocument = {
@@ -43,11 +46,16 @@ type TransportPayload = {
   plate: string
   type: TransportType
   conductorId: string | null
+  refrigerated: boolean
+  refrigerationReviewDate: string | null
+  refrigerationExpiryDate: string | null
   itvDate?: string | null
   itvExpiry?: string | null
   lastService?: string | null
   lastServiceKm?: number | null
+  nextServiceKm?: number | null
   nextService?: string | null
+  tachographReviewDates: string[]
   documents: TransportDocument[]
   monthlyMileage: TransportMonthlyMileageEntry[]
 }
@@ -77,11 +85,25 @@ function addOneYear(dateValue: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+function formatDateKey(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(`${value}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('ca-ES')
+}
+
+function currentDateKey(): string {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate()
+  ).padStart(2, '0')}`
+}
+
 export default function NewTransportModal({
   isOpen,
   onOpenChange,
   onCreated,
   defaultValues = null,
+  transportTypes,
 }: NewTransportModalProps) {
   const { mutateAsync, loading, error } = useCreateTransport()
   const { data: personnel } = usePersonnel()
@@ -90,11 +112,17 @@ export default function NewTransportModal({
   const [plate, setPlate] = useState('')
   const [type, setType] = useState<TransportType>('comercial')
   const [conductorId, setConductorId] = useState('')
+  const [refrigerated, setRefrigerated] = useState(false)
+  const [refrigerationReviewDate, setRefrigerationReviewDate] = useState('')
+  const [refrigerationExpiryDate, setRefrigerationExpiryDate] = useState('')
   const [itvDate, setItvDate] = useState('')
   const [itvExpiry, setItvExpiry] = useState('')
   const [lastService, setLastService] = useState('')
   const [lastServiceKm, setLastServiceKm] = useState('')
+  const [nextServiceKm, setNextServiceKm] = useState('')
   const [nextService, setNextService] = useState('')
+  const [tachographReviewDates, setTachographReviewDates] = useState<string[]>([])
+  const [newTachographReviewDate, setNewTachographReviewDate] = useState('')
   const [documents, setDocuments] = useState<TransportDocument[]>([])
   const [selectedMileageYear, setSelectedMileageYear] = useState(String(CURRENT_YEAR))
   const [monthlyMileage, setMonthlyMileage] = useState<TransportMonthlyMileageEntry[]>([])
@@ -116,6 +144,9 @@ export default function NewTransportModal({
       setPlate(defaultValues.plate || '')
       setType(defaultValues.type || 'comercial')
       setConductorId(defaultValues.conductorId || '')
+      setRefrigerated(defaultValues.refrigerated)
+      setRefrigerationReviewDate(defaultValues.refrigerationReviewDate || '')
+      setRefrigerationExpiryDate(defaultValues.refrigerationExpiryDate || '')
       setItvDate(defaultValues.itvDate || '')
       setItvExpiry(defaultValues.itvExpiry || '')
       setLastService(defaultValues.lastService || '')
@@ -124,7 +155,16 @@ export default function NewTransportModal({
           ? String(defaultValues.lastServiceKm)
           : ''
       )
+      setNextServiceKm(
+        typeof defaultValues.nextServiceKm === 'number' && Number.isFinite(defaultValues.nextServiceKm)
+          ? String(defaultValues.nextServiceKm)
+          : ''
+      )
       setNextService(defaultValues.nextService || '')
+      setTachographReviewDates(
+        normalizeTachographReviewDates(defaultValues.tachographReviewDates)
+      )
+      setNewTachographReviewDate('')
       setDocuments(defaultValues.documents || [])
       setMonthlyMileage(existingMileage)
       setSelectedMileageYear(initialYear)
@@ -135,11 +175,17 @@ export default function NewTransportModal({
     setPlate('')
     setType('comercial')
     setConductorId('')
+    setRefrigerated(false)
+    setRefrigerationReviewDate('')
+    setRefrigerationExpiryDate('')
     setItvDate('')
     setItvExpiry('')
     setLastService('')
     setLastServiceKm('')
+    setNextServiceKm('')
     setNextService('')
+    setTachographReviewDates([])
+    setNewTachographReviewDate('')
     setDocuments([])
     setMonthlyMileage([])
     setSelectedMileageYear(String(CURRENT_YEAR))
@@ -160,12 +206,35 @@ export default function NewTransportModal({
 
     return personnel.filter((person) => {
       if (!person.driver) return false
-      if (type === 'camioGran' || type === 'camioGranFred') {
+      const selectedType = transportTypes.find((option) => option.value === type)
+      if (selectedType?.requiresLargeTruckLicense || type === 'camioGran' || type === 'camioGranFred') {
         return person.driver.camioGran === true
       }
       return person.driver.camioPetit === true
     })
-  }, [personnel, type])
+  }, [personnel, transportTypes, type])
+
+  const selectedTransportType = useMemo(
+    () => transportTypes.find((option) => option.value === type),
+    [transportTypes, type]
+  )
+  const isLargeTruck =
+    selectedTransportType?.requiresLargeTruckLicense ||
+    type === 'camioGran' ||
+    type === 'camioGranFred'
+  const tachographRequired = selectedTransportType?.tachographRequired ?? isLargeTruck
+  const tachographInfo = useMemo(
+    () => getTachographReviewInfo(tachographReviewDates),
+    [tachographReviewDates]
+  )
+
+  const handleAddTachographReview = () => {
+    if (!newTachographReviewDate || newTachographReviewDate > currentDateKey()) return
+    setTachographReviewDates((current) =>
+      normalizeTachographReviewDates([...current, newTachographReviewDate])
+    )
+    setNewTachographReviewDate('')
+  }
 
   const mileageYearOptions = useMemo(() => {
     const years = new Set<string>([String(CURRENT_YEAR)])
@@ -282,6 +351,9 @@ export default function NewTransportModal({
       plate: plate.trim(),
       type,
       conductorId: conductorId || null,
+      refrigerated,
+      refrigerationReviewDate: refrigerated ? refrigerationReviewDate || null : null,
+      refrigerationExpiryDate: refrigerated ? refrigerationExpiryDate || null : null,
       itvDate: itvDate || null,
       itvExpiry: itvExpiry || null,
       lastService: lastService || null,
@@ -289,7 +361,12 @@ export default function NewTransportModal({
         lastServiceKm.trim() !== '' && Number.isFinite(Number(lastServiceKm)) && Number(lastServiceKm) >= 0
           ? Number(lastServiceKm)
           : null,
+      nextServiceKm:
+        nextServiceKm.trim() !== '' && Number.isFinite(Number(nextServiceKm)) && Number(nextServiceKm) >= 0
+          ? Number(nextServiceKm)
+          : null,
       nextService: nextService || null,
+      tachographReviewDates: isLargeTruck ? tachographReviewDates : [],
       documents,
       monthlyMileage,
     }
@@ -343,15 +420,19 @@ export default function NewTransportModal({
                 value={type}
                 onChange={(e) => {
                   const value = e.target.value
-                  if (isTransportType(value)) setType(value)
+                  setType(value)
+                  const definition = transportTypes.find((option) => option.value === value)
+                  if (definition) setRefrigerated(definition.refrigeratedByDefault)
                 }}
                 className="w-full rounded-md border px-2 py-2 text-sm"
               >
-                {TRANSPORT_TYPE_OPTIONS.map((option) => (
+                {transportTypes
+                  .filter((option) => option.active || option.value === type)
+                  .map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
-                ))}
+                  ))}
               </select>
             </div>
 
@@ -372,6 +453,56 @@ export default function NewTransportModal({
               </select>
             </div>
           </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+            <div>
+              <Label htmlFor="refrigerated" className="font-medium text-slate-800">
+                Vehicle refrigerat
+              </Label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Indica si el vehicle disposa de fred.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-medium ${refrigerated ? 'text-sky-700' : 'text-slate-500'}`}>
+                {refrigerated ? 'Activat' : 'Desactivat'}
+              </span>
+              <Switch
+                id="refrigerated"
+                checked={refrigerated}
+                onCheckedChange={setRefrigerated}
+                className={refrigerated ? 'bg-sky-500' : undefined}
+              />
+            </div>
+          </div>
+
+          {refrigerated ? (
+            <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">
+                Revisió del sistema de fred
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="refrigerationReviewDate">Data de revisió</Label>
+                  <Input
+                    id="refrigerationReviewDate"
+                    type="date"
+                    value={refrigerationReviewDate}
+                    onChange={(e) => setRefrigerationReviewDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="refrigerationExpiryDate">Caducitat</Label>
+                  <Input
+                    id="refrigerationExpiryDate"
+                    type="date"
+                    value={refrigerationExpiryDate}
+                    onChange={(e) => setRefrigerationExpiryDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="space-y-3 rounded-xl border bg-slate-50 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -422,7 +553,7 @@ export default function NewTransportModal({
                   onChange={(e) => setNextService(e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5 sm:col-span-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="lastServiceKm">Km ultima revisio</Label>
                 <Input
                   id="lastServiceKm"
@@ -435,8 +566,132 @@ export default function NewTransportModal({
                   placeholder="Ex: 128540"
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nextServiceKm">Km propera revisio</Label>
+                <Input
+                  id="nextServiceKm"
+                  type="number"
+                  min={
+                    lastServiceKm.trim() !== '' && Number.isFinite(Number(lastServiceKm))
+                      ? Number(lastServiceKm)
+                      : 0
+                  }
+                  step="1"
+                  inputMode="numeric"
+                  value={nextServiceKm}
+                  onChange={(e) => setNextServiceKm(e.target.value)}
+                  placeholder="Ex: 148540"
+                />
+              </div>
             </div>
           </div>
+
+          {tachographRequired ? (
+            <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                  Revisió del tacògraf
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  La pròxima revisió es calcula automàticament cada 2 anys.
+                </p>
+              </div>
+
+              {tachographReviewDates.length === 0 ? (
+                <div className="space-y-1.5 sm:max-w-sm">
+                  <Label htmlFor="firstTachographReviewDate">Primera revisió superada</Label>
+                  <Input
+                    id="firstTachographReviewDate"
+                    type="date"
+                    max={currentDateKey()}
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) setTachographReviewDates([event.target.value])
+                    }}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-3 rounded-lg border border-violet-100 bg-white p-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <span className="block text-xs text-slate-500">Última revisió</span>
+                      <span className="font-medium">{formatDateKey(tachographInfo.latestReviewDate)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-slate-500">Pròxima revisió</span>
+                      <span className="font-medium">{formatDateKey(tachographInfo.nextReviewDate)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-slate-500">Estat</span>
+                      <span
+                        className={`font-medium ${
+                          tachographInfo.state === 'overdue'
+                            ? 'text-red-600'
+                            : tachographInfo.state === 'upcoming'
+                              ? 'text-amber-600'
+                              : 'text-green-600'
+                        }`}
+                      >
+                        {tachographInfo.state === 'overdue'
+                          ? 'Vençuda'
+                          : tachographInfo.state === 'upcoming'
+                            ? `Caduca en ${tachographInfo.daysRemaining} dies`
+                            : 'Vigent'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-slate-600">Historial de revisions</span>
+                    <ul className="flex flex-wrap gap-2">
+                      {tachographReviewDates.map((date) => (
+                        <li
+                          key={date}
+                          className="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-2 py-1 text-xs"
+                        >
+                          <span>{formatDateKey(date)}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTachographReviewDates((current) =>
+                                current.filter((reviewDate) => reviewDate !== date)
+                              )
+                            }
+                            className="text-slate-400 hover:text-red-600"
+                            aria-label={`Eliminar revisió del ${formatDateKey(date)}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="flex-1 space-y-1.5">
+                      <Label htmlFor="newTachographReviewDate">Nova revisió superada</Label>
+                      <Input
+                        id="newTachographReviewDate"
+                        type="date"
+                        min={tachographInfo.latestReviewDate || undefined}
+                        max={currentDateKey()}
+                        value={newTachographReviewDate}
+                        onChange={(event) => setNewTachographReviewDate(event.target.value)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!newTachographReviewDate}
+                      onClick={handleAddTachographReview}
+                    >
+                      Marcar com superada
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
 
           <div className="space-y-3 rounded-xl border bg-slate-50 p-3">
             <button

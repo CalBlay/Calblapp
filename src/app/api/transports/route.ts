@@ -3,6 +3,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { requireTransportsFleetEdit } from '@/lib/server/transportsApiAuth'
+import { normalizeTachographReviewDates } from '@/lib/transportTachograph'
 
 type TransportDocument = {
   id?: string
@@ -57,22 +58,32 @@ export async function POST(req: Request) {
       plate,
       type,
       conductorId,
+      refrigerated,
+      refrigerationReviewDate,
+      refrigerationExpiryDate,
       itvDate,
       itvExpiry,
       lastService,
       lastServiceKm,
+      nextServiceKm,
       nextService,
+      tachographReviewDates,
       documents,
       monthlyMileage,
     } = body as {
       plate: string
       type: string
       conductorId?: string | null
+      refrigerated?: boolean
+      refrigerationReviewDate?: string | null
+      refrigerationExpiryDate?: string | null
       itvDate?: string | null
       itvExpiry?: string | null
       lastService?: string | null
       lastServiceKm?: number | null
+      nextServiceKm?: number | null
       nextService?: string | null
+      tachographReviewDates?: string[]
       documents?: TransportDocument[]
       monthlyMileage?: MonthlyMileageEntry[]
     }
@@ -91,16 +102,25 @@ export async function POST(req: Request) {
       typeof lastServiceKm === 'number' && Number.isFinite(lastServiceKm) && lastServiceKm >= 0
         ? lastServiceKm
         : null
+    const normalizedNextServiceKm =
+      typeof nextServiceKm === 'number' && Number.isFinite(nextServiceKm) && nextServiceKm >= 0
+        ? nextServiceKm
+        : null
 
     const ref = await firestoreAdmin.collection('transports').add({
       plate: String(plate).trim(),
       type: String(type).trim(),
       conductorId: conductorId || null,
+      refrigerated: refrigerated === true,
+      refrigerationReviewDate: refrigerated === true ? refrigerationReviewDate || null : null,
+      refrigerationExpiryDate: refrigerated === true ? refrigerationExpiryDate || null : null,
       itvDate: itvDate || null,
       itvExpiry: itvExpiry || null,
       lastService: lastService || null,
       lastServiceKm: normalizedLastServiceKm,
+      nextServiceKm: normalizedNextServiceKm,
       nextService: nextService || null,
+      tachographReviewDates: normalizeTachographReviewDates(tachographReviewDates),
       documents: normalizedDocuments,
       monthlyMileage: normalizedMonthlyMileage,
       createdAt: Date.now(),

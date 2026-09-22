@@ -1,17 +1,62 @@
 export const TRANSPORT_TYPE_OPTIONS = [
-  { value: 'comercial', label: 'Comercial' },
-  { value: 'transport', label: 'Transport' },
-  { value: 'furgonetaPetita', label: 'Furgoneta petita' },
-  { value: 'furgonetaManteniment', label: 'Furgoneta manteniment' },
-  { value: 'furgonetaMitjana', label: 'Furgoneta mitjana' },
-  { value: 'furgonetaGran', label: 'Furgoneta gran' },
-  { value: 'camioPPlataforma', label: 'Camio P.Plataforma' },
-  { value: 'camioGran', label: 'Camio Gran' },
-  { value: 'camioPPlataformaFred', label: 'Camio P.Plataforma Fred' },
-  { value: 'camioGranFred', label: 'Camio Gran Fred' },
+  { value: 'comercial', label: 'Comercial', serviceIntervalKm: 20000 },
+  { value: 'transport', label: 'Transport', serviceIntervalKm: 20000 },
+  { value: 'furgonetaPetita', label: 'Furgoneta petita', serviceIntervalKm: 20000 },
+  { value: 'furgonetaManteniment', label: 'Furgoneta manteniment', serviceIntervalKm: 20000 },
+  { value: 'furgonetaMitjana', label: 'Furgoneta mitjana', serviceIntervalKm: 20000 },
+  { value: 'furgonetaGran', label: 'Furgoneta gran', serviceIntervalKm: 20000 },
+  { value: 'camioPPlataforma', label: 'Camio P.Plataforma', serviceIntervalKm: 20000 },
+  {
+    value: 'camioGran',
+    label: 'Camio Gran',
+    requiresLargeTruckLicense: true,
+    tachographRequired: true,
+    serviceIntervalKm: 40000,
+  },
+  {
+    value: 'camioPPlataformaFred',
+    label: 'Camio P.Plataforma Fred',
+    refrigeratedByDefault: true,
+    serviceIntervalKm: 20000,
+  },
+  {
+    value: 'camioGranFred',
+    label: 'Camio Gran Fred',
+    requiresLargeTruckLicense: true,
+    refrigeratedByDefault: true,
+    tachographRequired: true,
+    serviceIntervalKm: 40000,
+  },
 ] as const
 
-export type TransportType = (typeof TRANSPORT_TYPE_OPTIONS)[number]['value']
+export type TransportType = string
+
+export type TransportTypeDefinition = {
+  value: string
+  label: string
+  active: boolean
+  sortOrder: number
+  requiresLargeTruckLicense: boolean
+  refrigeratedByDefault: boolean
+  tachographRequired: boolean
+  serviceIntervalKm: number
+  fromDefaults?: boolean
+}
+
+export const DEFAULT_TRANSPORT_TYPE_DEFINITIONS: TransportTypeDefinition[] =
+  TRANSPORT_TYPE_OPTIONS.map((option, index) => ({
+    value: option.value,
+    label: option.label,
+    active: true,
+    sortOrder: index * 10,
+    requiresLargeTruckLicense:
+      'requiresLargeTruckLicense' in option && option.requiresLargeTruckLicense === true,
+    refrigeratedByDefault:
+      'refrigeratedByDefault' in option && option.refrigeratedByDefault === true,
+    tachographRequired: 'tachographRequired' in option && option.tachographRequired === true,
+    serviceIntervalKm: option.serviceIntervalKm,
+    fromDefaults: true,
+  }))
 
 export const TRANSPORT_TYPE_LABELS: Record<string, string> =
   TRANSPORT_TYPE_OPTIONS.reduce((acc, option) => {

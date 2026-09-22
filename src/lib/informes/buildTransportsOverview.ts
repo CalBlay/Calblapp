@@ -30,6 +30,7 @@ type TransportRecord = {
   itvExpiry?: string | null
   lastService?: string | null
   lastServiceKm?: number | null
+  nextServiceKm?: number | null
   monthlyMileage?: MonthlyMileageEntry[]
 }
 
@@ -194,24 +195,35 @@ function computeReviewState(transport: TransportRecord, today: Date, lastKm: num
     transport.lastServiceKm >= 0
       ? transport.lastServiceKm
       : null
+  const configuredNextServiceKm =
+    typeof transport.nextServiceKm === 'number' &&
+    Number.isFinite(transport.nextServiceKm) &&
+    transport.nextServiceKm >= 0
+      ? transport.nextServiceKm
+      : null
 
   if (
     typeof lastKm === 'number' &&
     typeof lastServiceKm === 'number' &&
     lastKm >= lastServiceKm
   ) {
-    const deltaKm = lastKm - lastServiceKm
     const threshold = reviewThreshold(transport.type)
-    if (deltaKm >= threshold) {
+    const nextServiceKm = configuredNextServiceKm ?? lastServiceKm + threshold
+    const serviceIntervalKm =
+      configuredNextServiceKm != null && configuredNextServiceKm > lastServiceKm
+        ? configuredNextServiceKm - lastServiceKm
+        : threshold
+    const remainingKm = nextServiceKm - lastKm
+    if (remainingKm <= 0) {
       return {
         state: 'overdue' as const,
-        label: `Revisio km vencuda (${new Intl.NumberFormat('ca-ES').format(deltaKm)} km)`,
+        label: `Revisio km vencuda (${new Intl.NumberFormat('ca-ES').format(Math.abs(remainingKm))} km excedits)`,
       }
     }
-    if (threshold - deltaKm <= Math.max(2000, threshold * 0.1)) {
+    if (remainingKm <= Math.max(2000, serviceIntervalKm * 0.1)) {
       return {
         state: 'upcoming' as const,
-        label: `Revisio propera per km (${new Intl.NumberFormat('ca-ES').format(deltaKm)} km)`,
+        label: `Revisio propera per km (${new Intl.NumberFormat('ca-ES').format(remainingKm)} km restants)`,
       }
     }
   }

@@ -6,6 +6,7 @@ import {
   normalizeTransportType,
   type TransportType,
 } from '@/lib/transportTypes'
+import { normalizeTachographReviewDates } from '@/lib/transportTachograph'
 
 interface TransportDocument {
   id: string
@@ -28,12 +29,17 @@ interface TransportApiItem {
   conductorName?: string | null
   conductor?: string | null
   available?: boolean
+  refrigerated?: boolean
+  refrigerationReviewDate?: string | null
+  refrigerationExpiryDate?: string | null
   status?: string | null
   itvDate?: string | null
   itvExpiry?: string | null
   lastService?: string | null
   lastServiceKm?: number | null
+  nextServiceKm?: number | null
   nextService?: string | null
+  tachographReviewDates?: string[]
   documents?: Array<TransportDocument | string>
   monthlyMileage?: TransportMonthlyMileageEntry[]
 }
@@ -46,6 +52,9 @@ export interface Transport {
   conductorName?: string | null
   conductor?: string | null
   available: boolean
+  refrigerated: boolean
+  refrigerationReviewDate?: string | null
+  refrigerationExpiryDate?: string | null
   status?: string | null
 
   // 🔹 Camps nous de manteniment / documentació
@@ -53,7 +62,9 @@ export interface Transport {
   itvExpiry?: string | null        // Caducitat ITV
   lastService?: string | null      // Última revisió
   lastServiceKm?: number | null
+  nextServiceKm?: number | null
   nextService?: string | null      // Properà revisió
+  tachographReviewDates?: string[]
 
   documents?: TransportDocument[]
   monthlyMileage?: TransportMonthlyMileageEntry[]
@@ -102,6 +113,13 @@ export function useTransports(): UseTransportsResult {
         conductorName: t.conductorName ?? null,
         conductor: t.conductor ?? null,
         available: typeof t.available === 'boolean' ? t.available : true,
+        refrigerated:
+          typeof t.refrigerated === 'boolean'
+            ? t.refrigerated
+            : normalizeTransportType(t.type) === 'camioPPlataformaFred' ||
+              normalizeTransportType(t.type) === 'camioGranFred',
+        refrigerationReviewDate: t.refrigerationReviewDate ?? null,
+        refrigerationExpiryDate: t.refrigerationExpiryDate ?? null,
         status: t.status ?? null,
         itvDate: t.itvDate ?? null,
         itvExpiry: t.itvExpiry ?? null,
@@ -110,7 +128,12 @@ export function useTransports(): UseTransportsResult {
           typeof t.lastServiceKm === 'number' && Number.isFinite(t.lastServiceKm)
             ? t.lastServiceKm
             : null,
+        nextServiceKm:
+          typeof t.nextServiceKm === 'number' && Number.isFinite(t.nextServiceKm)
+            ? t.nextServiceKm
+            : null,
         nextService: t.nextService ?? null,
+        tachographReviewDates: normalizeTachographReviewDates(t.tachographReviewDates),
         documents: Array.isArray(t.documents)
           ? t.documents
               .map((doc, docIndex) => {

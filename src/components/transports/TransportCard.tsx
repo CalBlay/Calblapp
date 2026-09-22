@@ -1,18 +1,21 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { Trash2, Edit2, Truck, FileText, AlertTriangle } from 'lucide-react'
+import { Trash2, Edit2, Truck, FileText, AlertTriangle, Snowflake, Gauge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import type { Transport } from '@/hooks/useTransports'
-import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
+import { TRANSPORT_TYPE_LABELS, type TransportTypeDefinition } from '@/lib/transportTypes'
+import { getTachographReviewInfo } from '@/lib/transportTachograph'
 
 interface Props {
   transport: Transport
+  transportTypeDefinition?: TransportTypeDefinition
   driverName?: string | null
   onEdit: () => void
   onDelete: () => void
+  canEdit: boolean
 }
 
 function formatDate(d?: string | null): string {
@@ -33,11 +36,28 @@ function addYears(date: Date, years: number): Date {
   return next
 }
 
-export function TransportCard({ transport, driverName, onEdit, onDelete }: Props) {
+export function TransportCard({
+  transport,
+  transportTypeDefinition,
+  driverName,
+  onEdit,
+  onDelete,
+  canEdit,
+}: Props) {
   const [available, setAvailable] = useState(transport.available)
   const today = useMemo(() => new Date(), [])
+  const isLargeTruck =
+    transportTypeDefinition?.requiresLargeTruckLicense ||
+    transport.type === 'camioGran' ||
+    transport.type === 'camioGranFred'
+  const tachographRequired = transportTypeDefinition?.tachographRequired ?? isLargeTruck
+  const tachographInfo = useMemo(
+    () => getTachographReviewInfo(transport.tachographReviewDates || [], today),
+    [today, transport.tachographReviewDates]
+  )
 
   const handleToggle = async (newStatus: boolean) => {
+    if (!canEdit) return
     setAvailable(newStatus)
 
     try {
@@ -121,22 +141,38 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
     const annualDueDate = addYears(lastServiceDate, 1)
     const annualDiffDays = Math.round((annualDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     const isLargeTruck = transport.type === 'camioGran' || transport.type === 'camioGranFred'
-    const kmThreshold = isLargeTruck ? 40000 : 20000
+    const defaultKmThreshold =
+      transportTypeDefinition?.serviceIntervalKm || (isLargeTruck ? 40000 : 20000)
     const lastServiceKm =
       typeof transport.lastServiceKm === 'number' && Number.isFinite(transport.lastServiceKm)
         ? transport.lastServiceKm
         : null
-    const hasValidServiceKm =
-      typeof lastServiceKm === 'number' && lastServiceKm >= 0
-    const kmSinceService =
-      hasValidServiceKm && typeof latestMileage === 'number' && latestMileage >= lastServiceKm
-        ? latestMileage - lastServiceKm
+    const configuredNextServiceKm =
+      typeof transport.nextServiceKm === 'number' &&
+      Number.isFinite(transport.nextServiceKm) &&
+      transport.nextServiceKm >= 0
+        ? transport.nextServiceKm
         : null
-    const kmRemaining = typeof kmSinceService === 'number' ? kmThreshold - kmSinceService : null
+    const effectiveNextServiceKm =
+      typeof configuredNextServiceKm === 'number'
+        ? configuredNextServiceKm
+        : typeof lastServiceKm === 'number' && lastServiceKm >= 0
+          ? lastServiceKm + defaultKmThreshold
+          : null
+    const serviceIntervalKm =
+      typeof configuredNextServiceKm === 'number' &&
+      typeof lastServiceKm === 'number' &&
+      configuredNextServiceKm > lastServiceKm
+        ? configuredNextServiceKm - lastServiceKm
+        : defaultKmThreshold
+    const kmRemaining =
+      typeof latestMileage === 'number' && typeof effectiveNextServiceKm === 'number'
+        ? effectiveNextServiceKm - latestMileage
+        : null
 
-    if (typeof kmSinceService === 'number' && kmSinceService >= kmThreshold) {
+    if (typeof kmRemaining === 'number' && kmRemaining <= 0) {
       return {
-        label: `Revisio per km vencuda (${formatKm(kmSinceService)})`,
+        label: `Revisio per km vencuda (${formatKm(Math.abs(kmRemaining))} excedits)`,
         color: 'text-red-600',
       }
     }
@@ -148,7 +184,7 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
       }
     }
 
-    if (typeof kmRemaining === 'number' && kmRemaining <= Math.round(kmThreshold * 0.1)) {
+    if (typeof kmRemaining === 'number' && kmRemaining <= Math.round(serviceIntervalKm * 0.1)) {
       return {
         label: `Revisio propera per km (${formatKm(kmRemaining)} restants)`,
         color: 'text-amber-600',
@@ -166,7 +202,7 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
       label: 'Revisio al dia',
       color: 'text-green-600',
     }
-  }, [latestMileage, today, transport.lastService, transport.lastServiceKm, transport.type])
+  }, [latestMileage, today, transport.lastService, transport.lastServiceKm, transport.nextServiceKm, transport.type, transportTypeDefinition?.serviceIntervalKm])
   const documentsCount = transport.documents?.length ?? 0
 
   return (
@@ -179,12 +215,13 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
           <div className="flex flex-col">
             <h3 className="text-base font-bold tracking-tight">{transport.plate}</h3>
             <span className="text-xs text-slate-500">
-              {TRANSPORT_TYPE_LABELS[transport.type] || transport.type}
+              {transportTypeDefinition?.label || TRANSPORT_TYPE_LABELS[transport.type] || transport.type}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        {canEdit ? (
+          <div className="flex items-center gap-1">
           <Button
             size="icon"
             variant="ghost"
@@ -201,7 +238,8 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
           >
             <Trash2 className="h-4 w-4 text-red-600" />
           </Button>
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -219,6 +257,40 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
           <AlertTriangle className="mr-1 h-3 w-3" />
           {itvInfo.label}
         </Badge>
+
+        {transport.refrigerated ? (
+          <Badge
+            variant="outline"
+            className="border-sky-300 bg-sky-50 text-sky-700"
+          >
+            <Snowflake className="mr-1 h-3 w-3" />
+            Fred
+          </Badge>
+        ) : null}
+
+        {tachographRequired ? (
+          <Badge
+            variant="outline"
+            className={
+              tachographInfo.state === 'overdue'
+                ? 'border-red-300 bg-red-50 text-red-700'
+                : tachographInfo.state === 'upcoming'
+                  ? 'border-amber-300 bg-amber-50 text-amber-700'
+                  : tachographInfo.state === 'ok'
+                    ? 'border-violet-300 bg-violet-50 text-violet-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-500'
+            }
+          >
+            <Gauge className="mr-1 h-3 w-3" />
+            {tachographInfo.state === 'overdue'
+              ? 'Tacògraf vençut'
+              : tachographInfo.state === 'upcoming'
+                ? 'Tacògraf pròxim'
+                : tachographInfo.state === 'ok'
+                  ? 'Tacògraf vigent'
+                  : 'Tacògraf sense dades'}
+          </Badge>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
@@ -244,9 +316,48 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
             <span className="text-slate-600">
               Ultima: <span className="font-medium">{formatDate(transport.lastService)}</span>
             </span>
+            <span className="text-slate-600">
+              Km propera: <span className="font-medium">{formatKm(transport.nextServiceKm)}</span>
+            </span>
             <span className={serviceInfo.color}>{serviceInfo.label}</span>
           </div>
         </div>
+
+        {transport.refrigerated ? (
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-600">
+              <Snowflake className="h-3 w-3" />
+              Sistema de fred
+            </span>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-slate-600">
+              <span>
+                Revisió:{' '}
+                <span className="font-medium">{formatDate(transport.refrigerationReviewDate)}</span>
+              </span>
+              <span>
+                Caducitat:{' '}
+                <span className="font-medium">{formatDate(transport.refrigerationExpiryDate)}</span>
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {tachographRequired ? (
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <span className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-violet-600">
+              <Gauge className="h-3 w-3" />
+              Tacògraf
+            </span>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-slate-600">
+              <span>
+                Última: <span className="font-medium">{formatDate(tachographInfo.latestReviewDate)}</span>
+              </span>
+              <span>
+                Pròxima: <span className="font-medium">{formatDate(tachographInfo.nextReviewDate)}</span>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-1 flex items-center justify-between border-t border-slate-100 pt-2">
@@ -267,15 +378,17 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
           >
             {available ? 'Disponible' : 'No disponible'}
           </span>
-          <Switch
-            checked={available}
-            onCheckedChange={handleToggle}
-            className={`${
-              available
-                ? 'data-[state=checked]:bg-green-500'
-                : 'data-[state=unchecked]:bg-red-500'
-            }`}
-          />
+          {canEdit ? (
+            <Switch
+              checked={available}
+              onCheckedChange={handleToggle}
+              className={`${
+                available
+                  ? 'data-[state=checked]:bg-green-500'
+                  : 'data-[state=unchecked]:bg-red-500'
+              }`}
+            />
+          ) : null}
         </div>
       </div>
     </div>

@@ -19,11 +19,16 @@ export function useCreateTransport() {
     plate: string
     type: TransportType
     conductorId?: string | null
+    refrigerated?: boolean
+    refrigerationReviewDate?: string | null
+    refrigerationExpiryDate?: string | null
     itvDate?: string | null
     itvExpiry?: string | null
     lastService?: string | null
     lastServiceKm?: number | null
+    nextServiceKm?: number | null
     nextService?: string | null
+    tachographReviewDates?: string[]
     documents?: TransportDocumentPayload[]
     monthlyMileage?: TransportMonthlyMileageEntry[]
   }) {

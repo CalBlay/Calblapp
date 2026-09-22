@@ -86,6 +86,11 @@ import {
   EVENT_CLOSING_ACTION,
   canEnableEventClosingAction,
 } from '@/lib/eventClosingPermissions'
+import {
+  TRANSPORTS_ACTION,
+  TRANSPORTS_TYPES_MANAGE_PERM,
+  TRANSPORTS_UI_PATH,
+} from '@/lib/transportsPermissions'
 
 type UiPermissionMap = Record<string, boolean>
 type UiEditMap = Record<string, boolean>
@@ -102,6 +107,7 @@ type UserAccessAssignment = {
 
 // Catàleg mínim d'accions especials (MVP). Anirem ampliant per mòduls.
 const ACTION_CATALOG: Array<{ path: string; action: string }> = [
+  { path: TRANSPORTS_UI_PATH, action: TRANSPORTS_ACTION.TYPES_MANAGE },
   { path: '/menu/allergens/bbdd', action: 'import' },
   { path: '/menu/allergens/bbdd', action: 'replace' },
   { path: '/menu/allergens/bbdd', action: 'export' },
@@ -498,6 +504,15 @@ export async function GET() {
     })
   } else {
     actions[PREPARATION_IMPORT_PERM] = false
+  }
+
+  actions[TRANSPORTS_TYPES_MANAGE_PERM] = false
+  if (
+    map[TRANSPORTS_UI_PATH] === true &&
+    edit[TRANSPORTS_UI_PATH] === true &&
+    effectFor(assignment, TRANSPORTS_TYPES_MANAGE_PERM) === 'allow'
+  ) {
+    actions[TRANSPORTS_TYPES_MANAGE_PERM] = true
   }
 
   if (map[MAINTENANCE_TICKETS_UI_PATH] === true) {

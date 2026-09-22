@@ -17,6 +17,7 @@ type TransportRecord = {
   itvExpiry?: string | null
   lastService?: string | null
   lastServiceKm?: number | null
+  nextServiceKm?: number | null
   monthlyMileage?: TransportMonthlyMileageEntry[]
   lastReviewNotificationKey?: string | null
   lastItvNotificationKey?: string | null
@@ -99,23 +100,29 @@ function buildReviewAlert(transportId: string, transport: TransportRecord, today
     transport.lastServiceKm >= 0
       ? transport.lastServiceKm
       : null
+  const nextServiceKm =
+    typeof transport.nextServiceKm === 'number' &&
+    Number.isFinite(transport.nextServiceKm) &&
+    transport.nextServiceKm >= 0
+      ? transport.nextServiceKm
+      : typeof lastServiceKm === 'number'
+        ? lastServiceKm + kmThreshold
+        : null
 
   if (
     typeof latestMileage === 'number' &&
-    typeof lastServiceKm === 'number' &&
-    latestMileage >= lastServiceKm
+    typeof nextServiceKm === 'number' &&
+    latestMileage >= nextServiceKm
   ) {
-    const kmSinceService = latestMileage - lastServiceKm
-    if (kmSinceService >= kmThreshold) {
-      return {
-        family: 'review',
-        key: `km:${lastService}:${lastServiceKm}:${kmThreshold}`,
-        type: 'km',
-        title: `Revisio pendent del vehicle ${plate}`,
-        body: `${plate} ha superat el llindar de revisio per km (${formatKm(kmSinceService)} des de l ultima revisio).`,
-        notificationType: 'transport_review_due',
-        calendarDate: reminderDate,
-      }
+    const exceededKm = latestMileage - nextServiceKm
+    return {
+      family: 'review',
+      key: `km:${lastService}:${nextServiceKm}`,
+      type: 'km',
+      title: `Revisio pendent del vehicle ${plate}`,
+      body: `${plate} ha superat els km de la propera revisio (${formatKm(exceededKm)} excedits).`,
+      notificationType: 'transport_review_due',
+      calendarDate: reminderDate,
     }
   }
 

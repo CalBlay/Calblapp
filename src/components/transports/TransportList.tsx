@@ -5,17 +5,22 @@ import React from 'react'
 import { Transport } from '@/hooks/useTransports'
 import { usePersonnel } from '@/hooks/usePersonnel'
 import { TransportCard } from './TransportCard'
+import type { TransportTypeDefinition } from '@/lib/transportTypes'
 
 interface Props {
   transports: Transport[]
   onEdit: (t: Transport) => void
   onDelete: (t: Transport) => void
+  transportTypes: TransportTypeDefinition[]
+  canEdit: boolean
 }
 
 export default function TransportList({
   transports,
   onEdit,
   onDelete,
+  transportTypes,
+  canEdit,
 }: Props) {
   const { data: personnel } = usePersonnel()
 
@@ -38,9 +43,11 @@ export default function TransportList({
         <TransportCard
           key={t.id}
           transport={t}
+          transportTypeDefinition={transportTypes.find((type) => type.value === t.type)}
           driverName={getDriverName(t.conductorId)}
           onEdit={() => onEdit(t)}
           onDelete={() => onDelete(t)}
+          canEdit={canEdit}
         />
       ))}
     </div>

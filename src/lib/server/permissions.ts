@@ -78,6 +78,11 @@ import {
   DECO_TICKETS_ACTION,
   DECO_TICKETS_UI_PATH,
 } from '@/lib/decoTicketsPermissions'
+import {
+  TRANSPORTS_ACTION,
+  TRANSPORTS_TYPES_MANAGE_PERM,
+  TRANSPORTS_UI_PATH,
+} from '@/lib/transportsPermissions'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
 
@@ -398,6 +403,22 @@ export async function isUiPermissionGranted(params: {
       if (eff !== 'allow') return false
       return baseCanAttachEventVisitVideo(params.user)
     }
+  }
+
+  if (
+    parsed?.path === TRANSPORTS_UI_PATH &&
+    parsed.action === TRANSPORTS_ACTION.TYPES_MANAGE
+  ) {
+    const effect = await getClientOverrideEffectForPermission(
+      params.user.id,
+      TRANSPORTS_TYPES_MANAGE_PERM
+    )
+    if (effect !== 'allow') return false
+    const [canView, canEdit] = await Promise.all([
+      canViewUiPath({ user: params.user, path: TRANSPORTS_UI_PATH }),
+      canEditUiPath({ user: params.user, path: TRANSPORTS_UI_PATH }),
+    ])
+    return canView && canEdit
   }
 
   if (parsed?.path === DECO_TICKETS_UI_PATH) {
