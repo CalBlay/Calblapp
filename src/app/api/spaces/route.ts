@@ -24,6 +24,7 @@ export async function GET(request: Request): Promise<Response> {
     const finca = searchParams.getAll('finca')
     const comercial = searchParams.getAll('comercial')
     const baseDate = searchParams.get('baseDate') || undefined
+    const rangeMode = searchParams.get('view') === 'month' ? 'month' : 'week'
 
     // 🔑 filtres CLAU
     const stage = searchParams.getAll('stage')
@@ -58,7 +59,8 @@ export async function GET(request: Request): Promise<Response> {
       baseDate,
       stage,
       ln,
-      excludeGrupsRestaurants
+      excludeGrupsRestaurants,
+      rangeMode
     )
 
     return NextResponse.json(

@@ -17,8 +17,7 @@ import { DEFAULT_ALLERGENS } from '@/data/allergens'
 import { parseMenus } from '../bbdd/utils'
 import { fetchAllergensCatalog, fetchAllPlatsForExport } from '@/lib/allergens/bbddClient'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-
-type AllergenFilter = 'ANY' | 'NO' | 'T' | 'SI'
+import ModuleHeader from '@/components/layout/ModuleHeader'
 
 type AllergenItem = {
   key: string
@@ -68,19 +67,6 @@ const normalize = (value: string) =>
     .trim()
     .toLowerCase()
 
-const ALLERGEN_FILTER_OPTIONS: Array<{ value: AllergenFilter; label: string }> = [
-  { value: 'ANY', label: 'Qualsevol' },
-  { value: 'NO', label: 'No' },
-  { value: 'T', label: 'Traces' },
-  { value: 'SI', label: 'Si' },
-]
-
-const buildAllergenFilters = (list: readonly AllergenItem[]) =>
-  list.reduce<Record<string, AllergenFilter>>((acc, allergen) => {
-    acc[allergen.key] = 'ANY'
-    return acc
-  }, {})
-
 const mapPlatFromFirestore = (id: string, data: FirestorePlatDoc): Plat => {
   const nameEs = data.name?.es?.trim() || data.nameEs?.trim() || ''
   const nameEn = data.name?.en?.trim() || data.nameEn?.trim() || ''
@@ -110,6 +96,29 @@ const mapPlatFromFirestore = (id: string, data: FirestorePlatDoc): Plat => {
 
 const resolvePlatMenus = (plat: Plat) =>
   plat.menus && plat.menus.length > 0 ? plat.menus : parseMenus(plat.onEstanRaw || '')
+
+function PlatTranslations({ plat, displayName }: { plat: Plat; displayName: string }) {
+  const translations = [
+    { language: 'ES', value: plat.name?.es?.trim() },
+    { language: 'EN', value: plat.name?.en?.trim() },
+  ].filter(
+    (item): item is { language: string; value: string } =>
+      Boolean(item.value && item.value !== displayName)
+  )
+
+  if (translations.length === 0) return null
+
+  return (
+    <div className="mt-1 space-y-0.5 text-xs leading-4 text-slate-500">
+      {translations.map(item => (
+        <p key={item.language} className="line-clamp-2">
+          <span className="font-semibold text-slate-600">{item.language}:</span>{' '}
+          {item.value}
+        </p>
+      ))}
+    </div>
+  )
+}
 
 function Chip({
   active,
@@ -179,9 +188,6 @@ export default function AllergensSearchPage() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [familyFilter, setFamilyFilter] = useState('all')
   const [menuFilters, setMenuFilters] = useState<string[]>([])
-  const [allergenFilters, setAllergenFilters] = useState(() =>
-    buildAllergenFilters(DEFAULT_ALLERGENS)
-  )
   const [inverseMode, setInverseMode] = useState(false)
   const [avoidedAllergens, setAvoidedAllergens] = useState<string[]>([])
   const [consumptionFilters, setConsumptionFilters] = useState({
@@ -242,23 +248,6 @@ export default function AllergensSearchPage() {
     return combined
   }, [allergensCatalog, plats])
 
-  useEffect(() => {
-    setAllergenFilters(prev => {
-      const next: Record<string, AllergenFilter> = {}
-      allAllergenItems.forEach(item => {
-        next[item.key] = prev[item.key] || 'ANY'
-      })
-      return next
-    })
-  }, [allAllergenItems])
-
-  const quickAllergens = useMemo(() => allAllergenItems.slice(0, 8), [allAllergenItems])
-
-  const activeAdvancedCount = useMemo(
-    () => Object.values(allergenFilters).filter(value => value !== 'ANY').length,
-    [allergenFilters]
-  )
-
   const filteredPlats = useMemo(() => {
     const search = normalize(deferredSearchText)
 
@@ -284,24 +273,17 @@ export default function AllergensSearchPage() {
 
       if (menuFilters.length) {
         const menus = resolvePlatMenus(plat)
-        if (!menuFilters.every(menu => menus.includes(menu))) return false
+        if (!menuFilters.some(menu => menus.includes(menu))) return false
       }
 
-      if (consumptionFilters.vegan && !plat.consumption?.vegan) return false
-      if (consumptionFilters.vegetarian && !plat.consumption?.vegetarian) return false
+      if (inverseMode && consumptionFilters.vegan && !plat.consumption?.vegan) return false
+      if (inverseMode && consumptionFilters.vegetarian && !plat.consumption?.vegetarian) return false
 
-      if (inverseMode && avoidedAllergens.length > 0) {
+      if (inverseMode) {
         for (const key of avoidedAllergens) {
           const value = plat.allergens?.[key]
           if (value !== 'NO') return false
         }
-      }
-
-      for (const allergen of allAllergenItems) {
-        const filterValue = allergenFilters[allergen.key] || 'ANY'
-        if (filterValue === 'ANY') continue
-        const value = plat.allergens?.[allergen.key]
-        if (value !== filterValue) return false
       }
 
       return true
@@ -312,8 +294,6 @@ export default function AllergensSearchPage() {
     categoryFilter,
     familyFilter,
     menuFilters,
-    allergenFilters,
-    allAllergenItems,
     inverseMode,
     avoidedAllergens,
     consumptionFilters,
@@ -325,9 +305,11 @@ export default function AllergensSearchPage() {
     (menuFilters.length ? 1 : 0) +
     (consumptionFilters.vegetarian ? 1 : 0) +
     (consumptionFilters.vegan ? 1 : 0) +
-    (inverseMode ? 1 : 0) +
-    (avoidedAllergens.length ? 1 : 0) +
-    activeAdvancedCount
+    avoidedAllergens.length
+
+  const moreFilterCount =
+    (categoryFilter !== 'all' ? 1 : 0) +
+    (familyFilter !== 'all' ? 1 : 0)
 
   const toggleMenuFilter = (menu: string) => {
     setMenuFilters(prev =>
@@ -346,18 +328,19 @@ export default function AllergensSearchPage() {
     setCategoryFilter('all')
     setFamilyFilter('all')
     setMenuFilters([])
-    setAllergenFilters(buildAllergenFilters(allAllergenItems))
-    setInverseMode(false)
     setAvoidedAllergens([])
     setConsumptionFilters({ vegan: false, vegetarian: false })
+  }
+
+  const switchSearchMode = (nextMode: 'lookup' | 'suitable') => {
+    setInverseMode(nextMode === 'suitable')
+    resetFilters()
   }
 
   if (!allowed) {
     return (
       <>
-        <div className="hidden sm:block border-b border-gray-200 bg-gradient-to-r from-amber-100 to-yellow-50 px-4 py-3">
-          <div className="text-sm font-semibold text-gray-800">Al.lergens / Buscador</div>
-        </div>
+        <ModuleHeader />
         <div className="p-6 text-center text-sm text-gray-500">
           No tens permisos per accedir al buscador d&apos;allergens.
         </div>
@@ -367,63 +350,70 @@ export default function AllergensSearchPage() {
 
   return (
     <>
-      <div className="hidden sm:block border-b border-gray-200 bg-gradient-to-r from-amber-100 to-yellow-50 px-4 py-3">
-        <div className="text-sm font-semibold text-gray-800">Al.lergens / Buscador</div>
-      </div>
+      <ModuleHeader />
 
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-2 py-2 pb-24 sm:gap-3 sm:px-6 sm:py-3">
-        <div className="sticky top-0 z-20 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                <Input
-                  value={searchText}
-                  onChange={e => setSearchText(e.target.value)}
-                  placeholder="Cercar plat, codi o menu"
-                  className="h-auto border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0"
-                />
+      <section className="flex w-full flex-col gap-2 py-2 pb-24 sm:gap-3 sm:py-3">
+        <div className="z-20 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-4 lg:sticky lg:top-0">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-5">
+          <div className="grid w-full shrink-0 grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 lg:w-auto">
+            <button
+              type="button"
+              onClick={() => switchSearchMode('lookup')}
+              className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-left transition ${
+                !inverseMode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+              }`}
+              aria-pressed={!inverseMode}
+            >
+              <span className="block text-sm font-semibold">Consultar un plat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => switchSearchMode('suitable')}
+              className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-left transition ${
+                inverseMode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+              }`}
+              aria-pressed={inverseMode}
+            >
+              <span className="block text-sm font-semibold">Trobar plats aptes</span>
+            </button>
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:w-[260px] sm:flex-none">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <Input
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                placeholder={inverseMode ? 'Cercar dins dels resultats' : 'Nom del plat o codi'}
+                className="h-auto border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0"
+              />
+              {searchText ? (
                 <button
                   type="button"
-                  onClick={() => setFiltersOpen(true)}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 lg:hidden"
-                  aria-label="Obrir filtres"
+                  onClick={() => setSearchText('')}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-slate-500"
+                  aria-label="Netejar cerca"
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </button>
-                {searchText ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearchText('')}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-500"
-                    aria-label="Netejar cerca"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
+              ) : null}
+            </div>
 
-              <div className="hidden flex-wrap gap-2 lg:justify-end lg:flex">
-                <Chip
-                  active={inverseMode}
-                  onClick={() => {
-                    setInverseMode(prev => !prev)
-                    if (inverseMode) setAvoidedAllergens([])
-                  }}
-                >
-                  Apta
-                </Chip>
+            {inverseMode ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <Chip
                   active={consumptionFilters.vegetarian}
                   onClick={() =>
-                    setConsumptionFilters(prev => ({
-                      ...prev,
-                      vegetarian: !prev.vegetarian,
-                      vegan: prev.vegan && !prev.vegetarian ? false : prev.vegan,
-                    }))
+                    setConsumptionFilters(prev => {
+                      const vegetarian = !prev.vegetarian
+                      return {
+                        vegetarian,
+                        vegan: vegetarian ? prev.vegan : false,
+                      }
+                    })
                   }
                 >
-                  Veg.
+                  Vegetarià
                 </Chip>
                 <Chip
                   active={consumptionFilters.vegan}
@@ -435,85 +425,95 @@ export default function AllergensSearchPage() {
                     }))
                   }
                 >
-                  Vega
+                  Vegà
                 </Chip>
-                <Chip active={filtersOpen} onClick={() => setFiltersOpen(true)}>
-                  {activeFilterCount > 0 ? `Filtres ${activeFilterCount}` : 'Filtres'}
+                <Chip active={moreFilterCount > 0} onClick={() => setFiltersOpen(true)}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    {moreFilterCount > 0 ? `Acotar · ${moreFilterCount}` : 'Acotar resultats'}
+                  </span>
                 </Chip>
-                {(searchText || activeFilterCount > 0) && (
-                  <Chip active={false} onClick={resetFilters}>
-                    Neteja
-                  </Chip>
-                )}
+                {activeFilterCount > 0 ? (
+                  <Chip active={false} onClick={resetFilters}>Neteja</Chip>
+                ) : null}
               </div>
-            </div>
+            ) : null}
+          </div>
+          </div>
 
-            {inverseMode && (
-              <div className="hidden gap-2 overflow-x-auto pb-1 lg:flex">
-                {quickAllergens.map(allergen => (
+          {inverseMode ? (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-800">Què ha d’evitar el plat?</p>
+                {avoidedAllergens.length > 0 ? (
+                  <span className="text-xs font-semibold text-emerald-700">
+                    {avoidedAllergens.length} exclusions actives
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {allAllergenItems.map(allergen => (
                   <Chip
                     key={allergen.key}
                     active={avoidedAllergens.includes(allergen.key)}
                     onClick={() => toggleAvoidedAllergen(allergen.key)}
                   >
-                    {allergen.label}
+                    Sense {allergen.label.toLocaleLowerCase('ca')}
                   </Chip>
                 ))}
               </div>
-            )}
+            </div>
+          ) : null}
 
-            {menuOptions.length > 0 && (
-              <>
-                <div className="hidden flex-wrap gap-2 border-t border-slate-100 pt-3 lg:flex">
-                  {menuOptions.slice(0, 14).map(menu => (
-                    <Chip
-                      key={menu}
-                      active={menuFilters.includes(menu)}
-                      onClick={() => toggleMenuFilter(menu)}
-                    >
-                      {menu}
-                    </Chip>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {(inverseMode ||
-              consumptionFilters.vegetarian ||
-              consumptionFilters.vegan ||
-              activeFilterCount > 0 ||
-              menuFilters.length > 0) && (
-              <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-                {inverseMode ? <Chip active onClick={() => setFiltersOpen(true)}>Apta</Chip> : null}
-                {consumptionFilters.vegetarian ? (
-                  <Chip active onClick={() => setFiltersOpen(true)}>Veg.</Chip>
+          {menuOptions.length > 0 ? (
+            <div className="mt-3 hidden border-t border-slate-100 pt-3 lg:block">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-800">Menús</p>
+                {menuFilters.length > 0 ? (
+                  <span className="text-xs font-semibold text-emerald-700">
+                    {menuFilters.length} seleccionats
+                  </span>
                 ) : null}
-                {consumptionFilters.vegan ? (
-                  <Chip active onClick={() => setFiltersOpen(true)}>Vega</Chip>
-                ) : null}
-                {menuFilters.map(menu => (
-                  <Chip key={`active-${menu}`} active onClick={() => setFiltersOpen(true)}>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {menuOptions.map(menu => (
+                  <Chip
+                    key={menu}
+                    active={menuFilters.includes(menu)}
+                    onClick={() => toggleMenuFilter(menu)}
+                  >
                     {menu}
                   </Chip>
                 ))}
-                {activeAdvancedCount > 0 ? (
-                  <Chip active onClick={() => setFiltersOpen(true)}>
-                    Allergens {activeAdvancedCount}
-                  </Chip>
-                ) : null}
               </div>
-            )}
-          </div>
+            </div>
+          ) : null}
+
+          {menuOptions.length > 0 ? (
+            <details className="mt-3 border-t border-slate-100 pt-3 lg:hidden">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+                Menús{menuFilters.length > 0 ? ` · ${menuFilters.length} seleccionats` : ''}
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {menuOptions.map(menu => (
+                  <Chip
+                    key={`mobile-${menu}`}
+                    active={menuFilters.includes(menu)}
+                    onClick={() => toggleMenuFilter(menu)}
+                  >
+                    {menu}
+                  </Chip>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between px-1 text-xs text-slate-500">
           <span>{loading ? 'Carregant...' : `${filteredPlats.length} plats`}</span>
-          <span className="hidden lg:inline">
-            {inverseMode ? 'Mode apte activat' : 'Consulta general'}
-          </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filteredPlats.map(plat => {
             const name = plat.name?.ca || plat.name?.es || plat.name?.en || plat.code || ''
             const menus = resolvePlatMenus(plat)
@@ -529,7 +529,7 @@ export default function AllergensSearchPage() {
             return (
               <article
                 key={plat.id}
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm lg:px-4 lg:py-4"
+                className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm lg:px-4 lg:py-4"
               >
                 <div className="md:hidden">
                   <div className="min-w-0">
@@ -542,6 +542,8 @@ export default function AllergensSearchPage() {
                         {metaParts.join(' · ')}
                       </p>
                     ) : null}
+
+                    <PlatTranslations plat={plat} displayName={name} />
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -579,8 +581,8 @@ export default function AllergensSearchPage() {
                   </div>
                 </div>
 
-                <div className="hidden md:block">
-                <div className="lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)] lg:gap-6">
+                <div className="hidden h-full md:block">
+                <div className="grid h-full grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-4">
                   <div className="min-w-0">
                     <h2 className="truncate text-[15px] font-semibold leading-5 text-slate-900 lg:text-lg lg:leading-6">
                       {name}
@@ -592,11 +594,7 @@ export default function AllergensSearchPage() {
                       </p>
                     ) : null}
 
-                    {plat.name?.es && plat.name.es !== name ? (
-                      <p className="mt-1 hidden text-xs text-slate-500 lg:block">
-                        ES: {plat.name.es}
-                      </p>
-                    ) : null}
+                    <PlatTranslations plat={plat} displayName={name} />
 
                     <div className="mt-2 flex flex-wrap gap-1.5 lg:mt-3 lg:gap-2">
                       <Badge variant={positives.length > 0 ? 'destructive' : 'outline'}>
@@ -635,7 +633,7 @@ export default function AllergensSearchPage() {
                     )}
                   </div>
 
-                  <div className="mt-2 space-y-2 lg:mt-0 lg:border-l lg:border-slate-100 lg:pl-6">
+                  <div className="space-y-3 border-l border-slate-100 pl-4">
                     {positives.length > 0 ? (
                       <div>
                         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -691,7 +689,7 @@ export default function AllergensSearchPage() {
             className="h-[85vh] rounded-t-3xl border-0 bg-white px-0 pb-4 pt-0"
           >
             <SheetHeader className="border-b border-slate-200 px-4 py-4 text-left">
-              <SheetTitle className="text-left text-lg font-semibold">Filtres</SheetTitle>
+              <SheetTitle className="text-left text-lg font-semibold">Acotar resultats</SheetTitle>
             </SheetHeader>
 
             <div className="space-y-5 overflow-y-auto px-4 py-4">
@@ -728,77 +726,6 @@ export default function AllergensSearchPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-              </div>
-
-              {inverseMode && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Allergens a evitar
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {allAllergenItems.map(allergen => (
-                      <Chip
-                        key={allergen.key}
-                        active={avoidedAllergens.includes(allergen.key)}
-                        onClick={() => toggleAvoidedAllergen(allergen.key)}
-                      >
-                        {allergen.label}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {menuOptions.length > 0 && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Menus</label>
-                  <div className="flex flex-wrap gap-2">
-                    {menuOptions.map(menu => (
-                      <Chip
-                        key={menu}
-                        active={menuFilters.includes(menu)}
-                        onClick={() => toggleMenuFilter(menu)}
-                      >
-                        {menu}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Matriu d&apos;allergens
-                </label>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {allAllergenItems.map(allergen => (
-                    <div key={allergen.key} className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        {allergen.label}
-                      </label>
-                      <Select
-                        value={allergenFilters[allergen.key]}
-                        onValueChange={value =>
-                          setAllergenFilters(prev => ({
-                            ...prev,
-                            [allergen.key]: value as AllergenFilter,
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="bg-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ALLERGEN_FILTER_OPTIONS.map(option => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
                 </div>
               </div>
 

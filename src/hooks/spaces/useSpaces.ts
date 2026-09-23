@@ -52,7 +52,12 @@ function buildFacetValues(rows: SpaceApiRow[]) {
 }
 
 export function useSpaces(
-  filters: SpacesFilterState & { baseDate: string; month?: number; year?: number },
+  filters: SpacesFilterState & {
+    baseDate: string
+    month?: number
+    year?: number
+    view?: 'week' | 'month'
+  },
   refreshKey = 0
 ) {
   const [spaces, setSpaces] = useState<SpaceApiRow[]>([])
@@ -80,12 +85,14 @@ export function useSpaces(
         if (typeof filters.month === 'number') filteredParams.append('month', String(filters.month))
         if (typeof filters.year === 'number') filteredParams.append('year', String(filters.year))
         if (filters.baseDate) filteredParams.append('baseDate', filters.baseDate)
+        if (filters.view) filteredParams.append('view', filters.view)
 
         const facetParams = new URLSearchParams()
         ;(filters.stage ?? []).forEach((value) => facetParams.append('stage', value))
         if (typeof filters.month === 'number') facetParams.append('month', String(filters.month))
         if (typeof filters.year === 'number') facetParams.append('year', String(filters.year))
         if (filters.baseDate) facetParams.append('baseDate', filters.baseDate)
+        if (filters.view) facetParams.append('view', filters.view)
 
         const [filteredRes, facetRes] = await Promise.all([
           fetch(`/api/spaces?${filteredParams.toString()}`),
@@ -148,6 +155,7 @@ export function useSpaces(
     filters.excludeGrupsRestaurants,
     filters.month,
     filters.stage,
+    filters.view,
     filters.year,
     refreshKey,
   ])

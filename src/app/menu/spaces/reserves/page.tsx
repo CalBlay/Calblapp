@@ -6,6 +6,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { MotionDiv } from '@/lib/lazyMotion'
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
+import SpaceMonthView from '@/components/spaces/SpaceMonthView'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
 import FilterButton from '@/components/ui/filter-button'
@@ -34,13 +35,21 @@ import {
 } from '@/lib/spacesHeaderRule'
 import { countSpacesSearchEvents, filterSpacesRows } from '@/lib/spacesSearch'
 
+type SpacesViewMode = 'week' | 'month'
+
+const toISODate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate()
+  ).padStart(2, '0')}`
+
+const fromISODate = (value: string) => new Date(`${value}T12:00:00`)
+
 export default function SpacesPage() {
   const { ready: permsReady, canEditPath, uiActions } = useUiPermissions()
   const [refreshKey, setRefreshKey] = useState(0)
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const canPremisses = !permsReady || canEditPath(SPACES_PREMISSES_PATH)
-  const toISODate = (date: Date) => date.toISOString().split('T')[0]
   const [headerRule, setHeaderRule] = useState<SpacesHeaderRuleConfig>(
     DEFAULT_SPACES_HEADER_RULE
   )
@@ -52,6 +61,7 @@ export default function SpacesPage() {
     baseDate: string
     month: number
     year: number
+    view: SpacesViewMode
   }>(() => {
     const today = new Date()
     return {
@@ -63,6 +73,7 @@ export default function SpacesPage() {
       baseDate: toISODate(today),  // Setmana inicial
       month: today.getMonth(),
       year: today.getFullYear(),
+      view: 'week',
     }
   })
 
@@ -152,10 +163,15 @@ const {
   // -------------------------------
   // ðŸ”¹ Canvi de setmana
   // -------------------------------
-  const shiftWeek = (direction: 'prev' | 'next') => {
+  const shiftPeriod = (direction: 'prev' | 'next') => {
     setFilters(prev => {
-      const base = new Date(prev.baseDate)
-      base.setDate(base.getDate() + (direction === 'next' ? 7 : -7))
+      const base = fromISODate(prev.baseDate)
+      if (prev.view === 'month') {
+        base.setDate(1)
+        base.setMonth(base.getMonth() + (direction === 'next' ? 1 : -1))
+      } else {
+        base.setDate(base.getDate() + (direction === 'next' ? 7 : -7))
+      }
 
       return {
         ...prev,
@@ -170,7 +186,7 @@ const {
   // ðŸ”¹ Etiqueta setmana
   // -------------------------------
   const weekLabel = (() => {
-    const base = new Date(filters.baseDate)
+    const base = fromISODate(filters.baseDate)
     const monday = new Date(base)
     const dow = monday.getDay() || 7
     if (dow !== 1) monday.setDate(monday.getDate() - (dow - 1))
@@ -186,9 +202,36 @@ const {
     return `${f(monday)} - ${f(sunday)}`
   })()
 
+  const monthLabel = new Date(filters.year, filters.month, 1).toLocaleDateString(
+    'ca-ES',
+    { month: 'long', year: 'numeric' }
+  )
+
+  const setView = (view: SpacesViewMode) => {
+    setFilters((prev) => ({
+      ...prev,
+      view,
+      baseDate:
+        view === 'month'
+          ? toISODate(new Date(prev.year, prev.month, 1))
+          : prev.baseDate,
+    }))
+  }
+
+  const showWeekForDate = (date: string) => {
+    const next = new Date(`${date}T12:00:00`)
+    setFilters((prev) => ({
+      ...prev,
+      view: 'week',
+      baseDate: date,
+      month: next.getMonth(),
+      year: next.getFullYear(),
+    }))
+  }
+
   const updateMonth = (nextMonth: number) => {
     setFilters(prev => {
-      const base = new Date(prev.baseDate)
+      const base = fromISODate(prev.baseDate)
       const currentDay = base.getDate()
       const lastDay = new Date(prev.year, nextMonth + 1, 0).getDate()
       const nextDate = new Date(prev.year, nextMonth, Math.min(currentDay, lastDay))
@@ -203,7 +246,7 @@ const {
 
   const updateYear = (nextYear: number) => {
     setFilters(prev => {
-      const base = new Date(prev.baseDate)
+      const base = fromISODate(prev.baseDate)
       const currentDay = base.getDate()
       const lastDay = new Date(nextYear, prev.month + 1, 0).getDate()
       const nextDate = new Date(nextYear, prev.month, Math.min(currentDay, lastDay))
@@ -223,7 +266,7 @@ const {
     <SpacesSectionGate subpath={SPACES_RESERVES_PATH}>
       <ModuleHeader
         title="Espais"
-        subtitle="Reserves · Disponibilitat setmanal de finques"
+        subtitle={`Reserves · Disponibilitat ${filters.view === 'month' ? 'mensual' : 'setmanal'} de finques`}
         actions={
           canPremisses ? (
             <Link
@@ -243,22 +286,53 @@ const {
           className="mx-2 mb-2 mt-3 sm:mx-4 lg:mt-4"
           bodyClassName="flex-col gap-3 lg:flex-row lg:items-end"
         >
+          <div
+            className="flex rounded-lg bg-slate-100 p-1"
+            role="group"
+            aria-label="Vista de reserves"
+          >
+            <button
+              type="button"
+              onClick={() => setView('week')}
+              className={`min-h-9 flex-1 rounded-md px-3 text-sm font-medium transition sm:flex-none ${
+                filters.view === 'week'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              aria-pressed={filters.view === 'week'}
+            >
+              Setmana
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('month')}
+              className={`min-h-9 flex-1 rounded-md px-3 text-sm font-medium transition sm:flex-none ${
+                filters.view === 'month'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              aria-pressed={filters.view === 'month'}
+            >
+              Mes
+            </button>
+          </div>
+
           <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
             <button
               type="button"
-              onClick={() => shiftWeek('prev')}
-              aria-label="Setmana anterior"
+              onClick={() => shiftPeriod('prev')}
+              aria-label={filters.view === 'month' ? 'Mes anterior' : 'Setmana anterior'}
               className={corporateFilterChipClass}
             >
               {'<'}
             </button>
             <span className="flex-1 text-center text-sm font-semibold text-slate-800 sm:flex-none sm:text-base">
-              Setmana: {weekLabel}
+              {filters.view === 'month' ? monthLabel : `Setmana: ${weekLabel}`}
             </span>
             <button
               type="button"
-              onClick={() => shiftWeek('next')}
-              aria-label="Setmana següent"
+              onClick={() => shiftPeriod('next')}
+              aria-label={filters.view === 'month' ? 'Mes següent' : 'Setmana següent'}
               className={corporateFilterChipClass}
             >
               {'>'}
@@ -367,18 +441,34 @@ const {
              ðŸ§© Taula de dades
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {!loading && (
-          <SpaceGrid
-            data={visibleSpaces}
-            totals={totals}
-            baseDate={filters.baseDate}
-            headerRule={headerRule}
-            emptyMessage={
-              deferredSearch.trim()
-                ? 'Cap reserva coincideix amb la cerca en aquesta setmana.'
-                : undefined
-            }
-            onEventMutated={() => setRefreshKey((value) => value + 1)}
-          />
+          filters.view === 'month' ? (
+            <SpaceMonthView
+              data={visibleSpaces}
+              month={filters.month}
+              year={filters.year}
+              headerRule={headerRule}
+              emptyMessage={
+                deferredSearch.trim()
+                  ? 'Cap reserva coincideix amb la cerca en aquest mes.'
+                  : undefined
+              }
+              onShowWeek={showWeekForDate}
+              onEventMutated={() => setRefreshKey((value) => value + 1)}
+            />
+          ) : (
+            <SpaceGrid
+              data={visibleSpaces}
+              totals={totals}
+              baseDate={filters.baseDate}
+              headerRule={headerRule}
+              emptyMessage={
+                deferredSearch.trim()
+                  ? 'Cap reserva coincideix amb la cerca en aquesta setmana.'
+                  : undefined
+              }
+              onEventMutated={() => setRefreshKey((value) => value + 1)}
+            />
+          )
         )}
 
         {!loading && error && (

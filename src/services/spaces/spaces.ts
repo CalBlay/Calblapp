@@ -3,7 +3,16 @@ import { spacesLnFilterMatches } from '@/lib/spacesLn'
 import { SPACES_MANUAL_RESERVES_COLLECTION } from '@/lib/spacesPermissions'
 import { manualIdToCreatedAtIso } from '@/services/spaces/manualReserveZohoMatch'
 import type { Timestamp } from 'firebase-admin/firestore'
-import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
+import {
+  addDays,
+  differenceInCalendarDays,
+  endOfMonth,
+  endOfWeek,
+  format,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns'
 import {
   indexSpaceOwnershipDocs,
   resolveSpaceKind,
@@ -176,6 +185,8 @@ export interface SpacesResult {
   totalPaxPerDia: number[]
 }
 
+export type SpacesRangeMode = 'week' | 'month'
+
 export async function getSpacesByWeek(
   month: number,
   year: number,
@@ -184,7 +195,8 @@ export async function getSpacesByWeek(
   baseDate?: string,
   stage: string | string[] = 'all',
   lnFilter: string | string[] = '',
-  excludeGrupsRestaurants = false
+  excludeGrupsRestaurants = false,
+  rangeMode: SpacesRangeMode = 'week'
 ): Promise<SpacesResult> {
   try {
     const fincaFilters = toFilterArray(fincaFilter)
@@ -193,8 +205,15 @@ export async function getSpacesByWeek(
     const lnFilters = toFilterArray(lnFilter)
 
     const base = baseDate ? new Date(baseDate) : new Date(year, month)
-    const startRange = startOfWeek(base, { weekStartsOn: 1 })
-    const endRange = endOfWeek(base, { weekStartsOn: 1 })
+    const startRange =
+      rangeMode === 'month'
+        ? startOfMonth(new Date(year, month, 1))
+        : startOfWeek(base, { weekStartsOn: 1 })
+    const endRange =
+      rangeMode === 'month'
+        ? endOfMonth(new Date(year, month, 1))
+        : endOfWeek(base, { weekStartsOn: 1 })
+    const rangeDays = differenceInCalendarDays(endRange, startRange) + 1
     const startStr = format(startRange, 'yyyy-MM-dd')
     const endStr = format(endRange, 'yyyy-MM-dd')
 
@@ -390,17 +409,17 @@ export async function getSpacesByWeek(
     }
 
     const result: SpaceRow[] = []
-    const totalPaxPerDia = Array(7).fill(0)
+    const totalPaxPerDia = Array(rangeDays).fill(0)
 
     for (const finca of byFinca.keys()) {
       if (!matchesAnyFilter(finca, fincaFilters)) continue
       const days = byFinca.get(finca) || new Map<string, RawEvent[]>()
-      const dies: DayOut[] = Array.from({ length: 7 }, (_, index) => ({
+      const dies: DayOut[] = Array.from({ length: rangeDays }, (_, index) => ({
         date: format(addDays(startRange, index), 'yyyy-MM-dd'),
         events: [],
       }))
 
-      for (let index = 0; index < 7; index += 1) {
+      for (let index = 0; index < rangeDays; index += 1) {
         const dateISO = dies[index].date
         const events = days.get(dateISO) || []
         if (events.length === 0) continue
@@ -501,7 +520,11 @@ export async function getSpacesByWeek(
     return { data: result, totalPaxPerDia }
   } catch (error) {
     console.error('[getSpacesByWeek]', error)
-    return { data: [], totalPaxPerDia: Array(7).fill(0) }
+    const fallbackDays =
+      rangeMode === 'month'
+        ? new Date(year, month + 1, 0).getDate()
+        : 7
+    return { data: [], totalPaxPerDia: Array(fallbackDays).fill(0) }
   }
 }
 
