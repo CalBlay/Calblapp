@@ -29,6 +29,8 @@ import type { DriverCrewPremise } from "@/services/premises"
 import type { ComponentProps } from "react"
 import { getCrewMembersForDriver } from "@/lib/driverCrewUtils"
 import { buildReservedForRoleLine } from "../lib/quadrantPayloadShared"
+import EttProviderSelect from './EttProviderSelect'
+import type { EttProviderPremise } from '@/services/premises'
 
 type ServeisTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarServeis>, "embedded">
 
@@ -49,6 +51,7 @@ type Props = {
   settings: Record<ServicePhaseKey, ServicePhaseSetting>
   visibility: Record<ServicePhaseKey, boolean>
   ettState: Record<ServicePhaseKey, ServicePhaseEtt>
+  ettProviders: EttProviderPremise[]
   manualResponsibleId: string
   availableResponsables: ResponsableAvailabilityOption[]
   availableConductors: Array<{ id: string; name: string }>
@@ -80,6 +83,7 @@ export default function ServicePhasePanel({
   settings,
   visibility,
   ettState,
+  ettProviders,
   manualResponsibleId,
   availableResponsables,
   availableConductors,
@@ -393,6 +397,11 @@ export default function ServicePhasePanel({
                   {phaseEtt?.open ? (
                     <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
                       <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
+                        <EttProviderSelect
+                          providers={ettProviders}
+                          value={phaseEtt.data}
+                          onChange={(patch) => updateEtt(phase.key, patch)}
+                        />
                         <div>
                           <Label>Treballadors ETT</Label>
                           <Input

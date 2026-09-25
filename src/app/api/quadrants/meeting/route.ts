@@ -187,6 +187,8 @@ export async function GET(req: NextRequest) {
           : entriesToText(defaultScheduleEntries) || schedule,
         scheduleEntries,
         scheduleNotesSaved: !!eventNote,
+        meetingComment: eventNote?.meetingComment || '',
+        meetingCommentSaved: eventNote?.meetingCommentSaved || false,
         servicesResponsible: services.responsible,
         servicesTeam: services.team,
         servicesClosing: services.closing,
@@ -229,13 +231,36 @@ export async function PATCH(req: NextRequest) {
         ? body.department
         : null
     const isScheduleUpdate = body.kind === 'schedule'
+    const isCommentUpdate = body.kind === 'comment'
     const required = body.required !== false
     const arrivalTime = normalizeTime(body.arrivalTime)
-    if (!eventId || !isIsoDateDayParam(eventDay) || (!isScheduleUpdate && !department)) {
+    if (
+      !eventId ||
+      !isIsoDateDayParam(eventDay) ||
+      (!isScheduleUpdate && !isCommentUpdate && !department)
+    ) {
       return NextResponse.json({ error: 'Dades de decisió invàlides' }, { status: 400 })
     }
 
     const now = new Date().toISOString()
+    if (isCommentUpdate) {
+      const docId = Buffer.from(meetingEventKey(eventId, eventDay)).toString('base64url')
+      const payload = {
+        eventId,
+        eventCode,
+        eventDay,
+        meetingComment: String(body.meetingComment || '').trim().slice(0, 4000),
+        updatedAt: now,
+        updatedById: auth.user.id,
+        updatedByName: String(auth.user.name || auth.user.email || ''),
+      }
+      await firestoreAdmin
+        .collection(QUADRANTS_MEETING_EVENT_NOTES_COLLECTION)
+        .doc(docId)
+        .set(payload, { merge: true })
+      return NextResponse.json({ eventNote: { ...payload, id: docId } })
+    }
+
     if (isScheduleUpdate) {
       const docId = Buffer.from(meetingEventKey(eventId, eventDay)).toString('base64url')
       const scheduleEntries = parseScheduleEntries(body.scheduleEntries)

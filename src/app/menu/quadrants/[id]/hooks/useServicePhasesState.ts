@@ -118,6 +118,10 @@ const buildServicePhaseEttState = (params: {
         startTime: params.startTime,
         endTime: params.endTime,
         workers: '',
+        ettProviderId: '',
+        ettProviderName: '',
+        ettResponsibleName: '',
+        ettEmail: '',
       },
     }
     return acc
@@ -205,15 +209,36 @@ export function useServicePhasesState({
       setServiceJamoneroAssignments([])
       setServicePhaseVisibility(hydrated.visibility)
       setServicePhaseSettings(hydrated.settings)
-      setServicePhaseEtt(
-        buildServicePhaseEttState({
+      const nextEttState = buildServicePhaseEttState({
           serviceDate: existingDraft.startDate || defaultServiceDate,
           meetingPoint:
             String(existingDraft.meetingPoint || '').trim() || defaultMeetingPoint,
           startTime: existingDraft.startTime || startTime || '',
           endTime: existingDraft.endTime || endTime || '',
         })
-      )
+      const existingEttWorkers = (existingDraft.treballadors || []).filter((worker) => {
+        const name = String(worker?.name || '').trim().toLowerCase()
+        return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
+      })
+      const existingEtt = existingEttWorkers[0]
+      const phaseKey: ServicePhaseKey = existingDraft.phaseType === 'muntatge' ? 'muntatge' : 'event'
+      if (existingEttWorkers.length > 0) {
+        nextEttState[phaseKey] = {
+          open: true,
+          data: {
+            serviceDate: existingEtt?.startDate || existingDraft.startDate || defaultServiceDate,
+            meetingPoint: existingEtt?.meetingPoint || defaultMeetingPoint,
+            startTime: existingEtt?.startTime || existingDraft.startTime || startTime || '',
+            endTime: existingEtt?.endTime || existingDraft.endTime || endTime || '',
+            workers: String(existingEttWorkers.length),
+            ettProviderId: String(existingEtt?.ettProviderId || ''),
+            ettProviderName: String(existingEtt?.ettProviderName || ''),
+            ettResponsibleName: String(existingEtt?.ettResponsibleName || ''),
+            ettEmail: String(existingEtt?.ettEmail || ''),
+          },
+        }
+      }
+      setServicePhaseEtt(nextEttState)
       return
     }
 

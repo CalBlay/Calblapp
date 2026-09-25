@@ -47,6 +47,11 @@ export function buildLogisticaPayload(input: BuildLogisticaPayloadInput): BuiltP
       endDate: ettEntry.endDate,
       startTime: ettEntry.startTime,
       endTime: ettEntry.endTime,
+      ettProviderId: ettEntry.ettProviderId,
+      ettProviderName: ettEntry.ettProviderName,
+      ettResponsibleName: ettEntry.ettResponsibleName,
+      ettEmail: ettEntry.ettEmail,
+      ettGroupKey: 'logistica-event',
     })
     appendExternalWorkers(payload, entries)
     addTimetable({ startTime: ettEntry.startTime, endTime: ettEntry.endTime })

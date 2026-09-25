@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { ArrowLeft, ChevronDown, ChevronUp, Plus, Save, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Mail, Plus, Save, Trash2, UserPlus } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
@@ -114,6 +114,7 @@ const buildSnapshot = ({
       workerIds: group.workerIds,
     })),
     surveyNoResponseDefault: premises.surveyNoResponseDefault ?? 'no',
+    ettProviders: premises.ettProviders || [],
   })
 
 const emptyPremises = (department: string): Premises => ({
@@ -347,9 +348,9 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-    // people/driverCrews es llegeixen per sincronitzar amb premises; no re-executar en cada canvi local.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- premises és el disparador principal
-  }, [status, department, premises])
+    // Només les dades de premisses relacionades amb personal han de resincronitzar aquesta llista.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la resta són edicions locals del formulari
+  }, [status, department, premises.department, premises.conditions, premises.driverCrews])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -401,7 +402,13 @@ export default function QuadrantPremisesPage() {
     ]
   )
 
+  const currentSnapshotRef = useRef(currentSnapshot)
+  currentSnapshotRef.current = currentSnapshot
+
   const dirty = !loading && currentSnapshot !== lastSavedSnapshotRef.current
+  const hasIncompleteEttProvider = (premises.ettProviders || []).some(
+    (provider) => !provider.name.trim() || !provider.email.trim()
+  )
 
   const drivers = useMemo(
     () => people.filter((item) => item.isDriver),
@@ -617,6 +624,7 @@ export default function QuadrantPremisesPage() {
   }, [dirty])
 
   const handleSave = async () => {
+    const snapshotAtStart = currentSnapshotRef.current
     setSaving(true)
     setError(null)
     setSuccess(null)
@@ -692,22 +700,30 @@ export default function QuadrantPremisesPage() {
 
       const savedPremises = json.premises as Premises
       const savedVestimentText = (savedPremises.vestimentModels || []).join('\n')
-      setPremises(savedPremises)
-      setConditions(toEditableConditions(savedPremises))
-      setDriverCrews(toEditableDriverCrews(savedPremises, people))
-      setSurveyGroups(toEditableSurveyGroups(savedPremises))
-      setDefaultCharacteristicsText((savedPremises.defaultCharacteristics || []).join(', '))
-      setVestimentModelsText(savedVestimentText)
-      setMeta({ source: 'firestore', warnings: [] })
-      lastSavedSnapshotRef.current = buildSnapshot({
+      const savedConditions = toEditableConditions(savedPremises)
+      const savedDriverCrews = toEditableDriverCrews(savedPremises, people)
+      const savedSurveyGroups = toEditableSurveyGroups(savedPremises)
+      const savedDefaultCharacteristicsText = (savedPremises.defaultCharacteristics || []).join(', ')
+      const savedSnapshot = buildSnapshot({
         department,
         premises: savedPremises,
-        defaultCharacteristicsText: (savedPremises.defaultCharacteristics || []).join(', '),
+        defaultCharacteristicsText: savedDefaultCharacteristicsText,
         vestimentModelsText: savedVestimentText,
-        conditions: toEditableConditions(savedPremises),
-        driverCrews: toEditableDriverCrews(savedPremises, people),
-        surveyGroups: toEditableSurveyGroups(savedPremises),
+        conditions: savedConditions,
+        driverCrews: savedDriverCrews,
+        surveyGroups: savedSurveyGroups,
       })
+
+      if (currentSnapshotRef.current === snapshotAtStart) {
+        setPremises(savedPremises)
+        setConditions(savedConditions)
+        setDriverCrews(savedDriverCrews)
+        setSurveyGroups(savedSurveyGroups)
+        setDefaultCharacteristicsText(savedDefaultCharacteristicsText)
+        setVestimentModelsText(savedVestimentText)
+      }
+      setMeta({ source: 'firestore', warnings: [] })
+      lastSavedSnapshotRef.current = savedSnapshot
       setSuccess('Premisses desades correctament.')
       return true
     } catch (err) {
@@ -717,6 +733,19 @@ export default function QuadrantPremisesPage() {
       setSaving(false)
     }
   }
+
+  const handleSaveRef = useRef(handleSave)
+  handleSaveRef.current = handleSave
+
+  useEffect(() => {
+    if (!dirty || loading || saving || hasIncompleteEttProvider) return
+
+    const timeoutId = window.setTimeout(() => {
+      void handleSaveRef.current()
+    }, 900)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [currentSnapshot, dirty, hasIncompleteEttProvider, loading, saving])
 
   const handleLeave = async () => {
     if (!dirty) {
@@ -764,11 +793,17 @@ export default function QuadrantPremisesPage() {
             <Button
               type="button"
               onClick={handleSave}
-              disabled={saving || !dirty}
+              disabled={saving || !dirty || hasIncompleteEttProvider}
               className="bg-violet-600 hover:bg-violet-700"
             >
               <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Desant...' : 'Guardar canvis'}
+              {saving
+                ? 'Desant...'
+                : hasIncompleteEttProvider
+                  ? 'Completa dades ETT'
+                  : dirty
+                    ? 'Guardar ara'
+                    : 'Canvis guardats'}
             </Button>
           </div>
         }
@@ -983,6 +1018,143 @@ export default function QuadrantPremisesPage() {
                         Comptar com a «No»
                       </label>
                     </div>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-200 pt-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Label className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-indigo-600" /> Empreses ETT
+                        </Label>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Contactes disponibles als grups ETT i destinataris dels horaris.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setPremises((prev) => ({
+                            ...prev,
+                            ettProviders: [
+                              ...(prev.ettProviders || []),
+                              {
+                                id: `ett-provider-${Date.now()}`,
+                                name: '',
+                                responsibleName: '',
+                                email: '',
+                                active: true,
+                              },
+                            ],
+                          }))
+                        }
+                      >
+                        <Plus className="mr-1 h-4 w-4" /> Afegir
+                      </Button>
+                    </div>
+
+                    {(premises.ettProviders || []).length === 0 ? (
+                      <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        Encara no hi ha cap empresa ETT configurada.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {(premises.ettProviders || []).map((provider) => (
+                          <div key={provider.id} className="space-y-3 rounded-xl border border-slate-200 p-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label>Empresa</Label>
+                                <Input
+                                  required
+                                  value={provider.name}
+                                  onChange={(event) =>
+                                    setPremises((prev) => ({
+                                      ...prev,
+                                      ettProviders: (prev.ettProviders || []).map((item) =>
+                                        item.id === provider.id ? { ...item, name: event.target.value } : item
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="Nom de l’ETT"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label>Responsable</Label>
+                                <Input
+                                  value={provider.responsibleName}
+                                  onChange={(event) =>
+                                    setPremises((prev) => ({
+                                      ...prev,
+                                      ettProviders: (prev.ettProviders || []).map((item) =>
+                                        item.id === provider.id
+                                          ? { ...item, responsibleName: event.target.value }
+                                          : item
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="Nom del contacte"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                              <div className="flex-1 space-y-1">
+                                <Label>Correu</Label>
+                                <Input
+                                  required
+                                  type="email"
+                                  value={provider.email}
+                                  onChange={(event) =>
+                                    setPremises((prev) => ({
+                                      ...prev,
+                                      ettProviders: (prev.ettProviders || []).map((item) =>
+                                        item.id === provider.id ? { ...item, email: event.target.value } : item
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="responsable@empresa.cat"
+                                />
+                              </div>
+                              <label className="flex h-10 items-center gap-2 text-sm text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={provider.active}
+                                  onChange={(event) =>
+                                    setPremises((prev) => ({
+                                      ...prev,
+                                      ettProviders: (prev.ettProviders || []).map((item) =>
+                                        item.id === provider.id ? { ...item, active: event.target.checked } : item
+                                      ),
+                                    }))
+                                  }
+                                />
+                                Activa
+                              </label>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                aria-label={`Eliminar ${provider.name || 'empresa ETT'}`}
+                                onClick={() =>
+                                  setPremises((prev) => ({
+                                    ...prev,
+                                    ettProviders: (prev.ettProviders || []).filter((item) => item.id !== provider.id),
+                                  }))
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {hasIncompleteEttProvider ? (
+                      <p className="text-xs text-amber-700">
+                        Cal indicar l’empresa i el correu per activar l’autoguardat.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               )}

@@ -25,6 +25,10 @@ export type EditorRow = {
   arrivalTime?: string
   vehicleType?: string
   plate?: string
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
 }
 
 export type EditorGroup = {
@@ -59,6 +63,7 @@ export type EditorGroup = {
 
 export type EditorDraftInput = {
   id: string
+  eventId?: string
   code?: string
   eventName?: string
   location?: string | Record<string, unknown>

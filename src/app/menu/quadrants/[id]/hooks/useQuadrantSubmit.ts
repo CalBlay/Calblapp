@@ -174,6 +174,21 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
       setSuccess(false)
       let shouldClose = false
 
+      const missingEttProvider = isCuina
+        ? Number(cuinaEtt.data.workers || 0) > 0 && !String(cuinaEtt.data.ettEmail || '').includes('@')
+        : isServeis
+          ? Object.values(servicePhaseEtt).some(
+              (entry) => Number(entry.data.workers || 0) > 0 && !String(entry.data.ettEmail || '').includes('@')
+            )
+          : Boolean(ettEntry && !String(ettEntry.ettEmail || '').includes('@'))
+      if (missingEttProvider) {
+        const message = 'Selecciona una empresa ETT amb correu abans de desar el quadrant.'
+        setLoading(false)
+        setError(message)
+        toast.error(message)
+        return false
+      }
+
       const { id: manualResponsibleId, name: manualResponsibleName } = resolveManualResponsible(
         manualResp,
         availableResponsables,

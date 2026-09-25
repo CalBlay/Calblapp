@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, Loader2, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { CheckCircle2, Loader2, Mail, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
 import {
   quadrantEditorDisabledReason,
@@ -21,8 +21,11 @@ export type QuadrantEditorIconActionsProps = {
   onSave: (confirmAfterSave: boolean) => void
   deleting?: boolean
   reopening?: boolean
+  sendingEtt?: boolean
   hasPersistedDraft?: boolean
   confirmed?: boolean
+  canSendEtt?: boolean
+  onSendEtt?: () => void | Promise<void>
 }
 
 export default function QuadrantEditorIconActions({
@@ -37,8 +40,11 @@ export default function QuadrantEditorIconActions({
   onSave,
   deleting = false,
   reopening = false,
+  sendingEtt = false,
   hasPersistedDraft = false,
   confirmed = false,
+  canSendEtt = false,
+  onSendEtt,
 }: QuadrantEditorIconActionsProps) {
   const { ready, canSave, canConfirm, canReopen, canDeleteDraft } = useQuadrantEditorPermissions()
 
@@ -50,7 +56,7 @@ export default function QuadrantEditorIconActions({
       !autoPreview.learningStatus.hasEnoughData
   )
   const showManualLikeButtons = mode === 'manual' || autoHasEnoughData
-  const busy = loading || deleting || reopening
+  const busy = loading || deleting || reopening || sendingEtt
   const saveDisabled =
     confirmed || !canAutoGen || busy || autoPreviewLoading || autoInsufficient === true || !ready || !canSave
   const confirmDisabled =
@@ -141,6 +147,20 @@ export default function QuadrantEditorIconActions({
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         </Button>
+
+        {confirmed && canSendEtt && onSendEtt ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 w-9 rounded-full bg-indigo-600 p-0 text-white shadow hover:bg-indigo-700"
+            onClick={() => void onSendEtt()}
+            disabled={busy || !canConfirm}
+            title={canConfirm ? 'Enviar els horaris confirmats a l’ETT' : 'Sense permís per enviar horaris ETT'}
+            aria-label="Enviar horaris a l’ETT"
+          >
+            {sendingEtt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+          </Button>
+        ) : null}
 
         <Button
           type="button"

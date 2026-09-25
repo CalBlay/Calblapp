@@ -28,6 +28,8 @@ import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../li
 import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { ComponentProps } from "react"
+import EttProviderSelect from './EttProviderSelect'
+import type { EttProviderPremise } from '@/services/premises'
 
 type LogisticaTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarLogistica>, "embedded">
 
@@ -51,6 +53,7 @@ type Props = {
   replacePhaseVehicleAssignments: (key: LogisticPhaseKey, assignments: VehicleAssignment[]) => void
   ettOpen: boolean
   ettData: ServicePhaseEttData
+  ettProviders: EttProviderPremise[]
   toggleEtt: () => void
   updateEtt: (patch: Partial<ServicePhaseEttData>) => void
   mode?: "auto" | "semi" | "manual"
@@ -76,6 +79,7 @@ export default function LogisticsPhasePanel({
   replacePhaseVehicleAssignments,
   ettOpen,
   ettData,
+  ettProviders,
   toggleEtt,
   updateEtt,
   mode = "semi",
@@ -426,6 +430,11 @@ export default function LogisticsPhasePanel({
                   {phase.key === "event" && ettOpen ? (
                     <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
                       <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
+                        <EttProviderSelect
+                          providers={ettProviders}
+                          value={ettData}
+                          onChange={updateEtt}
+                        />
                         <div>
                           <Label>Treballadors ETT</Label>
                           <Input

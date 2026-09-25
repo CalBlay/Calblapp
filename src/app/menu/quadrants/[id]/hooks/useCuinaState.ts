@@ -196,6 +196,10 @@ export function useCuinaState({
       startTime: event.startTime || '',
       endTime: event.endTime || '',
       workers: '',
+      ettProviderId: '',
+      ettProviderName: '',
+      ettResponsibleName: '',
+      ettEmail: '',
     },
   }))
   const cuinaTotalsRef = useRef({ workers: Number(totalWorkers) || 0, drivers: Number(numDrivers) || 0 })
@@ -316,14 +320,23 @@ export function useCuinaState({
 
   useEffect(() => {
     if (!isCuina) return
+    const existingEttWorkers = (existingDraft?.treballadors || []).filter((worker) => {
+      const name = String(worker?.name || '').trim().toLowerCase()
+      return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
+    })
+    const existingEtt = existingEttWorkers[0]
     setCuinaEtt({
-      open: false,
+      open: existingEttWorkers.length > 0,
       data: {
-        serviceDate: eventServiceDate,
-        meetingPoint: 'CENTRAL',
-        startTime: event.startTime || '',
-        endTime: event.endTime || '',
-        workers: '',
+        serviceDate: existingEtt?.startDate || eventServiceDate,
+        meetingPoint: existingEtt?.meetingPoint || 'CENTRAL',
+        startTime: existingEtt?.startTime || event.startTime || '',
+        endTime: existingEtt?.endTime || event.endTime || '',
+        workers: existingEttWorkers.length ? String(existingEttWorkers.length) : '',
+        ettProviderId: String(existingEtt?.ettProviderId || ''),
+        ettProviderName: String(existingEtt?.ettProviderName || ''),
+        ettResponsibleName: String(existingEtt?.ettResponsibleName || ''),
+        ettEmail: String(existingEtt?.ettEmail || ''),
       },
     })
   }, [
@@ -336,6 +349,7 @@ export function useCuinaState({
     event.location,
     event.eventLocation,
     eventServiceDate,
+    existingDraft,
   ])
 
   useEffect(() => {

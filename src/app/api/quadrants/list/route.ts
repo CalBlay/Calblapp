@@ -30,6 +30,10 @@ interface FirestorePerson {
   isDriver?: boolean
   plate?: string
   vehicleType?: string
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
   type?: string
   [key: string]: unknown
 }
@@ -127,6 +131,10 @@ type Person = {
   isDriver?: boolean
   plate?: string
   vehicleType?: string
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
 }
 
 type Draft = {
@@ -282,6 +290,10 @@ const mapPerson = (p: FirestorePerson, doc?: FirestoreDraftDoc): Person => ({
   isDriver: p?.isDriver === true,
   plate: p?.plate ?? '',
   vehicleType: p?.vehicleType ?? p?.type ?? '',
+  ettProviderId: String(p?.ettProviderId || ''),
+  ettProviderName: String(p?.ettProviderName || ''),
+  ettResponsibleName: String(p?.ettResponsibleName || ''),
+  ettEmail: String(p?.ettEmail || ''),
 })
 
 const expandLegacyExternalWorkers = (entries: Array<Record<string, unknown>> = []): Person[] =>

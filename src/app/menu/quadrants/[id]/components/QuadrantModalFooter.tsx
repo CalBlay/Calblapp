@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { DialogFooter } from '@/components/ui/dialog'
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Mail } from 'lucide-react'
 import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
 import {
@@ -21,6 +21,9 @@ type Props = {
   autoPreviewLoading: boolean
   onCancel: () => void
   onSave: (confirmAfterSave: boolean) => void
+  canSendEtt?: boolean
+  sendingEtt?: boolean
+  onSendEtt?: () => void | Promise<void>
 }
 
 export default function QuadrantModalFooter({
@@ -34,6 +37,9 @@ export default function QuadrantModalFooter({
   autoPreviewLoading,
   onCancel,
   onSave,
+  canSendEtt = false,
+  sendingEtt = false,
+  onSendEtt,
 }: Props) {
   const { ready, canSave, canConfirm } = useQuadrantEditorPermissions()
 
@@ -102,6 +108,18 @@ export default function QuadrantModalFooter({
           <Button variant="outline" onClick={onCancel} className="sm:min-w-[140px]">
             Cancel·la
           </Button>
+          {canSendEtt && onSendEtt ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => void onSendEtt()}
+              disabled={sendingEtt || loading || !canConfirm}
+            >
+              {sendingEtt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {sendingEtt ? 'Enviant…' : 'Enviar horaris ETT'}
+            </Button>
+          ) : null}
           {showManualLikeButtons ? (
             <Button
               type="button"

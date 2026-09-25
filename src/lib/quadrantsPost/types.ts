@@ -134,6 +134,8 @@ export type ServeisGroupInput = Record<string, unknown> & {
 }
 
 export type ExternalWorkerInput = {
+  id?: string
+  groupId?: string
   name?: string
   meetingPoint?: string
   startDate?: string
@@ -142,6 +144,12 @@ export type ExternalWorkerInput = {
   endTime?: string
   arrivalTime?: string | null
   isExternal?: boolean
+  externalType?: 'ett' | 'centerExternalExtra' | null
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
+  ettGroupKey?: string
 }
 
 export type InternalWorkerLine = {
@@ -151,6 +159,8 @@ export type InternalWorkerLine = {
 }
 
 export type ExternalWorkerLine = {
+  id?: string
+  groupId?: string
   name: string
   meetingPoint: string
   startDate?: string
@@ -159,6 +169,12 @@ export type ExternalWorkerLine = {
   endTime?: string
   arrivalTime?: string | null
   isExternal?: boolean
+  externalType?: 'ett' | 'centerExternalExtra' | null
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
+  ettGroupKey?: string
 }
 
 /** Subset of POST body fields consumed by `buildQuadrantSave` */

@@ -145,6 +145,10 @@ export type ServicePhaseEttData = {
   startTime: string
   endTime: string
   workers: string
+  ettProviderId: string
+  ettProviderName: string
+  ettResponsibleName: string
+  ettEmail: string
 }
 
 export type ServicePhaseEtt = {

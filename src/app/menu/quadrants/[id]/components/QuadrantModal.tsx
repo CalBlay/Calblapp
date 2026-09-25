@@ -35,6 +35,15 @@ import { extractDate, getDateRange, splitTitle } from './quadrantModalUtils'
 import { deleteQuadrantDraft, reopenQuadrantDraft } from './quadrantModalApi'
 import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { cn } from '@/lib/utils'
+import useSWR from 'swr'
+import type { EttProviderPremise } from '@/services/premises'
+
+const fetchJson = async <T,>(url: string): Promise<T> => {
+  const response = await fetch(url, { cache: 'no-store' })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+  return body as T
+}
 
 export type QuadrantEditorProps = {
   event: QuadrantEvent
@@ -74,6 +83,13 @@ export function QuadrantEditor({
   const isLogistica = department === 'logistica'
   /** Serveis, Cuina, Logística: mateix comportament de modes, training i guardar+confirmar. */
   const isQuadrantCoreDept = isServeis || isCuina || isLogistica
+  const { data: ettProvidersData } = useSWR<{ providers: EttProviderPremise[] }>(
+    active && isQuadrantCoreDept
+      ? `/api/quadrants/ett-providers?department=${encodeURIComponent(department)}`
+      : null,
+    fetchJson
+  )
+  const ettProviders = ettProvidersData?.providers || []
   const [mode, setMode] = useState<QuadrantMode>('manual')
 
   const {
@@ -307,6 +323,7 @@ export function QuadrantEditor({
 
   const [deleting, setDeleting] = useState(false)
   const [reopening, setReopening] = useState(false)
+  const [sendingEtt, setSendingEtt] = useState(false)
 
   const hasPersistedDraft = Boolean(
     String((existingDraft as { id?: string } | null)?.id || '').trim() ||
@@ -319,6 +336,41 @@ export function QuadrantEditor({
     confirmed: existingDraft?.confirmed,
     confirmedAt: existingDraft?.confirmedAt,
   })
+  const hasEttWorkers = (existingDraft?.treballadors || []).some((worker) => {
+    const name = String(worker?.name || '').trim().toLowerCase()
+    return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
+  })
+
+  const handleSendEtt = useCallback(async () => {
+    if (sendingEtt) return
+    if (!window.confirm('Vols enviar els horaris confirmats als responsables de les ETT?')) return
+    setSendingEtt(true)
+    try {
+      const response = await fetch('/api/quadrants/ett-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: String(existingDraft?.eventId || existingDraft?.id || event.id || '')
+            .trim()
+            .split('__')[0],
+          draftId: String(existingDraft?.id || '').trim(),
+          department,
+        }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'No s’han pogut enviar els horaris')
+      const deliveries = Array.isArray(body.deliveries) ? body.deliveries.length : 0
+      toast.success(
+        deliveries === 1
+          ? 'Horaris enviats al responsable de l’ETT'
+          : `Horaris enviats a ${deliveries} responsables d’ETT`
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No s’han pogut enviar els horaris')
+    } finally {
+      setSendingEtt(false)
+    }
+  }, [department, event.id, existingDraft?.eventId, existingDraft?.id, sendingEtt])
 
   const handleReopen = useCallback(async () => {
     if (reopening) return
@@ -472,6 +524,9 @@ export function QuadrantEditor({
     reopening,
     hasPersistedDraft,
     confirmed: isConfirmed,
+    canSendEtt: isConfirmed && hasEttWorkers,
+    sendingEtt,
+    onSendEtt: handleSendEtt,
     canAutoGen,
     mode,
     isQuadrantCoreDept,
@@ -630,6 +685,7 @@ export function QuadrantEditor({
               removeGroup={removeCuinaGroup}
               updateGroup={updateCuinaGroup}
               cuinaEtt={cuinaEtt}
+              ettProviders={ettProviders}
               toggleEtt={toggleCuinaEtt}
               updateEtt={updateCuinaEtt}
             />
@@ -661,6 +717,7 @@ export function QuadrantEditor({
               settings={servicePhaseSettings}
               visibility={servicePhaseVisibility}
               ettState={servicePhaseEtt}
+              ettProviders={ettProviders}
               manualResponsibleId={manualResp}
               availableResponsables={availableResponsables}
               availableConductors={availableConductors}
@@ -722,6 +779,7 @@ export function QuadrantEditor({
               replacePhaseVehicleAssignments={replacePhaseVehicleAssignments}
               ettOpen={ettOpen}
               ettData={ettData}
+              ettProviders={ettProviders}
               toggleEtt={() => setEttOpen(!ettOpen)}
               updateEtt={(patch) => setEttData({ ...ettData, ...patch })}
             />
@@ -760,6 +818,9 @@ export function QuadrantEditor({
           autoPreviewLoading={autoPreviewLoading}
           onCancel={handleClose}
           onSave={runSave}
+          canSendEtt={isConfirmed && hasEttWorkers}
+          sendingEtt={sendingEtt}
+          onSendEtt={handleSendEtt}
         />
       )}
     </div>

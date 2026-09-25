@@ -22,6 +22,8 @@ import {
   resizeCuinaGroupToTotalPersonSlots,
 } from '../lib/cuinaGroupRoleLines'
 import { buildReservedForRoleLine } from '../lib/quadrantPayloadShared'
+import EttProviderSelect from './EttProviderSelect'
+import type { EttProviderPremise } from '@/services/premises'
 
 type CuinaTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarCuina>, 'embedded'>
 
@@ -40,6 +42,7 @@ type Props = {
   removeGroup: (id: string) => void
   updateGroup: (id: string, patch: Partial<CuinaGroup>) => void
   cuinaEtt: CuinaEttState
+  ettProviders: EttProviderPremise[]
   toggleEtt: () => void
   updateEtt: (patch: Partial<CuinaEttState['data']>) => void
   cuinaTopBar?: CuinaTopBarProps
@@ -60,6 +63,7 @@ export default function CuinaPhasePanel({
   removeGroup,
   updateGroup,
   cuinaEtt,
+  ettProviders,
   toggleEtt,
   updateEtt,
   cuinaTopBar,
@@ -438,6 +442,11 @@ export default function CuinaPhasePanel({
             {cuinaEtt.open ? (
               <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
                 <div className="grid gap-3 lg:grid-cols-[160px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
+                  <EttProviderSelect
+                    providers={ettProviders}
+                    value={cuinaEtt.data}
+                    onChange={updateEtt}
+                  />
                   <div>
                     <Label>Treballadors ETT</Label>
                     <Input

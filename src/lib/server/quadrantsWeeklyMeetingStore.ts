@@ -74,6 +74,8 @@ export async function listMeetingEventNotes(
       eventDay: String(data.eventDay || '').slice(0, 10),
       scheduleNotes,
       scheduleEntries: storedEntries.length ? storedEntries : legacyEntries,
+      meetingComment: String(data.meetingComment || ''),
+      meetingCommentSaved: Object.prototype.hasOwnProperty.call(data, 'meetingComment'),
       updatedAt: String(data.updatedAt || ''),
       updatedByName: String(data.updatedByName || ''),
     }

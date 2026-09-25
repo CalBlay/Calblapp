@@ -52,6 +52,10 @@ export type EttEntry = {
   startTime: string
   endTime: string
   meetingPoint: string
+  ettProviderId: string
+  ettProviderName: string
+  ettResponsibleName: string
+  ettEmail: string
 }
 
 export type ResponsableAvailabilityOption = {
@@ -237,6 +241,10 @@ export function useQuadrantFormState({
     startTime: event.startTime || '',
     endTime: event.endTime || '',
     workers: '',
+    ettProviderId: '',
+    ettProviderName: '',
+    ettResponsibleName: '',
+    ettEmail: '',
   })
 
   const totalWorkersNumber = Number(totalWorkers) || 0
@@ -440,6 +448,10 @@ export function useQuadrantFormState({
       startTime: ettData.startTime || startTime,
       endTime: ettData.endTime || endTime,
       meetingPoint: ettData.meetingPoint || meetingPoint || location || '',
+      ettProviderId: ettData.ettProviderId,
+      ettProviderName: ettData.ettProviderName,
+      ettResponsibleName: ettData.ettResponsibleName,
+      ettEmail: ettData.ettEmail,
     }
   }, [ettData, startDate, endDate, startTime, endTime, meetingPoint, location])
 
@@ -556,6 +568,11 @@ export function useQuadrantFormState({
     if (!modalOpen) return
 
     if (existingDraft) {
+      const existingEttWorkers = (existingDraft.treballadors || []).filter((worker) => {
+        const name = String(worker?.name || '').trim().toLowerCase()
+        return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
+      })
+      const existingEtt = existingEttWorkers[0]
       setStartDate(existingDraft.startDate || extractDate(event.start))
       setEndDate(
         existingDraft.endDate ||
@@ -590,7 +607,11 @@ export function useQuadrantFormState({
           '',
         startTime: existingDraft.startTime || event.startTime || '',
         endTime: existingDraft.endTime || event.endTime || '',
-        workers: '',
+        workers: existingEttWorkers.length ? String(existingEttWorkers.length) : '',
+        ettProviderId: String(existingEtt?.ettProviderId || ''),
+        ettProviderName: String(existingEtt?.ettProviderName || ''),
+        ettResponsibleName: String(existingEtt?.ettResponsibleName || ''),
+        ettEmail: String(existingEtt?.ettEmail || ''),
       })
       return
     }
@@ -616,6 +637,10 @@ export function useQuadrantFormState({
       startTime: event.startTime || '',
       endTime: event.endTime || '',
       workers: '',
+      ettProviderId: '',
+      ettProviderName: '',
+      ettResponsibleName: '',
+      ettEmail: '',
     })
   }, [
     modalOpen,

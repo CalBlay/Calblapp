@@ -182,5 +182,9 @@ export type CuinaEttState = {
     startTime: string
     endTime: string
     workers: string
+    ettProviderId: string
+    ettProviderName: string
+    ettResponsibleName: string
+    ettEmail: string
   }
 }

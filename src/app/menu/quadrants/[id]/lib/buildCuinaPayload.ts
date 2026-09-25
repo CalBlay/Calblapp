@@ -220,6 +220,11 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
       endDate: cuinaEtt.data.serviceDate || endDate,
       startTime: cuinaEtt.data.startTime || startTime,
       endTime: cuinaEtt.data.endTime || endTime,
+      ettProviderId: cuinaEtt.data.ettProviderId,
+      ettProviderName: cuinaEtt.data.ettProviderName,
+      ettResponsibleName: cuinaEtt.data.ettResponsibleName,
+      ettEmail: cuinaEtt.data.ettEmail,
+      ettGroupKey: 'cuina-event',
     })
     appendExternalWorkers(payload, entries)
     entries.forEach((entry) =>

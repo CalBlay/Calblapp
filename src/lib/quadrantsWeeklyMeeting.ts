@@ -26,6 +26,8 @@ export type MeetingEventNote = {
   eventDay: string
   scheduleNotes: string
   scheduleEntries: MeetingScheduleEntry[]
+  meetingComment: string
+  meetingCommentSaved: boolean
   updatedAt: string
   updatedByName: string
 }
@@ -49,6 +51,8 @@ export type WeeklyMeetingRow = {
   scheduleNotes: string
   scheduleEntries: MeetingScheduleEntry[]
   scheduleNotesSaved: boolean
+  meetingComment: string
+  meetingCommentSaved: boolean
   servicesResponsible: string
   servicesTeam: string
   servicesClosing: string

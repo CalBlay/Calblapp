@@ -25,6 +25,14 @@ export type SurveyGroupPremise = {
   workerIds: string[]
 }
 
+export type EttProviderPremise = {
+  id: string
+  name: string
+  responsibleName: string
+  email: string
+  active: boolean
+}
+
 /** Passat el limit del sondeig, comptar sense resposta com a si o com a no (per departament). */
 export type SurveyNoResponseDefault = 'yes' | 'no'
 
@@ -40,6 +48,7 @@ export type Premises = {
   conditions?: PremiseCondition[]
   driverCrews?: DriverCrewPremise[]
   surveyGroups?: SurveyGroupPremise[]
+  ettProviders?: EttProviderPremise[]
   surveyNoResponseDefault?: SurveyNoResponseDefault
 }
 
@@ -59,6 +68,7 @@ const DEFAULTS: Premises = {
   conditions: [],
   driverCrews: [],
   surveyGroups: [],
+  ettProviders: [],
   surveyNoResponseDefault: 'no',
   vestimentModels: [],
 }
@@ -322,6 +332,24 @@ export function normalizePremises(
   const surveyNoResponseDefault: SurveyNoResponseDefault =
     surveyNoResponseRaw === 'yes' ? 'yes' : 'no'
 
+  const ettProviders = Array.isArray(raw?.ettProviders)
+    ? raw.ettProviders
+        .map((provider, index) => {
+          const value = provider as Partial<EttProviderPremise>
+          const name = String(value.name || '').trim()
+          const email = String(value.email || '').trim().toLowerCase()
+          if (!name && !email) return null
+          return {
+            id: String(value.id || `ett-provider-${index + 1}`).trim(),
+            name,
+            responsibleName: String(value.responsibleName || '').trim(),
+            email,
+            active: value.active !== false,
+          }
+        })
+        .filter((item): item is EttProviderPremise => Boolean(item))
+    : []
+
   return {
     ...DEFAULTS,
     ...raw,
@@ -345,6 +373,7 @@ export function normalizePremises(
     conditions,
     driverCrews,
     surveyGroups,
+    ettProviders,
     vestimentModels: Array.isArray(raw?.vestimentModels)
       ? raw.vestimentModels.map((item) => String(item || '').trim()).filter(Boolean)
       : DEFAULTS.vestimentModels,

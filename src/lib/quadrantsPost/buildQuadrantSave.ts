@@ -54,6 +54,8 @@ export function buildQuadrantSave(
     isJamonero: s.isJamonero === true,
   }))
   const externalWorkerLines: ExternalWorkerLine[] = externalWorkersRaw.map((worker) => ({
+    id: String(worker.id || '').trim(),
+    groupId: String(worker.groupId || worker.ettGroupKey || '').trim(),
     name: worker.name || '',
     meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
     startDate: worker.startDate || bodyForSave.startDate || '',
@@ -62,6 +64,12 @@ export function buildQuadrantSave(
     endTime: worker.endTime || bodyForSave.endTime || '00:00',
     arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
     isExternal: worker.isExternal === true,
+    externalType: worker.externalType || null,
+    ettProviderId: String(worker.ettProviderId || '').trim(),
+    ettProviderName: String(worker.ettProviderName || '').trim(),
+    ettResponsibleName: String(worker.ettResponsibleName || '').trim(),
+    ettEmail: String(worker.ettEmail || '').trim().toLowerCase(),
+    ettGroupKey: String(worker.ettGroupKey || '').trim(),
   }))
 
   const bodyRecord = bodyForSave as Record<string, unknown>

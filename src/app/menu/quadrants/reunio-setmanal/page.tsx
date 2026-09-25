@@ -70,15 +70,16 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
       <td><strong>${escapeHtml(row.location || 'Ubicació pendent')}</strong>${row.eventName ? `<br><small>${escapeHtml(row.eventName)}</small>` : ''}${row.servicesTeam ? `<br><small>${escapeHtml(row.servicesTeam).replaceAll('\n', '<br>')}</small>` : ''}</td>
       <td>${escapeHtml(row.pax)}</td>
       <td>${escapeHtml(row.scheduleNotes || row.eventSchedule).replaceAll('\n', '<br>')}</td>
+      <td>${escapeHtml(row.meetingComment || 'Sense comentaris.').replaceAll('\n', '<br>')}</td>
       <td>${escapeHtml(decisionLabel(row, 'logistica'))}</td>
       <td>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
     </tr>`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Acta reunió de quadrants</title>
     <style>
-      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:11px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:7px;vertical-align:top}th{background:#111827;color:white;text-align:left}th:nth-child(1){width:14%}th:nth-child(2){width:38%}th:nth-child(3){width:8%}th:nth-child(4){width:12%}th:nth-child(5),th:nth-child(6){width:14%}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
+      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:11px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:7px;vertical-align:top}th{background:#111827;color:white;text-align:left}th:nth-child(1){width:12%}th:nth-child(2){width:27%}th:nth-child(3){width:6%}th:nth-child(4){width:11%}th:nth-child(5){width:20%}th:nth-child(6),th:nth-child(7){width:12%}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
     <div class="meta">Setmana del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
-    <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
+    <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>COMENTARIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
     <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes) || 'Sense observacions.'}</p></div></body></html>`
 }
 
@@ -226,6 +227,46 @@ function ScheduleNotesCell({
   )
 }
 
+function EventCommentCell({
+  row,
+  saving,
+  onSave,
+}: {
+  row: WeeklyMeetingRow
+  saving: boolean
+  onSave: (comment: string) => void
+}) {
+  const [comment, setComment] = useState(row.meetingComment)
+
+  useEffect(() => {
+    setComment(row.meetingComment)
+  }, [row.meetingComment])
+
+  return (
+    <div className="min-w-[220px]">
+      <textarea
+        aria-label={`Comentaris de ${row.eventName || row.eventCode || 'l’esdeveniment'}`}
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
+        onBlur={() => {
+          if (comment !== row.meetingComment) onSave(comment)
+        }}
+        rows={5}
+        maxLength={4000}
+        placeholder="Comentaris i acords d’aquest esdeveniment…"
+        className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+      />
+      <span className="mt-1 block h-4 text-[11px] text-slate-400">
+        {saving ? (
+          <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Desant comentari</span>
+        ) : row.meetingCommentSaved ? (
+          <span className="inline-flex items-center gap-1 text-emerald-700"><Check className="h-3 w-3" /> Comentari desat</span>
+        ) : 'Es desa en sortir del camp'}
+      </span>
+    </div>
+  )
+}
+
 export default function QuadrantsWeeklyMeetingPage() {
   const initialWeek = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), [])
   const [weekStart, setWeekStart] = useState(format(initialWeek, 'yyyy-MM-dd'))
@@ -344,6 +385,45 @@ export default function QuadrantsWeeklyMeetingPage() {
     }
   }
 
+  const updateMeetingComment = async (row: WeeklyMeetingRow, meetingComment: string) => {
+    const saveKey = `${row.key}:comment`
+    const previous = data
+    const normalizedComment = meetingComment.trim()
+    setSavingKeys((current) => new Set(current).add(saveKey))
+    await mutate(
+      (current) => ({
+        rows: (current?.rows || []).map((item) =>
+          item.key === row.key
+            ? { ...item, meetingComment: normalizedComment, meetingCommentSaved: true }
+            : item
+        ),
+      }),
+      false
+    )
+    try {
+      await fetchJson('/api/quadrants/meeting', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'comment',
+          eventId: row.eventId,
+          eventCode: row.eventCode,
+          eventDay: row.eventDay,
+          meetingComment: normalizedComment,
+        }),
+      })
+    } catch (saveError) {
+      await mutate(previous, false)
+      window.alert(saveError instanceof Error ? saveError.message : 'No s’ha pogut desar el comentari')
+    } finally {
+      setSavingKeys((current) => {
+        const next = new Set(current)
+        next.delete(saveKey)
+        return next
+      })
+    }
+  }
+
   const saveMinutes = async (action: 'save' | 'finalize' | 'reopen') => {
     setMinutesBusy(true)
     try {
@@ -370,10 +450,22 @@ export default function QuadrantsWeeklyMeetingPage() {
   }
 
   const printSession = () => {
-    const session = selectedSession || {
-      id: '', weekStart, weekEnd, status: 'draft' as const, notes,
-      rows: data?.rows || [], updatedAt: '', createdByName: '', finalizedAt: '', finalizedByName: '',
-    }
+    const session = selectedHistoryId && selectedSession
+      ? selectedSession
+      : currentSession?.status === 'finalized'
+        ? currentSession
+        : {
+            id: currentSession?.id || '',
+            weekStart,
+            weekEnd,
+            status: 'draft' as const,
+            notes,
+            rows: data?.rows || [],
+            updatedAt: currentSession?.updatedAt || '',
+            createdByName: currentSession?.createdByName || '',
+            finalizedAt: '',
+            finalizedByName: '',
+          }
     printBrandedHtmlInNewWindow(buildMinutesHtml(session, data?.rows || []))
   }
 
@@ -415,9 +507,9 @@ export default function QuadrantsWeeklyMeetingPage() {
         : error ? <div className="p-8 text-center text-rose-700">{error.message}</div>
         : !data?.rows.length ? <div className="p-12 text-center text-slate-500">No hi ha esdeveniments aquesta setmana.</div>
         : <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] border-collapse text-sm">
+          <table className="w-full min-w-[1380px] border-collapse text-sm">
             <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-white">
-              <tr><th className="w-[13%] p-3">Dia</th><th className="w-[35%] p-3">Lloc / quadrant de Serveis</th><th className="w-[8%] p-3 text-center">PAX</th><th className="w-[12%] p-3">Horari</th><th className="w-[16%] p-3">Logística</th><th className="w-[16%] p-3">Cuina</th></tr>
+              <tr><th className="w-[11%] p-3">Dia</th><th className="w-[27%] p-3">Lloc / quadrant de Serveis</th><th className="w-[6%] p-3 text-center">PAX</th><th className="w-[12%] p-3">Horari</th><th className="w-[20%] p-3">Comentaris</th><th className="w-[12%] p-3">Logística</th><th className="w-[12%] p-3">Cuina</th></tr>
             </thead>
             <tbody>
               {data.rows.map((row, index) => (
@@ -435,6 +527,7 @@ export default function QuadrantsWeeklyMeetingPage() {
                   </td>
                   <td className="p-3 text-center font-bold">{row.pax || '—'}</td>
                   <td className="p-3"><ScheduleNotesCell row={row} saving={savingKeys.has(`${row.key}:schedule`)} onSave={(entries) => updateScheduleNotes(row, entries)} /></td>
+                  <td className="p-3"><EventCommentCell row={row} saving={savingKeys.has(`${row.key}:comment`)} onSave={(comment) => updateMeetingComment(row, comment)} /></td>
                   <td className="p-3"><DepartmentDecisionCell row={row} department="logistica" saving={savingKeys.has(`${row.key}:logistica`)} onChange={(patch) => updateDecision(row, 'logistica', patch)} /></td>
                   <td className="p-3"><DepartmentDecisionCell row={row} department="cuina" saving={savingKeys.has(`${row.key}:cuina`)} onChange={(patch) => updateDecision(row, 'cuina', patch)} /></td>
                 </tr>

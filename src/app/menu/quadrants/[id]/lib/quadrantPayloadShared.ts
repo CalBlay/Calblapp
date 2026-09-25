@@ -398,6 +398,8 @@ export function createTimetableCollector(): {
 }
 
 export type ExternalWorker = {
+  id?: string
+  groupId?: string
   name: string
   isExternal: boolean
   meetingPoint: string
@@ -405,6 +407,12 @@ export type ExternalWorker = {
   endDate: string
   startTime: string
   endTime: string
+  externalType?: 'ett' | 'centerExternalExtra'
+  ettProviderId?: string
+  ettProviderName?: string
+  ettResponsibleName?: string
+  ettEmail?: string
+  ettGroupKey?: string
 }
 
 /**
@@ -412,12 +420,15 @@ export type ExternalWorker = {
  */
 export function buildEttEntries(
   workers: number,
-  base: Omit<ExternalWorker, 'name' | 'isExternal'>
+  base: Omit<ExternalWorker, 'name' | 'isExternal' | 'externalType'>
 ): ExternalWorker[] {
   if (!workers || workers <= 0) return []
-  return Array.from({ length: workers }, () => ({
+  return Array.from({ length: workers }, (_, index) => ({
+    id: `${base.ettGroupKey || 'ett'}-${index + 1}`,
+    groupId: base.ettGroupKey || 'ett',
     name: 'ETT',
     isExternal: true,
+    externalType: 'ett',
     ...base,
   }))
 }

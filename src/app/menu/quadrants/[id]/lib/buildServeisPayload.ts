@@ -94,7 +94,7 @@ export function buildServeisPayload(input: BuildServeisPayloadInput): BuiltPaylo
     vestimentModelChoice !== '__none__' ? vestimentModelChoice.trim() : null
 
   // ETT per cada fase de Serveis
-  Object.values(servicePhaseEtt).forEach((ettState) => {
+  Object.entries(servicePhaseEtt).forEach(([phaseKey, ettState]) => {
     const workers = Number(ettState.data.workers || 0)
     if (!workers) return
     const entries = buildEttEntries(workers, {
@@ -103,6 +103,11 @@ export function buildServeisPayload(input: BuildServeisPayloadInput): BuiltPaylo
       endDate: ettState.data.serviceDate || endDate,
       startTime: ettState.data.startTime || startTime,
       endTime: ettState.data.endTime || endTime,
+      ettProviderId: ettState.data.ettProviderId,
+      ettProviderName: ettState.data.ettProviderName,
+      ettResponsibleName: ettState.data.ettResponsibleName,
+      ettEmail: ettState.data.ettEmail,
+      ettGroupKey: `serveis-${phaseKey}`,
     })
     appendExternalWorkers(payload, entries)
     entries.forEach((entry) =>
