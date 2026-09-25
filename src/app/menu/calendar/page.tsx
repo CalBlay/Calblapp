@@ -38,6 +38,7 @@ import {
   buildCalendarLocationOptions,
   filterCalendarDealsByLocations,
 } from '@/lib/calendar/calendarLocationFilter'
+import { calendarPeriodForYear } from '@/lib/calendar/calendarYearNavigation'
 
 import {
   addMonths,
@@ -615,6 +616,42 @@ export default function CalendarPage() {
     }))
   }
 
+  const activeYear = parseISO(start).getFullYear()
+  const currentYear = new Date().getFullYear()
+  const firstAvailableYear = Math.min(currentYear - 2, activeYear - 2)
+  const lastAvailableYear = Math.max(currentYear + 10, activeYear + 2)
+  const availableYears = Array.from(
+    { length: lastAvailableYear - firstAvailableYear + 1 },
+    (_, index) => firstAvailableYear + index
+  )
+
+  const goToYear = (year: number) => {
+    const next = calendarPeriodForYear({ start, mode, year, rangeMonths })
+    setState((prev) => ({
+      ...prev,
+      start: next.start,
+      end: next.end,
+    }))
+  }
+
+  const yearSelector = (
+    <label className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+      <span>Any</span>
+      <select
+        aria-label="Anar a l’any"
+        value={activeYear}
+        onChange={(event) => goToYear(Number(event.target.value))}
+        className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+      >
+        {availableYears.map((year) => (
+          <option key={year} value={year}>
+            {year}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+
   const exportPeriodLabel = mode === 'month' ? monthLabel : mode === 'week' ? weekLabel : rangeLabel
 
   const exportRows = useMemo(
@@ -909,6 +946,7 @@ export default function CalendarPage() {
             <Button variant="ghost" size="icon" onClick={() => goToMonth(1)}>
               <ChevronRight size={16} />
             </Button>
+            {yearSelector}
           </div>
         ) : mode === 'week' ? (
           <div className="flex items-center gap-2">
@@ -919,6 +957,7 @@ export default function CalendarPage() {
             <Button variant="ghost" size="icon" onClick={() => goToWeek(1)}>
               <ChevronRight size={16} />
             </Button>
+            {yearSelector}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -933,6 +972,7 @@ export default function CalendarPage() {
               <button onClick={() => setRangeMonths(6)} className={`px-2 py-1 rounded-full ${rangeMonths === 6 ? 'bg-white shadow' : ''}`}>6m</button>
               <button onClick={() => setRangeMonths(12)} className={`px-2 py-1 rounded-full ${rangeMonths === 12 ? 'bg-white shadow' : ''}`}>12m</button>
             </div>
+            {yearSelector}
           </div>
         )}
       </div>
