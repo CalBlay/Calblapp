@@ -18,6 +18,7 @@ type UpdateItem = {
   EventCode?: string
   NomEvent?: string
   PreparacioNomEvent?: string
+  PreparacioObservacions?: string
   NumPax?: string | number | null
   Ubicacio?: string
   DataInici?: string
@@ -101,7 +102,9 @@ export async function POST(req: NextRequest) {
         updateFields.PreparacioHora = value
       }
 
-      if (item.EventCode !== undefined) {
+      // El codi identifica l'esdeveniment d'origen i no es pot modificar
+      // des de la planificació. Només s'accepta en crear una fila manual.
+      if (item.isNew && item.EventCode !== undefined) {
         const value = trimOrEmpty(item.EventCode)
         updateFields.code = value
         updateFields.codeConfirmed = value !== ''
@@ -116,6 +119,10 @@ export async function POST(req: NextRequest) {
 
       if (item.PreparacioNomEvent !== undefined) {
         updateFields.PreparacioNomEvent = trimOrEmpty(item.PreparacioNomEvent)
+      }
+
+      if (item.PreparacioObservacions !== undefined) {
+        updateFields.PreparacioObservacions = trimOrEmpty(item.PreparacioObservacions)
       }
 
       if (item.NomEvent !== undefined) {
@@ -210,6 +217,7 @@ export async function POST(req: NextRequest) {
           code,
           PreparacioData: trimOrEmpty(updateFields.PreparacioData),
           PreparacioHora: trimOrEmpty(updateFields.PreparacioHora),
+          PreparacioObservacions: trimOrEmpty(updateFields.PreparacioObservacions),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           codeConfirmed: code !== '',

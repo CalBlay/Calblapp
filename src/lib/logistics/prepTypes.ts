@@ -20,6 +20,8 @@ export type LogisticsEventPrepRow = {
   NomEvent: string
   /** Nom personalitzat visible només dins del flux de preparació logística. */
   PreparacioNomEvent?: string
+  /** Indicacions del responsable visibles per a la persona preparadora. */
+  PreparacioObservacions?: string
   Ubicacio: string
   NumPax?: number
   DataInici: string

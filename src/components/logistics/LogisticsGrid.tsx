@@ -49,8 +49,8 @@ import { cn } from '@/lib/utils'
 export type EditedFields = {
   PreparacioData?: string
   PreparacioHora?: string
-  EventCode?: string
   PreparacioNomEvent?: string
+  PreparacioObservacions?: string
   NumPax?: string
   Ubicacio?: string
   DataInici?: string
@@ -486,6 +486,12 @@ function WorkerGroupedView({
                       >
                         {getPreparationEventName(ev) || 'Sense nom'}
                       </div>
+                      {ev.PreparacioObservacions ? (
+                        <div className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
+                          <span className="font-semibold">Observacions:</span>{' '}
+                          {ev.PreparacioObservacions}
+                        </div>
+                      ) : null}
                       {displayServiceName(ev) ? (
                         <div className="mt-1 text-xs font-semibold text-emerald-700">
                           Servei: {displayServiceName(ev)}
@@ -526,6 +532,7 @@ function WorkerGroupedView({
                         <th className="px-3 py-2 text-left">Servei</th>
                         <th className="w-28 px-3 py-2 text-left">Codi event</th>
                         <th className="px-3 py-2 text-left">Nom esdeveniment</th>
+                        <th className="px-3 py-2 text-left">Observacions</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="w-28 px-3 py-2 text-left">Data servei</th>
@@ -559,6 +566,9 @@ function WorkerGroupedView({
                             )}
                           >
                             {getPreparationEventName(ev) || 'Sense nom'}
+                          </td>
+                          <td className="max-w-[320px] whitespace-pre-wrap px-3 py-2 text-slate-700">
+                            {ev.PreparacioObservacions || '-'}
                           </td>
                           <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
@@ -642,7 +652,7 @@ function EditableTable({
 
   return (
     <div className="overflow-x-auto scroll-smooth">
-      <table className="w-full min-w-[1280px] border-collapse text-[10px] sm:text-xs xl:min-w-[1500px] 2xl:min-w-[1660px]">
+      <table className="w-full min-w-[1460px] border-collapse text-[10px] sm:text-xs xl:min-w-[1700px] 2xl:min-w-[1860px]">
         <thead>
           <tr className="bg-gray-100 text-left">
             <th className="sticky left-0 z-30 bg-white px-3 py-3 shadow-sm xl:px-4">Data preparació</th>
@@ -650,6 +660,7 @@ function EditableTable({
             <th className="px-3 py-3 xl:px-4">Servei</th>
             <th className="px-3 py-3 xl:px-4">Codi event</th>
             <th className="px-3 py-3 xl:px-4">Nom per a preparació</th>
+            <th className="px-3 py-3 xl:px-4">Observacions</th>
             <th className="px-3 py-3 xl:px-4">Ubicació</th>
             <th className="px-3 py-3 xl:px-4">Pax</th>
             <th className="px-3 py-3 xl:px-4">Data servei</th>
@@ -669,8 +680,9 @@ function EditableTable({
             rows.map((ev, idx) => {
               const prepDate = edited[ev.id]?.PreparacioData ?? (ev.PreparacioData || '')
               const prepH = edited[ev.id]?.PreparacioHora ?? (ev.PreparacioHora || '')
-              const eventCode = edited[ev.id]?.EventCode ?? (ev.EventCode || '')
+              const eventCode = ev.EventCode || ''
               const eventName = edited[ev.id]?.PreparacioNomEvent ?? getPreparationEventName(ev)
+              const observations = edited[ev.id]?.PreparacioObservacions ?? (ev.PreparacioObservacions || '')
               const pax = edited[ev.id]?.NumPax ?? (ev.NumPax != null ? String(ev.NumPax) : '')
               const ubicacio = edited[ev.id]?.Ubicacio ?? (ev.Ubicacio || '')
               const dataInici = edited[ev.id]?.DataInici ?? (ev.DataInici || '')
@@ -719,16 +731,7 @@ function EditableTable({
                     <span>{displayServiceName(ev) || '-'}</span>
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {canEditPreparationList ? (
-                      <input
-                        type="text"
-                        value={eventCode}
-                        onChange={(e) => setField(ev.id, 'EventCode', e.target.value)}
-                        className="w-full rounded border p-1 text-xs"
-                      />
-                    ) : (
-                      <span>{eventCode || '-'}</span>
-                    )}
+                    <span>{eventCode || '-'}</span>
                   </td>
                   <td className="px-3 py-3 xl:px-4">
                     {canEditPreparationList ? (
@@ -740,6 +743,19 @@ function EditableTable({
                       />
                     ) : (
                       <span>{eventName || '-'}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 xl:px-4">
+                    {canEditPreparationList ? (
+                      <textarea
+                        value={observations}
+                        onChange={(e) => setField(ev.id, 'PreparacioObservacions', e.target.value)}
+                        rows={2}
+                        className="w-full min-w-[240px] resize-y rounded border p-1 text-xs xl:min-w-[300px]"
+                        placeholder="Indicacions per al preparador"
+                      />
+                    ) : (
+                      <span className="whitespace-pre-wrap">{observations || '-'}</span>
                     )}
                   </td>
                   <td className="px-3 py-3 xl:px-4">

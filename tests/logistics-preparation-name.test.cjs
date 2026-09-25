@@ -40,3 +40,39 @@ test('existing preparation rows never write their edited name to the shared NomE
   assert.match(source, /if \(item\.isNew\) \{\s*updateFields\.NomEvent = value/)
   assert.match(source, /else \{[\s\S]*?updateFields\.PreparacioNomEvent = value/)
 })
+
+test('preparation logistics exposes service type and preparation observations', () => {
+  const routePath = path.join(__dirname, '..', 'src', 'app', 'api', 'logistics', 'route.ts')
+  const updatePath = path.join(
+    __dirname,
+    '..',
+    'src',
+    'app',
+    'api',
+    'logistics',
+    'update',
+    'route.ts'
+  )
+  const routeSource = fs.readFileSync(routePath, 'utf8')
+  const updateSource = fs.readFileSync(updatePath, 'utf8')
+
+  assert.match(routeSource, /ServiceName: String\(ev\.ServiceName \?\? ev\.Servei \?\? ''\)\.trim\(\)/)
+  assert.match(routeSource, /PreparacioObservacions: String\(ev\.PreparacioObservacions \?\? ''\)\.trim\(\)/)
+  assert.match(updateSource, /updateFields\.PreparacioObservacions = trimOrEmpty\(item\.PreparacioObservacions\)/)
+})
+
+test('event code can only be written when creating a manual preparation row', () => {
+  const routePath = path.join(
+    __dirname,
+    '..',
+    'src',
+    'app',
+    'api',
+    'logistics',
+    'update',
+    'route.ts'
+  )
+  const source = fs.readFileSync(routePath, 'utf8')
+
+  assert.match(source, /if \(item\.isNew && item\.EventCode !== undefined\)/)
+})

@@ -18,6 +18,7 @@ type RawEvent = {
   Codi?: string
   NomEvent?: string
   PreparacioNomEvent?: string
+  PreparacioObservacions?: string
   eventName?: string
   Ubicacio?: string
   finca?: string
@@ -53,6 +54,7 @@ type LogisticsEvent = {
   EventCode: string
   NomEvent: string
   PreparacioNomEvent: string
+  PreparacioObservacions: string
   Ubicacio: string
   NumPax: number
   DataInici: string
@@ -317,6 +319,7 @@ export async function GET(req: NextRequest) {
         EventCode: eventCode,
         NomEvent: formatEventName(row.ParentEventName ?? row.NomEvent ?? row.eventName ?? ''),
         PreparacioNomEvent: String(row.PreparacioNomEvent ?? '').trim(),
+        PreparacioObservacions: String(row.PreparacioObservacions ?? '').trim(),
         Ubicacio: String(row.Ubicacio ?? row.finca ?? '').trim(),
         NumPax: Number(row.NumPax ?? row.numPax ?? row.Pax ?? 0) || 0,
         DataInici: dataIniciIso,
@@ -371,6 +374,7 @@ export async function GET(req: NextRequest) {
         EventCode: eventCode,
         NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
         PreparacioNomEvent: String(ev.PreparacioNomEvent ?? '').trim(),
+        PreparacioObservacions: String(ev.PreparacioObservacions ?? '').trim(),
         Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
         NumPax: Number(ev.NumPax ?? ev.numPax ?? ev.Pax ?? 0) || 0,
         DataInici: dataIniciIso,
@@ -378,7 +382,7 @@ export async function GET(req: NextRequest) {
         HoraInici: horaInici,
         EventDate: dataIniciIso,
         EventTime: horaInici,
-        ServiceName: '',
+        ServiceName: String(ev.ServiceName ?? ev.Servei ?? '').trim(),
         ServiceDate: '',
         ServiceTime: '',
         ParentEventId: doc.id,

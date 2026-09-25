@@ -50,6 +50,7 @@ interface PreparationExportRow {
   CodiEvent: string
   Event: string
   Servei: string
+  Observacions: string
   Ubicacio: string
   Pax: string | number
   DataEvent: string
@@ -446,6 +447,7 @@ export default function LogisticsPage() {
         EventCode: '',
         NomEvent: '',
         PreparacioNomEvent: '',
+        PreparacioObservacions: '',
         Ubicacio: '',
         NumPax: undefined,
         DataInici: baseDate,
@@ -554,6 +556,7 @@ export default function LogisticsPage() {
         EventCode?: string
         NomEvent?: string
         PreparacioNomEvent?: string
+        PreparacioObservacions?: string
         NumPax?: string
         Ubicacio?: string
         DataInici?: string
@@ -577,6 +580,7 @@ export default function LogisticsPage() {
           EventCode?: string
           NomEvent?: string
           PreparacioNomEvent?: string
+          PreparacioObservacions?: string
           NumPax?: string
           Ubicacio?: string
           DataInici?: string
@@ -589,9 +593,10 @@ export default function LogisticsPage() {
 
         const nextPreparacioData = rowEdit.PreparacioData ?? original.PreparacioData ?? ''
         const nextPreparacioHora = rowEdit.PreparacioHora ?? original.PreparacioHora ?? ''
-        const nextEventCode = rowEdit.EventCode ?? original.EventCode ?? ''
         const nextPreparacioNomEvent =
           rowEdit.PreparacioNomEvent ?? getPreparationEventName(original)
+        const nextPreparacioObservacions =
+          rowEdit.PreparacioObservacions ?? original.PreparacioObservacions ?? ''
         const nextNumPax = rowEdit.NumPax ?? (original.NumPax != null ? String(original.NumPax) : '')
         const nextUbicacio = rowEdit.Ubicacio ?? original.Ubicacio ?? ''
         const nextDataInici = rowEdit.DataInici ?? original.DataInici ?? ''
@@ -610,10 +615,13 @@ export default function LogisticsPage() {
 
         if (isNew || rowEdit.PreparacioData !== undefined) payload.PreparacioData = nextPreparacioData
         if (isNew || rowEdit.PreparacioHora !== undefined) payload.PreparacioHora = nextPreparacioHora
-        if (isNew || rowEdit.EventCode !== undefined) payload.EventCode = nextEventCode
+        if (isNew) payload.EventCode = original.EventCode ?? ''
         if (isNew) payload.NomEvent = nextPreparacioNomEvent
         else if (rowEdit.PreparacioNomEvent !== undefined) {
           payload.PreparacioNomEvent = nextPreparacioNomEvent
+        }
+        if (isNew || rowEdit.PreparacioObservacions !== undefined) {
+          payload.PreparacioObservacions = nextPreparacioObservacions
         }
         if (isNew || rowEdit.NumPax !== undefined) payload.NumPax = nextNumPax
         if (isNew || rowEdit.Ubicacio !== undefined) payload.Ubicacio = nextUbicacio
@@ -667,6 +675,7 @@ export default function LogisticsPage() {
       CodiEvent: ev.EventCode || '',
       Event: getPreparationEventName(ev),
       Servei: ev.ServiceName || '',
+      Observacions: ev.PreparacioObservacions || '',
       Ubicacio: ev.Ubicacio || '',
       Pax: ev.NumPax ?? '',
       DataEvent: formatDateOnly(ev.EventDate || ev.DataInici, ''),
@@ -681,6 +690,7 @@ export default function LogisticsPage() {
       CodiEvent: '',
       Event: `${task.eventTitle} · ${task.batchKind === 'revision' ? 'Reposició' : 'Comanda'}`,
       Servei: '',
+      Observacions: '',
       Ubicacio: task.deliverySummary || formatDayMonthValue(task.deliveryDate, ''),
       Pax:
         EVENT_COMANDA_BATCH_STATUS_LABELS[normalizeEventComandaBatchStatus(task.batchStatus)],
@@ -716,6 +726,7 @@ export default function LogisticsPage() {
       'CodiEvent',
       'Event',
       'Servei',
+      'Observacions',
       'Ubicacio',
       'Pax',
       'DataEvent',
