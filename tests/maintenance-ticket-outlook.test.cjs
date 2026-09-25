@@ -180,7 +180,7 @@ test('syncMaintenanceTicketOutlookCalendar is a no-op when planning is incomplet
   assert.equal(upsertCalls.length, 0)
 })
 
-test('syncMaintenanceTicketOutlookCalendar upserts creator and assignee events with Madrid datetimes', async () => {
+test('syncMaintenanceTicketOutlookCalendar upserts only the creator event with Madrid datetimes', async () => {
   userDocs = {
     'creator-1': { email: 'creator@test.com', name: 'Creator' },
     'assignee-1': { email: 'assignee@test.com', name: 'Assignee' },
@@ -199,18 +199,13 @@ test('syncMaintenanceTicketOutlookCalendar upserts creator and assignee events w
     plannedEnd: PLANNED_END,
   })
 
-  assert.equal(upsertCalls.length, 2)
+  assert.equal(upsertCalls.length, 1)
   assert.equal(deleteCalls.length, 0)
   assert.deepEqual(result, {
     'creator-1': {
       eventId: 'new-creator@test.com',
       email: 'creator@test.com',
       role: 'creator',
-    },
-    'assignee-1': {
-      eventId: 'new-assignee@test.com',
-      email: 'assignee@test.com',
-      role: 'assignee',
     },
   })
 
@@ -222,14 +217,12 @@ test('syncMaintenanceTicketOutlookCalendar upserts creator and assignee events w
   }
 
   const creatorCall = upsertCalls.find((call) => call.assigneeEmail === 'creator@test.com')
-  const assigneeCall = upsertCalls.find((call) => call.assigneeEmail === 'assignee@test.com')
   assert.match(creatorCall.subject, /Manteniment assignat/)
-  assert.match(assigneeCall.subject, /Ticket manteniment/)
   assert.match(creatorCall.bodyHtml, /Operari/)
-  assert.match(assigneeCall.bodyHtml, /Tens un ticket de manteniment assignat/)
+  assert.equal(upsertCalls.some((call) => call.assigneeEmail === 'assignee@test.com'), false)
 })
 
-test('syncMaintenanceTicketOutlookCalendar skips users without a valid mailbox', async () => {
+test('syncMaintenanceTicketOutlookCalendar skips a creator without a valid mailbox', async () => {
   userDocs = {
     'missing-user': undefined,
     'blank-email': { email: '', name: 'Blank' },
@@ -239,7 +232,8 @@ test('syncMaintenanceTicketOutlookCalendar skips users without a valid mailbox',
 
   const result = await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['missing-user', 'blank-email', 'invalid-email', 'valid-user'],
+    createdById: 'valid-user',
+    assignedToIds: ['missing-user', 'blank-email', 'invalid-email'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
   })
@@ -250,7 +244,7 @@ test('syncMaintenanceTicketOutlookCalendar skips users without a valid mailbox',
     'valid-user': {
       eventId: 'new-valid@test.com',
       email: 'valid@test.com',
-      role: 'assignee',
+      role: 'creator',
     },
   })
 })
@@ -262,11 +256,12 @@ test('syncMaintenanceTicketOutlookCalendar reuses eventId only when the stored e
 
   await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['user-1'],
+    createdById: 'user-1',
+    assignedToIds: ['assignee-1'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
     existingEvents: {
-      'user-1': { eventId: 'evt-same-email', email: 'new@test.com', role: 'assignee' },
+      'user-1': { eventId: 'evt-same-email', email: 'new@test.com', role: 'creator' },
     },
   })
 
@@ -277,11 +272,12 @@ test('syncMaintenanceTicketOutlookCalendar reuses eventId only when the stored e
 
   await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['user-1'],
+    createdById: 'user-1',
+    assignedToIds: ['assignee-1'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
     existingEvents: {
-      'user-1': { eventId: 'evt-old-email', email: 'old@test.com', role: 'assignee' },
+      'user-1': { eventId: 'evt-old-email', email: 'old@test.com', role: 'creator' },
     },
   })
 
@@ -289,18 +285,19 @@ test('syncMaintenanceTicketOutlookCalendar reuses eventId only when the stored e
   assert.equal(upsertCalls[0].eventId, undefined)
 })
 
-test('syncMaintenanceTicketOutlookCalendar deletes stale event refs for removed users', async () => {
+test('syncMaintenanceTicketOutlookCalendar deletes old assignee events and keeps the creator event', async () => {
   userDocs = {
     'user-1': { email: 'one@test.com', name: 'One' },
   }
 
   const result = await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['user-1'],
+    createdById: 'user-1',
+    assignedToIds: ['user-2'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
     existingEvents: {
-      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'creator' },
       'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
     },
   })
@@ -309,7 +306,7 @@ test('syncMaintenanceTicketOutlookCalendar deletes stale event refs for removed 
     'user-1': {
       eventId: 'evt-1',
       email: 'one@test.com',
-      role: 'assignee',
+      role: 'creator',
     },
   })
   assert.deepEqual(deleteCalls, [{ email: 'two@test.com', eventId: 'evt-2' }])
@@ -324,21 +321,24 @@ test('syncMaintenanceTicketOutlookCalendar keeps existing refs when target upser
 
   const result = await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['user-1', 'user-2'],
+    createdById: 'user-1',
+    assignedToIds: ['user-2'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
     existingEvents: {
-      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'creator' },
       'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
       'user-3': { eventId: 'evt-3', email: 'three@test.com', role: 'assignee' },
     },
   })
 
   assert.deepEqual(result, {
-    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
-    'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
+    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'creator' },
   })
-  assert.deepEqual(deleteCalls, [{ email: 'three@test.com', eventId: 'evt-3' }])
+  assert.deepEqual(deleteCalls, [
+    { email: 'two@test.com', eventId: 'evt-2' },
+    { email: 'three@test.com', eventId: 'evt-3' },
+  ])
 })
 
 test('syncMaintenanceTicketOutlookCalendar preserves stale refs when cleanup delete fails', async () => {
@@ -349,17 +349,18 @@ test('syncMaintenanceTicketOutlookCalendar preserves stale refs when cleanup del
 
   const result = await syncMaintenanceTicketOutlookCalendar({
     ticketId: 'ticket-1',
-    assignedToIds: ['user-1'],
+    createdById: 'user-1',
+    assignedToIds: ['user-2'],
     plannedStart: PLANNED_START,
     plannedEnd: PLANNED_END,
     existingEvents: {
-      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'creator' },
       'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
     },
   })
 
   assert.deepEqual(result, {
-    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'creator' },
     'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
   })
   assert.deepEqual(deleteCalls, [{ email: 'two@test.com', eventId: 'evt-2' }])

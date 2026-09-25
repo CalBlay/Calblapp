@@ -181,7 +181,9 @@ export async function syncMaintenanceTicketOutlookCalendar(
     ? input.assignedToNames.map((name) => String(name || '').trim()).filter(Boolean)
     : []
 
-  const targetUserIds = new Set<string>(assignedToIds)
+  // La planificacio es comunica al creador del ticket. Els operaris assignats
+  // treballen des del planificador i no han de rebre una copia al seu Outlook.
+  const targetUserIds = new Set<string>()
   const creatorId = String(input.createdById || '').trim()
   if (creatorId) targetUserIds.add(creatorId)
 
