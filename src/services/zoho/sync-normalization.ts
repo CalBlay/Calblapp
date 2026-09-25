@@ -54,6 +54,16 @@ export function classifyStage(stage: string): StageCollection | null {
   return null
 }
 
+export function resolveZohoEndTime(
+  deal: Pick<ZohoDeal, 'Hora_Fi_Boda' | 'Hora_Fi_Evento'>,
+  parseZohoTime: (raw?: string | null) => string | null
+): string | null {
+  return (
+    parseZohoTime(deal.Hora_Fi_Boda) ||
+    parseZohoTime(deal.Hora_Fi_Evento)
+  )
+}
+
 function stagePresentation(group: StageCollection) {
   if (group === 'taronja') {
     return {
@@ -94,6 +104,7 @@ export async function normalizeZohoDeals(
     const hora =
       deps.parseZohoTime(deal.Hora_esdeveniment) ||
       deps.parseZohoTime(deal.Fecha_y_hora_del_evento)
+    const horaFi = resolveZohoEndTime(deal, deps.parseZohoTime)
 
     let dataFiISO = dateISO
     const duracio = Number(deal.Duraci_n_del_evento ?? 1)
@@ -149,6 +160,7 @@ export async function normalizeZohoDeals(
       DataFi: dataFiISO,
       ObservacionsZoho: deal.Description || deal.Observacions || null,
       HoraInici: hora,
+      HoraFi: horaFi,
       NumPax:
         deal.N_mero_de_invitados ||
         deal.N_mero_de_personas_del_evento ||

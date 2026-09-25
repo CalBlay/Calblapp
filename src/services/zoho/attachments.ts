@@ -10,6 +10,8 @@ export interface ZohoAttachment {
 export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Fulla_d_enc_rrec',
   'Full_de_Tast',
+  'Full_de_modificacions',
+  'Full_modificacions',
 ] as const
 
 const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM', 'FC'] as const

@@ -15,7 +15,7 @@ const {
   zohoAttachmentSlotKeys,
 } = require('../src/services/zoho/attachments')
 
-test('shouldImportZohoAttachment accepts legacy and spaced/underscored prefixes only', () => {
+test('shouldImportZohoAttachment accepts configured prefixes and valid separators', () => {
   assert.equal(shouldImportZohoAttachment('FT 123.pdf'), true)
   assert.equal(shouldImportZohoAttachment('FT_123.pdf'), true)
   assert.equal(shouldImportZohoAttachment('fg_contracte.pdf'), true)
@@ -23,7 +23,7 @@ test('shouldImportZohoAttachment accepts legacy and spaced/underscored prefixes 
   assert.equal(shouldImportZohoAttachment('FM encarrec.pdf'), true)
   assert.equal(shouldImportZohoAttachment('FC 07022024_AURA.pptx'), true)
   assert.equal(shouldImportZohoAttachment('fc_07022024.pptx'), true)
-  assert.equal(shouldImportZohoAttachment('FT123.pdf'), false)
+  assert.equal(shouldImportZohoAttachment('FT123.pdf'), true)
   assert.equal(shouldImportZohoAttachment('FM.encarrec.pdf'), false)
   assert.equal(shouldImportZohoAttachment('contracte FT 123.pdf'), false)
   assert.equal(shouldImportZohoAttachment(''), false)
@@ -58,6 +58,8 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
   assert.deepEqual(ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES, [
     'Fulla_d_enc_rrec',
     'Full_de_Tast',
+    'Full_de_modificacions',
+    'Full_modificacions',
   ])
 })
 
@@ -122,6 +124,8 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
   assert.deepEqual(ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES, [
     'Fulla_d_enc_rrec',
     'Full_de_Tast',
+    'Full_de_modificacions',
+    'Full_modificacions',
   ])
 })
 
@@ -139,4 +143,12 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   assert.doesNotMatch(routeSource, /forceFullSync:\s*true/)
   assert.match(syncSource, /const ZOHO_SYNC_CONCURRENCY = 4/)
   assert.match(syncSource, /slice\(offset, offset \+ ZOHO_SYNC_CONCURRENCY\)/)
+  for (const field of [
+    'Hora_Fi_Boda',
+    'Hora_Fi_Evento',
+    'Full_de_modificacions',
+    'Full_modificacions',
+  ]) {
+    assert.match(syncSource, new RegExp(`baseFields[\\s\\S]*${field}`))
+  }
 })

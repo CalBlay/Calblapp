@@ -18,6 +18,11 @@ import {
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 import type { ZohoDeal } from '@/services/zoho/sync-types'
 
+type ZohoDealAttachmentFields = Pick<
+  ZohoDeal,
+  (typeof ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES)[number]
+>
+
 async function getZohoFieldAttachmentValue(
   moduleName: string,
   recordId: string,
@@ -93,7 +98,7 @@ async function downloadZohoAttachment(
 async function resolveZohoDealAttachments(
   moduleName: string,
   dealId: string,
-  deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>
+  deal?: ZohoDealAttachmentFields
 ): Promise<ZohoAttachment[]> {
   const fieldValues = await Promise.all(
     ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.map(async (field) => {
@@ -110,7 +115,7 @@ async function resolveZohoDealAttachments(
 export async function buildZohoAttachmentFields(
   moduleName: string,
   dealId: string,
-  deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>,
+  deal?: ZohoDealAttachmentFields,
   existing?: FirebaseFirestore.DocumentData
 ): Promise<{
   fields: Record<string, unknown>

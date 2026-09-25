@@ -14,7 +14,10 @@ Module._load = function loadWithStubs(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain)
 }
 
-const { classifyStage } = require('../src/services/zoho/sync-normalization')
+const {
+  classifyStage,
+  resolveZohoEndTime,
+} = require('../src/services/zoho/sync-normalization')
 
 after(() => {
   Module._load = originalLoad
@@ -38,4 +41,27 @@ test('classifyStage maps proposal/pending stages to groc and drops unknown', () 
   assert.equal(classifyStage('Pressupost enviat'), 'groc')
   assert.equal(classifyStage('Qualificació'), null)
   assert.equal(classifyStage(''), null)
+})
+
+test('resolveZohoEndTime prioritizes wedding end time and falls back to event end time', () => {
+  const parseTime = (value) => {
+    const match = String(value || '').match(/(\d{1,2}):(\d{2})/)
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null
+  }
+
+  assert.equal(
+    resolveZohoEndTime(
+      { Hora_Fi_Boda: '01:30 h', Hora_Fi_Evento: '23:00' },
+      parseTime
+    ),
+    '01:30'
+  )
+  assert.equal(
+    resolveZohoEndTime(
+      { Hora_Fi_Boda: '', Hora_Fi_Evento: '9:15' },
+      parseTime
+    ),
+    '09:15'
+  )
+  assert.equal(resolveZohoEndTime({}, parseTime), null)
 })

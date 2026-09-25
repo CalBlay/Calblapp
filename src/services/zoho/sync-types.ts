@@ -25,6 +25,8 @@ export interface ZohoDeal {
   Fecha_y_hora_del_evento?: string | null
   /** Camp Zoho «Hora esdeveniment» (hora sola, p.ex. "12:00 h"). */
   Hora_esdeveniment?: string | null
+  Hora_Fi_Boda?: string | null
+  Hora_Fi_Evento?: string | null
   Duraci_n_del_evento?: number | string | null
   C_digo?: string | null
   Owner: ZohoOwner
@@ -37,6 +39,8 @@ export interface ZohoDeal {
   Description?: string | null
   Fulla_d_enc_rrec?: unknown
   Full_de_Tast?: unknown
+  Full_de_modificacions?: unknown
+  Full_modificacions?: unknown
 }
 
 export interface NormalizedDeal {
@@ -52,6 +56,7 @@ export interface NormalizedDeal {
   DataInici: string | null
   DataFi: string | null
   HoraInici?: string | null
+  HoraFi?: string | null
   NumPax: number | string | null
   ObservacionsZoho?: string | null
   Ubicacio: string
