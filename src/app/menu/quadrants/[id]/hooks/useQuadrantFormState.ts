@@ -166,8 +166,13 @@ export interface QuadrantFormState {
   updateServiceGroup: (id: string, patch: Partial<ServeiGroup>) => void
   removeServiceGroup: (id: string, phaseKey: ServicePhaseKey) => void
   servicePhaseEtt: Record<ServicePhaseKey, ServicePhaseEtt>
-  toggleServicePhaseEtt: (key: ServicePhaseKey) => void
-  updateServicePhaseEtt: (key: ServicePhaseKey, patch: Partial<ServicePhaseEttData>) => void
+  addServicePhaseEtt: (key: ServicePhaseKey) => void
+  removeServicePhaseEtt: (key: ServicePhaseKey, groupId: string) => void
+  updateServicePhaseEtt: (
+    key: ServicePhaseKey,
+    groupId: string,
+    patch: Partial<ServicePhaseEttData>
+  ) => void
   ettOpen: boolean
   setEttOpen: (value: boolean) => void
   ettData: ServicePhaseEttData
@@ -409,7 +414,8 @@ export function useQuadrantFormState({
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     servicePhaseEtt,
-    toggleServicePhaseEtt,
+    addServicePhaseEtt,
+    removeServicePhaseEtt,
     updateServicePhaseEtt,
     serviceTotals,
     serviceJamoneroAssignments,
@@ -724,7 +730,8 @@ export function useQuadrantFormState({
     updateServiceGroup,
     removeServiceGroup,
     servicePhaseEtt,
-    toggleServicePhaseEtt,
+    addServicePhaseEtt,
+    removeServicePhaseEtt,
     updateServicePhaseEtt,
     ettOpen,
     setEttOpen,

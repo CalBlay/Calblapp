@@ -9,6 +9,7 @@ import {
   unifiedPhaseToQuadrantEvent,
 } from '@/lib/unifiedPhaseToQuadrantEvent'
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
+import type { QuadrantAutoSaveRegistrar } from '@/lib/quadrantsAutoSave'
 
 interface Props {
   quadrant: Draft
@@ -18,7 +19,7 @@ interface Props {
   onCreatePhase?: (phaseKey: string) => void
   onRefreshDrafts?: () => Promise<unknown>
   onSaved?: () => void | Promise<void>
-  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
+  onRegisterAutoSave?: QuadrantAutoSaveRegistrar
 }
 
 type DraftWithMeta = Draft & {

@@ -27,10 +27,12 @@ import {
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { DriverCrewPremise } from "@/services/premises"
 import type { ComponentProps } from "react"
+import { Plus, Trash2 } from 'lucide-react'
 import { getCrewMembersForDriver } from "@/lib/driverCrewUtils"
 import { buildReservedForRoleLine } from "../lib/quadrantPayloadShared"
 import EttProviderSelect from './EttProviderSelect'
 import type { EttProviderPremise } from '@/services/premises'
+import { IconActionButton } from '@/lib/iconActionButton'
 
 type ServeisTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarServeis>, "embedded">
 
@@ -68,8 +70,14 @@ type Props = {
   addGroup: (phaseKey: ServicePhaseKey) => void
   removeGroup: (id: string, phaseKey: ServicePhaseKey) => void
   updateGroup: (id: string, patch: Partial<ServeiGroup>) => void
-  toggleEtt: (key: ServicePhaseKey) => void
-  updateEtt: (key: ServicePhaseKey, patch: Partial<ServicePhaseEttData>) => void
+  addEtt: (key: ServicePhaseKey) => void
+  removeEtt: (key: ServicePhaseKey, groupId: string) => void
+  updateEtt: (
+    key: ServicePhaseKey,
+    groupId: string,
+    patch: Partial<ServicePhaseEttData>
+  ) => void
+  ettEditable?: boolean
   serveisTopBar?: ServeisTopBarProps
 }
 
@@ -100,8 +108,10 @@ export default function ServicePhasePanel({
   addGroup,
   removeGroup,
   updateGroup,
-  toggleEtt,
+  addEtt,
+  removeEtt,
   updateEtt,
+  ettEditable = true,
   serveisTopBar,
 }: Props) {
   void meetingPoint
@@ -368,11 +378,13 @@ export default function ServicePhasePanel({
                         className={cn(
                           'border-slate-200 bg-white text-slate-900 shadow-sm',
                           compact && 'h-7 px-2 text-xs',
-                          phaseEtt?.open && 'border-indigo-300 bg-indigo-50'
+                          phaseEtt?.groups.length > 0 && 'border-indigo-300 bg-indigo-50'
                         )}
-                        onClick={() => toggleEtt(phase.key)}
+                        onClick={() => addEtt(phase.key)}
+                        disabled={!ettEditable}
                       >
-                        {phaseEtt?.open ? 'Amaga ETT' : '+ ETT'}
+                        <Plus className="mr-1 h-4 w-4" />
+                        Grup ETT
                       </Button>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -394,63 +406,101 @@ export default function ServicePhasePanel({
                     </div>
                   </div>
 
-                  {phaseEtt?.open ? (
-                    <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                      <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
+                  {phaseEtt?.groups.length ? (
+                    <div className="space-y-3">
+                      {phaseEtt.groups.map((ettGroup, index) => (
+                      <div
+                        key={ettGroup.id}
+                        className="space-y-3 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                            Grup ETT {index + 1}
+                          </span>
+                          <IconActionButton
+                            icon={Trash2}
+                            label={`Eliminar grup ETT ${index + 1}`}
+                            tone="danger"
+                            onClick={() => removeEtt(phase.key, ettGroup.id)}
+                            disabled={!ettEditable}
+                          />
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
                         <EttProviderSelect
                           providers={ettProviders}
-                          value={phaseEtt.data}
-                          onChange={(patch) => updateEtt(phase.key, patch)}
+                          value={ettGroup.data}
+                          onChange={(patch) => updateEtt(phase.key, ettGroup.id, patch)}
+                          disabled={!ettEditable}
                         />
                         <div>
                           <Label>Treballadors ETT</Label>
                           <Input
                             type="number"
                             min={0}
-                            value={phaseEtt.data.workers}
-                            onChange={(e) => updateEtt(phase.key, { workers: e.target.value })}
+                            value={ettGroup.data.workers}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { workers: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                         <div>
                           <Label>Data inici</Label>
                           <Input
                             type="date"
-                            value={phaseEtt.data.serviceDate}
-                            onChange={(e) => updateEtt(phase.key, { serviceDate: e.target.value })}
+                            value={ettGroup.data.serviceDate}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { serviceDate: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                         <div>
                           <Label>Data fi</Label>
                           <Input
                             type="date"
-                            value={phaseEtt.data.serviceDate}
-                            onChange={(e) => updateEtt(phase.key, { serviceDate: e.target.value })}
+                            value={ettGroup.data.serviceDate}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { serviceDate: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                         <div>
                           <Label>Hora inici</Label>
                           <Input
                             type="time"
-                            value={phaseEtt.data.startTime}
-                            onChange={(e) => updateEtt(phase.key, { startTime: e.target.value })}
+                            value={ettGroup.data.startTime}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { startTime: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                         <div>
                           <Label>Hora fi</Label>
                           <Input
                             type="time"
-                            value={phaseEtt.data.endTime}
-                            onChange={(e) => updateEtt(phase.key, { endTime: e.target.value })}
+                            value={ettGroup.data.endTime}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { endTime: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                         <div>
                           <Label>Lloc</Label>
                           <Input
-                            value={phaseEtt.data.meetingPoint}
-                            onChange={(e) => updateEtt(phase.key, { meetingPoint: e.target.value })}
+                            value={ettGroup.data.meetingPoint}
+                            onChange={(e) => updateEtt(phase.key, ettGroup.id, { meetingPoint: e.target.value })}
+                            disabled={!ettEditable}
                           />
                         </div>
                       </div>
+                      </div>
+                      ))}
+                      {ettEditable ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                          onClick={() => addEtt(phase.key)}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Afegir un altre grup ETT
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </>

@@ -2,6 +2,9 @@ export type EttEmailSchedule = {
   providerId: string
   providerName: string
   responsibleName: string
+  quadrantResponsibleName: string
+  quadrantResponsiblePhone: string
+  vestiment: string
   email: string
   department: string
   eventId: string
@@ -21,6 +24,40 @@ type QuadrantEmailDoc = Record<string, unknown> & {
 
 const text = (value: unknown) => String(value || '').trim()
 
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+
+export function getQuadrantEmailResponsible(doc: QuadrantEmailDoc): {
+  id: string
+  name: string
+  phone: string
+} {
+  const responsible = record(doc.responsable)
+  const firstGroup = Array.isArray(doc.groups) ? record(doc.groups[0]) : {}
+  const firstResponsible = Array.isArray(doc.responsables) ? record(doc.responsables[0]) : {}
+  return {
+    id: text(
+      doc.responsableId ||
+        responsible.id ||
+        firstGroup.responsibleId ||
+        firstResponsible.id
+    ),
+    name: text(
+      doc.responsableName ||
+        responsible.name ||
+        firstGroup.responsibleName ||
+        firstResponsible.name
+    ),
+    phone: text(
+      doc.responsablePhone ||
+        responsible.phone ||
+        responsible.telefon ||
+        firstGroup.responsiblePhone ||
+        firstResponsible.phone
+    ),
+  }
+}
+
 const formatDate = (value: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value || 'pendent'
@@ -38,6 +75,8 @@ export function collectEttEmailSchedules(
       return
     }
     const countsInDocument = new Map<string, EttEmailSchedule>()
+    const quadrantResponsible = getQuadrantEmailResponsible(doc)
+    const vestiment = text(doc.vestimentModel || doc.vestiment || doc.vestimenta)
     ;(Array.isArray(doc.treballadors) ? doc.treballadors : []).forEach((worker) => {
       const workerName = text(worker.name).toLowerCase()
       const isEtt =
@@ -64,6 +103,9 @@ export function collectEttEmailSchedules(
         providerId,
         providerName,
         responsibleName,
+        quadrantResponsibleName: quadrantResponsible.name,
+        quadrantResponsiblePhone: quadrantResponsible.phone,
+        vestiment,
         email,
         department,
         eventId,
@@ -97,6 +139,9 @@ export function buildEttScheduleEmailText(schedules: EttEmailSchedule[]): string
     `Data: ${formatDate(row.date)}`,
     `Núm. treballadors: ${row.workers}`,
     `Lloc: ${row.meetingPoint || row.location || 'pendent'}`,
+    `Vestimenta: ${row.vestiment || 'pendent'}`,
+    `Responsable: ${row.quadrantResponsibleName || 'pendent'}`,
+    `Telèfon del responsable: ${row.quadrantResponsiblePhone || 'pendent'}`,
     `Hora inici: ${row.startTime || 'pendent'}`,
     `Hora fi (estimada): ${row.endTime || 'pendent'}`,
     ...(index < schedules.length - 1 ? [''] : []),

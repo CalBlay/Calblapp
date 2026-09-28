@@ -15,10 +15,12 @@ export default function EttProviderSelect({
   providers,
   value,
   onChange,
+  disabled = false,
 }: {
   providers: EttProviderPremise[]
   value: EttContactData
   onChange: (patch: Partial<EttContactData>) => void
+  disabled?: boolean
 }) {
   const selectId = useId()
   return (
@@ -27,6 +29,7 @@ export default function EttProviderSelect({
       <select
         id={selectId}
         value={value.ettProviderId}
+        disabled={disabled}
         onChange={(event) => {
           const provider = providers.find((item) => item.id === event.target.value)
           onChange({
@@ -36,7 +39,7 @@ export default function EttProviderSelect({
             ettEmail: provider?.email || '',
           })
         }}
-        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       >
         <option value="">Selecciona una empresa ETT</option>
         {providers.map((provider) => (

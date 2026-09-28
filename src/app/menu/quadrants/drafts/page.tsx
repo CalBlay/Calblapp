@@ -22,6 +22,10 @@ import {
 import { taulaContentidorScroll } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import QuadrantCard from './components/QuadrantCard'
+import type {
+  QuadrantAutoSaveHandler,
+  QuadrantAutoSaveRegistrar,
+} from '@/lib/quadrantsAutoSave'
 
 /* ──────────────────────────────
    Tipus de dades
@@ -237,8 +241,8 @@ export default function DraftsPage() {
   )
   const [status, setStatus] = useState<'all' | 'draft' | 'confirmed'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
-  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+  const autoSaveRef = useRef<QuadrantAutoSaveHandler | null>(null)
+  const registerAutoSave: QuadrantAutoSaveRegistrar = useCallback((handler) => {
     autoSaveRef.current = handler
   }, [])
   const toggleExpandedDraft = useCallback(async (draftId: string) => {

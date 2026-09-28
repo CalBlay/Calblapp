@@ -153,5 +153,8 @@ export type ServicePhaseEttData = {
 
 export type ServicePhaseEtt = {
   open: boolean
-  data: ServicePhaseEttData
+  groups: Array<{
+    id: string
+    data: ServicePhaseEttData
+  }>
 }

@@ -95,24 +95,30 @@ export function buildServeisPayload(input: BuildServeisPayloadInput): BuiltPaylo
 
   // ETT per cada fase de Serveis
   Object.entries(servicePhaseEtt).forEach(([phaseKey, ettState]) => {
-    const workers = Number(ettState.data.workers || 0)
-    if (!workers) return
-    const entries = buildEttEntries(workers, {
-      meetingPoint: ettState.data.meetingPoint || meetingPoint,
-      startDate: ettState.data.serviceDate || startDate,
-      endDate: ettState.data.serviceDate || endDate,
-      startTime: ettState.data.startTime || startTime,
-      endTime: ettState.data.endTime || endTime,
-      ettProviderId: ettState.data.ettProviderId,
-      ettProviderName: ettState.data.ettProviderName,
-      ettResponsibleName: ettState.data.ettResponsibleName,
-      ettEmail: ettState.data.ettEmail,
-      ettGroupKey: `serveis-${phaseKey}`,
+    ettState.groups.forEach((ettGroup) => {
+      const workers = Number(ettGroup.data.workers || 0)
+      if (!workers) return
+      const phaseGroupPrefix = `serveis-${phaseKey}-`
+      const ettGroupKey = ettGroup.id.startsWith(phaseGroupPrefix)
+        ? ettGroup.id
+        : `${phaseGroupPrefix}${ettGroup.id}`
+      const entries = buildEttEntries(workers, {
+        meetingPoint: ettGroup.data.meetingPoint || meetingPoint,
+        startDate: ettGroup.data.serviceDate || startDate,
+        endDate: ettGroup.data.serviceDate || endDate,
+        startTime: ettGroup.data.startTime || startTime,
+        endTime: ettGroup.data.endTime || endTime,
+        ettProviderId: ettGroup.data.ettProviderId,
+        ettProviderName: ettGroup.data.ettProviderName,
+        ettResponsibleName: ettGroup.data.ettResponsibleName,
+        ettEmail: ettGroup.data.ettEmail,
+        ettGroupKey,
+      })
+      appendExternalWorkers(payload, entries)
+      entries.forEach((entry) =>
+        addTimetable({ startTime: entry.startTime, endTime: entry.endTime })
+      )
     })
-    appendExternalWorkers(payload, entries)
-    entries.forEach((entry) =>
-      addTimetable({ startTime: entry.startTime, endTime: entry.endTime })
-    )
   })
 
   return { payload, timetables }

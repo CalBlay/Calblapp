@@ -7,13 +7,61 @@ import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissio
 import { PERM } from '@/lib/permissionKeys'
 import { findSenderEmail } from '@/lib/calendar/calendarEmail'
 import { sendOutlookTextMail } from '@/services/graph/calendar'
-import { buildEttScheduleEmailText, collectEttEmailSchedules } from '@/lib/quadrantEttEmail'
+import {
+  buildEttScheduleEmailText,
+  collectEttEmailSchedules,
+  getQuadrantEmailResponsible,
+} from '@/lib/quadrantEttEmail'
 
 export const runtime = 'nodejs'
 
 const normalizeEventId = (value: unknown) => String(value || '').trim().split('__')[0].trim()
 const normalizeDepartment = (value: unknown) =>
   String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+
+const normalizeName = (value: unknown) =>
+  String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+
+const readPhone = (value: FirebaseFirestore.DocumentData | undefined) =>
+  String(value?.phone || value?.telefon || value?.mobile || '').trim()
+
+async function attachResponsiblePhones(docs: Array<Record<string, unknown>>) {
+  const refs = docs.map(getQuadrantEmailResponsible)
+  const ids = Array.from(new Set(refs.map((ref) => ref.id).filter(Boolean)))
+  const names = Array.from(new Set(refs.map((ref) => ref.name).filter(Boolean)))
+  const phoneById = new Map<string, string>()
+  const phoneByName = new Map<string, string>()
+
+  await Promise.all(
+    ids.map(async (id) => {
+      const [personnel, user] = await Promise.all([
+        firestoreAdmin.collection('personnel').doc(id).get(),
+        firestoreAdmin.collection('users').doc(id).get(),
+      ])
+      const phone = readPhone(personnel.data()) || readPhone(user.data())
+      if (phone) phoneById.set(id, phone)
+    })
+  )
+
+  await Promise.all(
+    names.map(async (name) => {
+      const [personnel, user] = await Promise.all([
+        firestoreAdmin.collection('personnel').where('name', '==', name).limit(1).get(),
+        firestoreAdmin.collection('users').where('name', '==', name).limit(1).get(),
+      ])
+      const phone =
+        readPhone(personnel.docs[0]?.data()) || readPhone(user.docs[0]?.data())
+      if (phone) phoneByName.set(normalizeName(name), phone)
+    })
+  )
+
+  return docs.map((doc, index) => {
+    const ref = refs[index]
+    const phone =
+      ref.phone || phoneById.get(ref.id) || phoneByName.get(normalizeName(ref.name)) || ''
+    return phone ? { ...doc, responsablePhone: phone } : doc
+  })
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth()
@@ -54,7 +102,8 @@ export async function POST(req: NextRequest) {
       if (direct.exists) docs.push({ id: direct.id, ...direct.data() })
     }
 
-    const schedules = collectEttEmailSchedules(docs, eventId, department)
+    const emailDocs = await attachResponsiblePhones(docs)
+    const schedules = collectEttEmailSchedules(emailDocs, eventId, department)
     if (schedules.length === 0) {
       console.warn('[quadrants/ett-email POST] no schedules', {
         eventId,

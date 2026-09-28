@@ -26,6 +26,10 @@ import QuadrantsPhaseRow from './QuadrantsPhaseRow'
 import PendingQuadrantEditor from './PendingQuadrantEditor'
 import QuadrantCard from '@/app/menu/quadrants/drafts/components/QuadrantCard'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
+import type {
+  QuadrantAutoSaveHandler,
+  QuadrantAutoSaveRegistrar,
+} from '@/lib/quadrantsAutoSave'
 
 type Props = {
   event: GroupedQuadrantEvent
@@ -55,8 +59,8 @@ export default function QuadrantsEventGroup({
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
-  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
-  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+  const autoSaveRef = useRef<QuadrantAutoSaveHandler | null>(null)
+  const registerAutoSave: QuadrantAutoSaveRegistrar = useCallback((handler) => {
     autoSaveRef.current = handler
   }, [])
   const anchorId = useMemo(() => {
@@ -110,12 +114,15 @@ export default function QuadrantsEventGroup({
 
   const handleConfirm = async () => {
     if (!showConfirm || confirmLoading) return
-    if (autoSaveRef.current) {
-      const canConfirmCurrent = await autoSaveRef.current()
-      if (!canConfirmCurrent) return
-    }
     setConfirmLoading(true)
     try {
+      let confirmedDuringAutoSave = false
+      if (autoSaveRef.current) {
+        const autoSaveResult = await autoSaveRef.current({ confirm: true })
+        if (!autoSaveResult) return
+        confirmedDuringAutoSave = autoSaveResult === 'saved'
+      }
+
       let confirmed = 0
       for (const phase of draftPhases) {
         const ok = await confirmDraftTable({
@@ -126,11 +133,13 @@ export default function QuadrantsEventGroup({
         if (ok) confirmed += 1
       }
       if (confirmed > 0) {
-        toast.success(
-          confirmed === 1
-            ? 'Quadrant confirmat correctament'
-            : `${confirmed} quadrants confirmats correctament`
-        )
+        if (!confirmedDuringAutoSave) {
+          toast.success(
+            confirmed === 1
+              ? 'Quadrant confirmat correctament'
+              : `${confirmed} quadrants confirmats correctament`
+          )
+        }
         await onRefreshDrafts?.()
       }
     } finally {

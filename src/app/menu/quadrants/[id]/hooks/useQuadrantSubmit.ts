@@ -177,8 +177,12 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
       const missingEttProvider = isCuina
         ? Number(cuinaEtt.data.workers || 0) > 0 && !String(cuinaEtt.data.ettEmail || '').includes('@')
         : isServeis
-          ? Object.values(servicePhaseEtt).some(
-              (entry) => Number(entry.data.workers || 0) > 0 && !String(entry.data.ettEmail || '').includes('@')
+          ? Object.values(servicePhaseEtt).some((phase) =>
+              phase.groups.some(
+                (group) =>
+                  Number(group.data.workers || 0) > 0 &&
+                  !String(group.data.ettEmail || '').includes('@')
+              )
             )
           : Boolean(ettEntry && !String(ettEntry.ettEmail || '').includes('@'))
       if (missingEttProvider) {

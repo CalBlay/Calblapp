@@ -18,6 +18,10 @@ import QuadrantsPersonnelList from './QuadrantsPersonnelList'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import type {
+  QuadrantAutoSaveHandler,
+  QuadrantAutoSaveRegistrar,
+} from '@/lib/quadrantsAutoSave'
 
 type QuadrantDraftDetails = {
   id?: string
@@ -47,8 +51,8 @@ export default function QuadrantsLinesTable({
   department,
   onRefreshDrafts: _onRefreshDrafts,
 }: Props) {
-  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
-  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+  const autoSaveRef = useRef<QuadrantAutoSaveHandler | null>(null)
+  const registerAutoSave: QuadrantAutoSaveRegistrar = useCallback((handler) => {
     autoSaveRef.current = handler
   }, [])
   const [documentsEvent, setDocumentsEvent] = React.useState<{

@@ -26,6 +26,10 @@ test('ETT email schedules aggregate confirmed workers with the same recipient an
       code: 'E26001',
       eventName: 'Sopar empresa',
       location: 'Cal Blay',
+      vestimentModel: 'Camisa blanca i pantaló negre',
+      responsableId: 'person-1',
+      responsableName: 'Joan Responsable',
+      responsablePhone: '600 123 123',
       treballadors: [worker, { ...worker }],
     }],
     'event-1',
@@ -39,6 +43,9 @@ test('ETT email schedules aggregate confirmed workers with the same recipient an
   assert.match(emailText, /Data: 05\/10\/2026/)
   assert.match(emailText, /Núm\. treballadors: 2/)
   assert.match(emailText, /Lloc: Magatzem central/)
+  assert.match(emailText, /Vestimenta: Camisa blanca i pantaló negre/)
+  assert.match(emailText, /Responsable: Joan Responsable/)
+  assert.match(emailText, /Telèfon del responsable: 600 123 123/)
   assert.match(emailText, /Hora inici: 16:00/)
   assert.match(emailText, /Hora fi \(estimada\): 23:30/)
   assert.match(emailText, /confirmeu l’assistència, els noms de les persones/)

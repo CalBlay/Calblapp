@@ -13,6 +13,7 @@ import type { UnifiedEvent } from '@/app/menu/quadrants/types'
 import type { Draft } from '@/app/menu/quadrants/drafts/page'
 import PendingQuadrantEditor from './PendingQuadrantEditor'
 import QuadrantsPersonnelList from './QuadrantsPersonnelList'
+import type { QuadrantAutoSaveRegistrar } from '@/lib/quadrantsAutoSave'
 
 type QuadrantDraftDetails = {
   id?: string
@@ -31,7 +32,7 @@ type Props = {
   onPhaseClick: (phase: UnifiedEvent) => void
   onRefreshDrafts?: () => Promise<unknown>
   onEditorSaved?: () => void | Promise<void>
-  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
+  onRegisterAutoSave?: QuadrantAutoSaveRegistrar
   renderEditor?: boolean
 }
 

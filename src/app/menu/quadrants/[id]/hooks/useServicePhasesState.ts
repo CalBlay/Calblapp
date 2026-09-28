@@ -29,6 +29,7 @@ const extractDate = (iso = '') => iso.split('T')[0] || ''
 
 const makeGroupId = () => `group-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const makeJamoneroId = () => `jamonero-${Date.now()}-${Math.random().toString(16).slice(2)}`
+const makeEttGroupId = () => `ett-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 type UseServicePhasesStateOptions = {
   event: QuadrantEvent
@@ -55,8 +56,13 @@ export type UseServicePhasesStateResult = {
   servicePhaseVisibility: Record<ServicePhaseKey, boolean>
   toggleServicePhaseVisibility: (key: ServicePhaseKey) => void
   servicePhaseEtt: Record<ServicePhaseKey, ServicePhaseEtt>
-  toggleServicePhaseEtt: (key: ServicePhaseKey) => void
-  updateServicePhaseEtt: (key: ServicePhaseKey, patch: Partial<ServicePhaseEttData>) => void
+  addServicePhaseEtt: (key: ServicePhaseKey) => void
+  removeServicePhaseEtt: (key: ServicePhaseKey, groupId: string) => void
+  updateServicePhaseEtt: (
+    key: ServicePhaseKey,
+    groupId: string,
+    patch: Partial<ServicePhaseEttData>
+  ) => void
   serviceTotals: {
     workers: number
     drivers: number
@@ -103,29 +109,38 @@ const createServicePhaseSettings = () =>
     return acc
   }, {} as Record<ServicePhaseKey, ServicePhaseSetting>)
 
-const buildServicePhaseEttState = (params: {
-  serviceDate: string
-  meetingPoint: string
-  startTime: string
-  endTime: string
-}) =>
+const buildServicePhaseEttState = () =>
   servicePhaseOptions.reduce((acc, phase) => {
     acc[phase.key] = {
       open: false,
-      data: {
-        serviceDate: params.serviceDate,
-        meetingPoint: params.meetingPoint,
-        startTime: params.startTime,
-        endTime: params.endTime,
-        workers: '',
-        ettProviderId: '',
-        ettProviderName: '',
-        ettResponsibleName: '',
-        ettEmail: '',
-      },
+      groups: [],
     }
     return acc
   }, {} as Record<ServicePhaseKey, ServicePhaseEtt>)
+
+const createEttGroup = (
+  params: {
+    serviceDate: string
+    meetingPoint: string
+    startTime: string
+    endTime: string
+  },
+  seed: Partial<ServicePhaseEttData> = {},
+  id = makeEttGroupId()
+) => ({
+  id,
+  data: {
+    serviceDate: seed.serviceDate ?? params.serviceDate,
+    meetingPoint: seed.meetingPoint ?? params.meetingPoint,
+    startTime: seed.startTime ?? params.startTime,
+    endTime: seed.endTime ?? params.endTime,
+    workers: seed.workers ?? '',
+    ettProviderId: seed.ettProviderId ?? '',
+    ettProviderName: seed.ettProviderName ?? '',
+    ettResponsibleName: seed.ettResponsibleName ?? '',
+    ettEmail: seed.ettEmail ?? '',
+  },
+})
 
 export function useServicePhasesState({
   event,
@@ -192,12 +207,7 @@ export function useServicePhasesState({
   const [servicePhaseVisibility, setServicePhaseVisibility] = useState(createServicePhaseVisibility)
   const [servicePhaseSettings, setServicePhaseSettings] = useState(createServicePhaseSettings)
   const [servicePhaseEtt, setServicePhaseEtt] = useState<Record<ServicePhaseKey, ServicePhaseEtt>>(() =>
-    buildServicePhaseEttState({
-      serviceDate: defaultServiceDate,
-      meetingPoint: defaultMeetingPoint,
-      startTime: startTime || '',
-      endTime: endTime || '',
-    })
+    buildServicePhaseEttState()
   )
 
   useEffect(() => {
@@ -209,33 +219,55 @@ export function useServicePhasesState({
       setServiceJamoneroAssignments([])
       setServicePhaseVisibility(hydrated.visibility)
       setServicePhaseSettings(hydrated.settings)
-      const nextEttState = buildServicePhaseEttState({
-          serviceDate: existingDraft.startDate || defaultServiceDate,
-          meetingPoint:
-            String(existingDraft.meetingPoint || '').trim() || defaultMeetingPoint,
-          startTime: existingDraft.startTime || startTime || '',
-          endTime: existingDraft.endTime || endTime || '',
-        })
+      const nextEttState = buildServicePhaseEttState()
       const existingEttWorkers = (existingDraft.treballadors || []).filter((worker) => {
         const name = String(worker?.name || '').trim().toLowerCase()
         return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
       })
-      const existingEtt = existingEttWorkers[0]
       const phaseKey: ServicePhaseKey = existingDraft.phaseType === 'muntatge' ? 'muntatge' : 'event'
       if (existingEttWorkers.length > 0) {
+        const groupedWorkers = new Map<string, typeof existingEttWorkers>()
+        existingEttWorkers.forEach((worker, index) => {
+          const persistedGroupId = String(worker?.groupId || '').trim()
+          const fallbackGroupId = [
+            worker?.ettProviderId,
+            worker?.startDate,
+            worker?.startTime,
+            worker?.endTime,
+            worker?.meetingPoint,
+          ]
+            .map((value) => String(value || '').trim())
+            .join('|') || `legacy-${index}`
+          const groupId = persistedGroupId || fallbackGroupId
+          const current = groupedWorkers.get(groupId) || []
+          current.push(worker)
+          groupedWorkers.set(groupId, current)
+        })
         nextEttState[phaseKey] = {
           open: true,
-          data: {
-            serviceDate: existingEtt?.startDate || existingDraft.startDate || defaultServiceDate,
-            meetingPoint: existingEtt?.meetingPoint || defaultMeetingPoint,
-            startTime: existingEtt?.startTime || existingDraft.startTime || startTime || '',
-            endTime: existingEtt?.endTime || existingDraft.endTime || endTime || '',
-            workers: String(existingEttWorkers.length),
-            ettProviderId: String(existingEtt?.ettProviderId || ''),
-            ettProviderName: String(existingEtt?.ettProviderName || ''),
-            ettResponsibleName: String(existingEtt?.ettResponsibleName || ''),
-            ettEmail: String(existingEtt?.ettEmail || ''),
-          },
+          groups: Array.from(groupedWorkers.entries()).map(([groupId, workers]) => {
+            const first = workers[0]
+            return createEttGroup(
+              {
+                serviceDate: existingDraft.startDate || defaultServiceDate,
+                meetingPoint: defaultMeetingPoint,
+                startTime: existingDraft.startTime || startTime || '',
+                endTime: existingDraft.endTime || endTime || '',
+              },
+              {
+                serviceDate: first?.startDate || existingDraft.startDate || defaultServiceDate,
+                meetingPoint: first?.meetingPoint || defaultMeetingPoint,
+                startTime: first?.startTime || existingDraft.startTime || startTime || '',
+                endTime: first?.endTime || existingDraft.endTime || endTime || '',
+                workers: String(workers.length),
+                ettProviderId: String(first?.ettProviderId || ''),
+                ettProviderName: String(first?.ettProviderName || ''),
+                ettResponsibleName: String(first?.ettResponsibleName || ''),
+                ettEmail: String(first?.ettEmail || ''),
+              },
+              groupId
+            )
+          }),
         }
       }
       setServicePhaseEtt(nextEttState)
@@ -253,14 +285,7 @@ export function useServicePhasesState({
     setServiceJamoneroAssignments([])
     setServicePhaseVisibility(createServicePhaseVisibility())
     setServicePhaseSettings(createServicePhaseSettings())
-    setServicePhaseEtt(
-      buildServicePhaseEttState({
-        serviceDate: defaultServiceDate,
-        meetingPoint: defaultMeetingPoint,
-        startTime: startTime || '',
-        endTime: endTime || '',
-      })
-    )
+    setServicePhaseEtt(buildServicePhaseEttState())
   }, [
     createServicePhaseGroups,
     department,
@@ -330,17 +355,49 @@ export function useServicePhasesState({
     setServicePhaseVisibility((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const toggleServicePhaseEtt = (key: ServicePhaseKey) => {
+  const addServicePhaseEtt = (key: ServicePhaseKey) => {
     setServicePhaseEtt((prev) => ({
       ...prev,
-      [key]: { ...prev[key], open: !prev[key].open },
+      [key]: {
+        open: true,
+        groups: [
+          ...prev[key].groups,
+          createEttGroup({
+            serviceDate: defaultServiceDate,
+            meetingPoint: defaultMeetingPoint,
+            startTime: startTime || '',
+            endTime: endTime || '',
+          }),
+        ],
+      },
     }))
   }
 
-  const updateServicePhaseEtt = (key: ServicePhaseKey, patch: Partial<ServicePhaseEttData>) => {
+  const removeServicePhaseEtt = (key: ServicePhaseKey, groupId: string) => {
     setServicePhaseEtt((prev) => ({
       ...prev,
-      [key]: { ...prev[key], data: { ...prev[key].data, ...patch } },
+      [key]: {
+        open: prev[key].groups.length > 1,
+        groups: prev[key].groups.filter((group) => group.id !== groupId),
+      },
+    }))
+  }
+
+  const updateServicePhaseEtt = (
+    key: ServicePhaseKey,
+    groupId: string,
+    patch: Partial<ServicePhaseEttData>
+  ) => {
+    setServicePhaseEtt((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        groups: prev[key].groups.map((group) =>
+          group.id === groupId
+            ? { ...group, data: { ...group.data, ...patch } }
+            : group
+        ),
+      },
     }))
   }
 
@@ -500,7 +557,8 @@ export function useServicePhasesState({
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     servicePhaseEtt,
-    toggleServicePhaseEtt,
+    addServicePhaseEtt,
+    removeServicePhaseEtt,
     updateServicePhaseEtt,
     serviceTotals,
     serviceJamoneroAssignments,

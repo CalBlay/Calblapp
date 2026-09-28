@@ -37,6 +37,12 @@ import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { cn } from '@/lib/utils'
 import useSWR from 'swr'
 import type { EttProviderPremise } from '@/services/premises'
+import type {
+  QuadrantAutoSaveHandler,
+  QuadrantAutoSaveOptions,
+  QuadrantAutoSaveRegistrar,
+  QuadrantAutoSaveResult,
+} from '@/lib/quadrantsAutoSave'
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
   const response = await fetch(url, { cache: 'no-store' })
@@ -53,7 +59,7 @@ export type QuadrantEditorProps = {
   existingDraft?: EditorDraftInput | null
   onSaved?: () => void | Promise<void>
   onCancel?: () => void
-  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
+  onRegisterAutoSave?: QuadrantAutoSaveRegistrar
 }
 
 export function QuadrantEditor({
@@ -135,7 +141,8 @@ export function QuadrantEditor({
     updateServiceGroup,
     removeServiceGroup,
     servicePhaseEtt,
-    toggleServicePhaseEtt,
+    addServicePhaseEtt,
+    removeServicePhaseEtt,
     updateServicePhaseEtt,
     ettOpen,
     setEttOpen,
@@ -502,15 +509,18 @@ export function QuadrantEditor({
     return saved
   }, [handleAutoGenAndSave])
 
-  const handleAutoSaveBeforeClose = useCallback(async () => {
-    if (!dirtyRef.current) return true
+  const handleAutoSaveBeforeClose = useCallback(async (
+    options: QuadrantAutoSaveOptions = {}
+  ): Promise<QuadrantAutoSaveResult> => {
+    if (!dirtyRef.current) return 'clean'
     if (loading || deleting) return false
     if (!canAutoGen) {
       toast.warning('Hi ha canvis pendents. Completa les dates i hores abans de plegar la targeta.')
       return false
     }
 
-    return runSave(false)
+    const saved = await runSave(Boolean(options.confirm))
+    return saved ? 'saved' : false
   }, [canAutoGen, deleting, loading, runSave])
 
   useEffect(() => {
@@ -734,8 +744,10 @@ export function QuadrantEditor({
               addGroup={addServiceGroup}
               removeGroup={removeServiceGroup}
               updateGroup={updateServiceGroup}
-              toggleEtt={toggleServicePhaseEtt}
+              addEtt={addServicePhaseEtt}
+              removeEtt={removeServicePhaseEtt}
               updateEtt={updateServicePhaseEtt}
+              ettEditable={!isConfirmed}
             />
           )}
 
@@ -828,8 +840,8 @@ export function QuadrantEditor({
 }
 
 export default function QuadrantModal({ open, onOpenChange, event, onSaved }: QuadrantModalProps) {
-  const autoSaveRef = useRef<(() => Promise<boolean>) | null>(null)
-  const registerAutoSave = useCallback((handler: (() => Promise<boolean>) | null) => {
+  const autoSaveRef = useRef<QuadrantAutoSaveHandler | null>(null)
+  const registerAutoSave: QuadrantAutoSaveRegistrar = useCallback((handler) => {
     autoSaveRef.current = handler
   }, [])
   const requestClose = useCallback(async () => {

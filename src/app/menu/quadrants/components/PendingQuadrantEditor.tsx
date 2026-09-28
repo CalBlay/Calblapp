@@ -6,12 +6,13 @@ import type { UnifiedEvent } from '@/app/menu/quadrants/types'
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import { unifiedPhaseToQuadrantEvent } from '@/lib/unifiedPhaseToQuadrantEvent'
 import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
+import type { QuadrantAutoSaveRegistrar } from '@/lib/quadrantsAutoSave'
 
 type Props = {
   phase: UnifiedEvent
   department?: string
   onSaved?: () => void | Promise<void>
-  onRegisterAutoSave?: (handler: (() => Promise<boolean>) | null) => void
+  onRegisterAutoSave?: QuadrantAutoSaveRegistrar
 }
 
 export default function PendingQuadrantEditor({
