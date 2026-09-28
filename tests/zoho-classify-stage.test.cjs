@@ -16,6 +16,7 @@ Module._load = function loadWithStubs(request, parent, isMain) {
 
 const {
   classifyStage,
+  isLostZohoStage,
   resolveZohoEndTime,
 } = require('../src/services/zoho/sync-normalization')
 
@@ -41,6 +42,14 @@ test('classifyStage maps proposal/pending stages to groc and drops unknown', () 
   assert.equal(classifyStage('Pressupost enviat'), 'groc')
   assert.equal(classifyStage('Qualificació'), null)
   assert.equal(classifyStage(''), null)
+})
+
+test('isLostZohoStage recognizes Spanish and Catalan lost stages', () => {
+  assert.equal(isLostZohoStage('Cerrada perdida'), true)
+  assert.equal(isLostZohoStage('PÉRDIDA'), true)
+  assert.equal(isLostZohoStage('Oportunitat perduda'), true)
+  assert.equal(isLostZohoStage('Cerrada ganada'), false)
+  assert.equal(isLostZohoStage('Propuesta enviada'), false)
 })
 
 test('resolveZohoEndTime prioritizes wedding end time and falls back to event end time', () => {

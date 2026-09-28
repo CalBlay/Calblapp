@@ -54,6 +54,18 @@ export function classifyStage(stage: string): StageCollection | null {
   return null
 }
 
+export function isLostZohoStage(stage: string): boolean {
+  const normalized = String(stage || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+
+  return (
+    /\bperdid(?:a|o|as|os)\b/.test(normalized) ||
+    /\bperdu(?:t|da|ts|des)\b/.test(normalized)
+  )
+}
+
 export function resolveZohoEndTime(
   deal: Pick<ZohoDeal, 'Hora_Fi_Boda' | 'Hora_Fi_Evento'>,
   parseZohoTime: (raw?: string | null) => string | null

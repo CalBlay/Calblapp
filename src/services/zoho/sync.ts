@@ -17,7 +17,11 @@ import {
   hasRestaurantKeyword,
 } from '@/services/zoho/sync-finca-matching'
 import { syncFinquesFromDeals } from '@/services/zoho/sync-finques'
-import { classifyStage, normalizeZohoDeals } from '@/services/zoho/sync-normalization'
+import {
+  classifyStage,
+  isLostZohoStage,
+  normalizeZohoDeals,
+} from '@/services/zoho/sync-normalization'
 import { syncServeisFromDeals } from '@/services/zoho/sync-serveis'
 import {
   cleanUndefined,
@@ -433,6 +437,69 @@ async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   return new Map(snap.docs.map((doc) => [doc.id, doc]))
 }
 
+async function cancelLostZohoDealsInVerd(
+  existingVerd: StageSnapshotMap,
+  zohoById: Map<string, ZohoDeal>
+): Promise<number> {
+  let batch = firestore.batch()
+  let pending = 0
+  let cancelled = 0
+
+  const flush = async () => {
+    if (pending === 0) return
+    await batch.commit()
+    batch = firestore.batch()
+    pending = 0
+  }
+
+  for (const doc of existingVerd.values()) {
+    const data = doc.data()
+    if (data?.origen !== 'zoho') continue
+
+    const zohoDeal = zohoById.get(doc.id)
+    if (!zohoDeal || !isLostZohoStage(zohoDeal.Stage)) continue
+
+    const now = new Date().toISOString()
+    const wasAlreadyCancelled = data.cancelled === true
+    batch.set(
+      doc.ref,
+      {
+        Stage: zohoDeal.Stage,
+        cancelled: true,
+        cancelledAt:
+          wasAlreadyCancelled && typeof data.cancelledAt === 'string'
+            ? data.cancelledAt
+            : now,
+        cancelledByUserId: wasAlreadyCancelled
+          ? (data.cancelledByUserId ?? null)
+          : null,
+        cancelledByName: wasAlreadyCancelled
+          ? (data.cancelledByName ?? 'Zoho')
+          : 'Zoho',
+        cancellationSource: wasAlreadyCancelled
+          ? (data.cancellationSource ?? null)
+          : 'zoho-stage-lost',
+        updatedAt: now,
+        lastWriteSource: 'zoho-sync',
+        lastWriteAt: now,
+      },
+      { merge: true }
+    )
+    pending += 1
+    if (!wasAlreadyCancelled) cancelled += 1
+
+    if (pending >= MAX_BATCH_WRITES) await flush()
+  }
+
+  await flush()
+  if (cancelled > 0) {
+    console.info(
+      `[zoho-sync] Cancel·lats ${cancelled} esdeveniments de stage_verd per etapa perduda a Zoho`
+    )
+  }
+  return cancelled
+}
+
 async function repairStoredManualOverrides(
   existingVerd: StageSnapshotMap,
   todayISO: string
@@ -669,6 +736,7 @@ async function syncStageCollections({
   ])
 
   await repairStoredManualOverrides(existingVerd, new Date().toISOString().slice(0, 10))
+  await cancelLostZohoDealsInVerd(existingVerd, zohoById)
 
   const getExistingStageDoc = (id: string) =>
     existingVerd.get(id)?.data() ||
@@ -790,6 +858,9 @@ async function syncStageCollections({
 
       const group = classifyStage(zoho.Stage || '')
       if (group !== 'verd') {
+        if (isLostZohoStage(zoho.Stage || '')) {
+          continue
+        }
         const movedToSyncedStage = idsGroc.has(id) || idsTaronja.has(id)
         if (
           group !== null &&
