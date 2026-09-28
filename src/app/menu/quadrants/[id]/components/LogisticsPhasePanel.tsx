@@ -12,6 +12,7 @@ import {
   LogisticPhaseSetting,
   VehicleAssignment,
   AvailableVehicle,
+  ServicePhaseEtt,
   ServicePhaseEttData,
 } from "../phaseConfig"
 import PhaseCard, { PhaseUnifiedMarker } from "./PhaseCard"
@@ -28,8 +29,9 @@ import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../li
 import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { ComponentProps } from "react"
-import EttProviderSelect from './EttProviderSelect'
-import type { EttProviderPremise } from '@/services/premises'
+import { LOGISTICS_ETT_RECIPIENT } from '@/lib/quadrantEttEmail'
+import { Plus, Trash2 } from 'lucide-react'
+import { IconActionButton } from '@/lib/iconActionButton'
 
 type LogisticaTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarLogistica>, "embedded">
 
@@ -51,11 +53,11 @@ type Props = {
     patch: Partial<VehicleAssignment>
   ) => void
   replacePhaseVehicleAssignments: (key: LogisticPhaseKey, assignments: VehicleAssignment[]) => void
-  ettOpen: boolean
-  ettData: ServicePhaseEttData
-  ettProviders: EttProviderPremise[]
-  toggleEtt: () => void
-  updateEtt: (patch: Partial<ServicePhaseEttData>) => void
+  ettState: ServicePhaseEtt
+  addEtt: () => void
+  removeEtt: (groupId: string) => void
+  updateEtt: (groupId: string, patch: Partial<ServicePhaseEttData>) => void
+  ettEditable?: boolean
   mode?: "auto" | "semi" | "manual"
   compact?: boolean
   department?: string
@@ -77,11 +79,11 @@ export default function LogisticsPhasePanel({
   updatePhaseSetting,
   updatePhaseVehicleAssignment,
   replacePhaseVehicleAssignments,
-  ettOpen,
-  ettData,
-  ettProviders,
-  toggleEtt,
+  ettState,
+  addEtt,
+  removeEtt,
   updateEtt,
+  ettEditable = true,
   mode = "semi",
   compact = false,
   department,
@@ -400,11 +402,13 @@ export default function LogisticsPhasePanel({
                           className={cn(
                             "border-slate-200 bg-white text-slate-900 shadow-sm",
                             compact && "h-7 px-2 text-xs",
-                            ettOpen && "border-indigo-300 bg-indigo-50"
+                            ettState.groups.length > 0 && "border-indigo-300 bg-indigo-50"
                           )}
-                          onClick={toggleEtt}
+                          onClick={addEtt}
+                          disabled={!ettEditable}
                         >
-                          {ettOpen ? "Amaga ETT" : "+ ETT"}
+                          <Plus className="mr-1 h-4 w-4" />
+                          Grup ETT
                         </Button>
                       ) : null}
                     </div>
@@ -427,63 +431,111 @@ export default function LogisticsPhasePanel({
                     </div>
                   </div>
 
-                  {phase.key === "event" && ettOpen ? (
-                    <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                      <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
-                        <EttProviderSelect
-                          providers={ettProviders}
-                          value={ettData}
-                          onChange={updateEtt}
-                        />
-                        <div>
-                          <Label>Treballadors ETT</Label>
-                          <Input
-                            type="number"
-                            min={0}
-                            value={ettData.workers}
-                            onChange={(e) => updateEtt({ workers: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Data inici</Label>
-                          <Input
-                            type="date"
-                            value={ettData.serviceDate}
-                            onChange={(e) => updateEtt({ serviceDate: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Data fi</Label>
-                          <Input
-                            type="date"
-                            value={ettData.serviceDate}
-                            onChange={(e) => updateEtt({ serviceDate: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Hora inici</Label>
-                          <Input
-                            type="time"
-                            value={ettData.startTime}
-                            onChange={(e) => updateEtt({ startTime: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Hora fi</Label>
-                          <Input
-                            type="time"
-                            value={ettData.endTime}
-                            onChange={(e) => updateEtt({ endTime: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Lloc</Label>
-                          <Input
-                            value={ettData.meetingPoint}
-                            onChange={(e) => updateEtt({ meetingPoint: e.target.value })}
-                          />
+                  {phase.key === "event" && ettState.groups.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label>Destinatària dels horaris ETT</Label>
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                          <span className="font-semibold">
+                            {LOGISTICS_ETT_RECIPIENT.responsibleName}
+                          </span>
+                          <a
+                            href={`mailto:${LOGISTICS_ETT_RECIPIENT.email}`}
+                            className="block text-xs text-emerald-700 underline-offset-2 hover:underline"
+                          >
+                            {LOGISTICS_ETT_RECIPIENT.email}
+                          </a>
                         </div>
                       </div>
+
+                      {ettState.groups.map((ettGroup, index) => (
+                        <div
+                          key={ettGroup.id}
+                          className="space-y-3 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                              Grup ETT {index + 1}
+                            </span>
+                            <IconActionButton
+                              icon={Trash2}
+                              label={`Eliminar grup ETT ${index + 1}`}
+                              tone="danger"
+                              onClick={() => removeEtt(ettGroup.id)}
+                              disabled={!ettEditable}
+                            />
+                          </div>
+                          <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
+                            <div>
+                              <Label>Treballadors ETT</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={ettGroup.data.workers}
+                                onChange={(e) => updateEtt(ettGroup.id, { workers: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                            <div>
+                              <Label>Data inici</Label>
+                              <Input
+                                type="date"
+                                value={ettGroup.data.serviceDate}
+                                onChange={(e) => updateEtt(ettGroup.id, { serviceDate: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                            <div>
+                              <Label>Data fi</Label>
+                              <Input
+                                type="date"
+                                value={ettGroup.data.serviceDate}
+                                onChange={(e) => updateEtt(ettGroup.id, { serviceDate: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                            <div>
+                              <Label>Hora inici</Label>
+                              <Input
+                                type="time"
+                                value={ettGroup.data.startTime}
+                                onChange={(e) => updateEtt(ettGroup.id, { startTime: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                            <div>
+                              <Label>Hora fi</Label>
+                              <Input
+                                type="time"
+                                value={ettGroup.data.endTime}
+                                onChange={(e) => updateEtt(ettGroup.id, { endTime: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                            <div>
+                              <Label>Lloc</Label>
+                              <Input
+                                value={ettGroup.data.meetingPoint}
+                                onChange={(e) => updateEtt(ettGroup.id, { meetingPoint: e.target.value })}
+                                disabled={!ettEditable}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {ettEditable ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                          onClick={addEtt}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Afegir un altre grup ETT
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </>

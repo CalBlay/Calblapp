@@ -96,7 +96,7 @@ export type UseQuadrantSubmitParams = {
   // Logística
   buildLogisticaPhases: () => LogisticPhasePayload[]
   validateLocalPersonAssignments?: () => string | null
-  ettEntry: EttEntry | null
+  ettEntries: EttEntry[]
 
   // Callbacks
   onSaved?: () => void | Promise<void>
@@ -162,7 +162,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         vestimentModelChoice,
         buildLogisticaPhases,
         validateLocalPersonAssignments,
-        ettEntry,
+        ettEntries,
         onSaved,
         onOpenChange,
         keepOpenAfterSave = false,
@@ -184,7 +184,9 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
                   !String(group.data.ettEmail || '').includes('@')
               )
             )
-          : Boolean(ettEntry && !String(ettEntry.ettEmail || '').includes('@'))
+          : department === 'logistica'
+            ? false
+            : ettEntries.some((entry) => !String(entry.ettEmail || '').includes('@'))
       if (missingEttProvider) {
         const message = 'Selecciona una empresa ETT amb correu abans de desar el quadrant.'
         setLoading(false)
@@ -357,7 +359,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
             totalWorkers,
             numDrivers,
             buildLogisticaPhases,
-            ettEntry,
+            ettEntries,
           }))
         }
 

@@ -18,6 +18,13 @@ export type EttEmailSchedule = {
   workers: number
 }
 
+export const LOGISTICS_ETT_RECIPIENT = {
+  providerId: 'cal-blay-rrhh-logistica',
+  providerName: 'ETT Logística',
+  responsibleName: 'Marina Ràfols - CAL BLAY',
+  email: 'recursoshumans@calblay.com',
+} as const
+
 type QuadrantEmailDoc = Record<string, unknown> & {
   treballadors?: Array<Record<string, unknown>>
 }
@@ -69,6 +76,7 @@ export function collectEttEmailSchedules(
   department: string
 ): EttEmailSchedule[] {
   const grouped = new Map<string, EttEmailSchedule>()
+  const isLogistics = text(department).toLowerCase() === 'logistica'
 
   docs.forEach((doc) => {
     if (text(doc.status).toLowerCase() !== 'confirmed' && doc.confirmed !== true && !doc.confirmedAt) {
@@ -82,16 +90,24 @@ export function collectEttEmailSchedules(
       const isEtt =
         text(worker.externalType).toLowerCase() === 'ett' ||
         (worker.isExternal === true && workerName.startsWith('ett'))
-      const email = text(worker.ettEmail).toLowerCase()
+      const email = isLogistics
+        ? LOGISTICS_ETT_RECIPIENT.email
+        : text(worker.ettEmail).toLowerCase()
       if (!isEtt || !email.includes('@')) return
 
       const date = text(worker.startDate || doc.phaseDate || doc.startDate).slice(0, 10)
       const startTime = text(worker.startTime || doc.startTime).slice(0, 5)
       const endTime = text(worker.endTime || doc.endTime).slice(0, 5)
       const meetingPoint = text(worker.meetingPoint || doc.meetingPoint || doc.location)
-      const providerId = text(worker.ettProviderId)
-      const providerName = text(worker.ettProviderName) || 'ETT'
-      const responsibleName = text(worker.ettResponsibleName)
+      const providerId = isLogistics
+        ? LOGISTICS_ETT_RECIPIENT.providerId
+        : text(worker.ettProviderId)
+      const providerName = isLogistics
+        ? LOGISTICS_ETT_RECIPIENT.providerName
+        : text(worker.ettProviderName) || 'ETT'
+      const responsibleName = isLogistics
+        ? LOGISTICS_ETT_RECIPIENT.responsibleName
+        : text(worker.ettResponsibleName)
       const groupKey = text(worker.ettGroupKey)
       const key = [email, providerId || providerName, groupKey, date, startTime, endTime, meetingPoint].join('::')
       const current = countsInDocument.get(key)

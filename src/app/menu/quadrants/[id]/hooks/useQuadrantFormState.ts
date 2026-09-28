@@ -26,6 +26,7 @@ import {
   mergeResponsibleCandidatePools,
   resolveManualResponsible,
 } from '../lib/quadrantPayloadShared'
+import { LOGISTICS_ETT_RECIPIENT } from '@/lib/quadrantEttEmail'
 import { ensureLogisticRoleLines, collectAllLogisticaRoleLines } from '../lib/logisticPhaseRoleLines'
 import { validateNoLocalQuadrantPersonDuplicates } from '@/lib/quadrantLocalAvailability'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
@@ -56,7 +57,30 @@ export type EttEntry = {
   ettProviderName: string
   ettResponsibleName: string
   ettEmail: string
+  ettGroupKey: string
 }
+
+const makeLogisticsEttGroupId = () =>
+  `logistica-ett-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+const createLogisticsEttGroup = (
+  defaults: Pick<ServicePhaseEttData, 'serviceDate' | 'meetingPoint' | 'startTime' | 'endTime'>,
+  seed: Partial<ServicePhaseEttData> = {},
+  id = makeLogisticsEttGroupId()
+) => ({
+  id,
+  data: {
+    serviceDate: seed.serviceDate ?? defaults.serviceDate,
+    meetingPoint: seed.meetingPoint ?? defaults.meetingPoint,
+    startTime: seed.startTime ?? defaults.startTime,
+    endTime: seed.endTime ?? defaults.endTime,
+    workers: seed.workers ?? '',
+    ettProviderId: seed.ettProviderId ?? '',
+    ettProviderName: seed.ettProviderName ?? '',
+    ettResponsibleName: seed.ettResponsibleName ?? '',
+    ettEmail: seed.ettEmail ?? '',
+  },
+})
 
 export type ResponsableAvailabilityOption = {
   id: string
@@ -173,10 +197,10 @@ export interface QuadrantFormState {
     groupId: string,
     patch: Partial<ServicePhaseEttData>
   ) => void
-  ettOpen: boolean
-  setEttOpen: (value: boolean) => void
-  ettData: ServicePhaseEttData
-  setEttData: (value: ServicePhaseEttData) => void
+  logisticsEtt: ServicePhaseEtt
+  addLogisticsEtt: () => void
+  removeLogisticsEtt: (groupId: string) => void
+  updateLogisticsEtt: (groupId: string, patch: Partial<ServicePhaseEttData>) => void
   availableResponsables: ResponsableAvailabilityOption[]
   availableConductors: AvailableConductor[]
   availableJamoneros: Array<{ id: string; name: string }>
@@ -198,7 +222,7 @@ export interface QuadrantFormState {
   buildVehiclesPayloadForPhase: (phaseKey: LogisticPhaseKey) => LogisticPhasePayload['vehicles']
   buildLogisticaPhases: () => LogisticPhasePayload[]
   validateLocalPersonAssignments: () => string | null
-  ettEntry: EttEntry | null
+  ettEntries: EttEntry[]
 }
 
 export function useQuadrantFormState({
@@ -239,17 +263,9 @@ export function useQuadrantFormState({
     }),
     [startDate, endDate, startTime, endTime, arrivalTime, totalWorkers, numDrivers, meetingPoint, location, event.eventLocation]
   )
-  const [ettOpen, setEttOpen] = useState(false)
-  const [ettData, setEttData] = useState<ServicePhaseEttData>({
-    serviceDate: extractDate(event.start),
-    meetingPoint: event.location || event.eventLocation || '',
-    startTime: event.startTime || '',
-    endTime: event.endTime || '',
-    workers: '',
-    ettProviderId: '',
-    ettProviderName: '',
-    ettResponsibleName: '',
-    ettEmail: '',
+  const [logisticsEtt, setLogisticsEtt] = useState<ServicePhaseEtt>({
+    open: false,
+    groups: [],
   })
 
   const totalWorkersNumber = Number(totalWorkers) || 0
@@ -443,23 +459,69 @@ export function useQuadrantFormState({
     })
   }, [department, availableConductors, availableResponsables, servicePhaseGroups, updateServiceGroup])
 
-  const ettEntry = useMemo(() => {
-    const workers = Number(ettData.workers || 0)
-    if (!workers) return null
-    return {
-      name: 'ETT' as const,
-      workers,
-      startDate: ettData.serviceDate || startDate,
-      endDate: ettData.serviceDate || endDate,
-      startTime: ettData.startTime || startTime,
-      endTime: ettData.endTime || endTime,
-      meetingPoint: ettData.meetingPoint || meetingPoint || location || '',
-      ettProviderId: ettData.ettProviderId,
-      ettProviderName: ettData.ettProviderName,
-      ettResponsibleName: ettData.ettResponsibleName,
-      ettEmail: ettData.ettEmail,
-    }
-  }, [ettData, startDate, endDate, startTime, endTime, meetingPoint, location])
+  const logisticsEttDefaults = useMemo(
+    () => ({
+      serviceDate: extractDate(event.start),
+      meetingPoint: meetingPoint || location || event.eventLocation || '',
+      startTime: startTime || event.startTime || '',
+      endTime: endTime || event.endTime || '',
+    }),
+    [endTime, event.endTime, event.eventLocation, event.start, event.startTime, location, meetingPoint, startTime]
+  )
+
+  const addLogisticsEtt = useCallback(() => {
+    setLogisticsEtt((prev) => ({
+      open: true,
+      groups: [...prev.groups, createLogisticsEttGroup(logisticsEttDefaults)],
+    }))
+  }, [logisticsEttDefaults])
+
+  const removeLogisticsEtt = useCallback((groupId: string) => {
+    setLogisticsEtt((prev) => {
+      const groups = prev.groups.filter((group) => group.id !== groupId)
+      return { open: groups.length > 0, groups }
+    })
+  }, [])
+
+  const updateLogisticsEtt = useCallback(
+    (groupId: string, patch: Partial<ServicePhaseEttData>) => {
+      setLogisticsEtt((prev) => ({
+        ...prev,
+        groups: prev.groups.map((group) =>
+          group.id === groupId ? { ...group, data: { ...group.data, ...patch } } : group
+        ),
+      }))
+    },
+    []
+  )
+
+  const ettEntries = useMemo(() => {
+    const isLogistics = department.trim().toLowerCase() === 'logistica'
+    return logisticsEtt.groups.flatMap((group) => {
+      const workers = Number(group.data.workers || 0)
+      if (!workers) return []
+      return [{
+        name: 'ETT' as const,
+        workers,
+        startDate: group.data.serviceDate || startDate,
+        endDate: group.data.serviceDate || endDate,
+        startTime: group.data.startTime || startTime,
+        endTime: group.data.endTime || endTime,
+        meetingPoint: group.data.meetingPoint || meetingPoint || location || '',
+        ettProviderId: isLogistics
+          ? LOGISTICS_ETT_RECIPIENT.providerId
+          : group.data.ettProviderId,
+        ettProviderName: isLogistics
+          ? LOGISTICS_ETT_RECIPIENT.providerName
+          : group.data.ettProviderName,
+        ettResponsibleName: isLogistics
+          ? LOGISTICS_ETT_RECIPIENT.responsibleName
+          : group.data.ettResponsibleName,
+        ettEmail: isLogistics ? LOGISTICS_ETT_RECIPIENT.email : group.data.ettEmail,
+        ettGroupKey: group.id,
+      }]
+    })
+  }, [department, logisticsEtt.groups, startDate, endDate, startTime, endTime, meetingPoint, location])
 
   const buildTimetablesForPhase = useCallback(
     (form: LogisticPhaseForm) => {
@@ -469,12 +531,10 @@ export function useQuadrantFormState({
         if (tt) list.push(tt)
       }
       add({ startTime: form.startTime, endTime: form.endTime })
-      if (ettEntry) {
-        add({ startTime: ettEntry.startTime, endTime: ettEntry.endTime })
-      }
+      ettEntries.forEach((entry) => add({ startTime: entry.startTime, endTime: entry.endTime }))
       return list
     },
-    [ettEntry]
+    [ettEntries]
   )
 
   const getManualResponsible = useCallback(
@@ -578,7 +638,6 @@ export function useQuadrantFormState({
         const name = String(worker?.name || '').trim().toLowerCase()
         return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
       })
-      const existingEtt = existingEttWorkers[0]
       setStartDate(existingDraft.startDate || extractDate(event.start))
       setEndDate(
         existingDraft.endDate ||
@@ -603,21 +662,56 @@ export function useQuadrantFormState({
         String(existingDraft.totalWorkers ?? event.totalWorkers ?? '').trim()
       )
       setNumDrivers(String(existingDraft.numDrivers ?? event.numDrivers ?? '').trim())
-      setEttOpen(false)
-      setEttData({
-        serviceDate: existingDraft.startDate || extractDate(event.start),
-        meetingPoint:
-          String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
-          event.location ||
-          event.eventLocation ||
-          '',
-        startTime: existingDraft.startTime || event.startTime || '',
-        endTime: existingDraft.endTime || event.endTime || '',
-        workers: existingEttWorkers.length ? String(existingEttWorkers.length) : '',
-        ettProviderId: String(existingEtt?.ettProviderId || ''),
-        ettProviderName: String(existingEtt?.ettProviderName || ''),
-        ettResponsibleName: String(existingEtt?.ettResponsibleName || ''),
-        ettEmail: String(existingEtt?.ettEmail || ''),
+      const groupedEttWorkers = new Map<string, typeof existingEttWorkers>()
+      existingEttWorkers.forEach((worker, index) => {
+        const persistedGroupId = String(worker?.groupId || '').trim()
+        const fallbackGroupId = [
+          worker?.startDate,
+          worker?.startTime,
+          worker?.endTime,
+          worker?.meetingPoint,
+        ]
+          .map((value) => String(value || '').trim())
+          .join('|') || `legacy-${index}`
+        const groupId = persistedGroupId || fallbackGroupId
+        const current = groupedEttWorkers.get(groupId) || []
+        current.push(worker)
+        groupedEttWorkers.set(groupId, current)
+      })
+      setLogisticsEtt({
+        open: groupedEttWorkers.size > 0,
+        groups: Array.from(groupedEttWorkers.entries()).map(([groupId, workers]) => {
+          const first = workers[0]
+          return createLogisticsEttGroup(
+            {
+              serviceDate: existingDraft.startDate || extractDate(event.start),
+              meetingPoint:
+                String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
+                event.location ||
+                event.eventLocation ||
+                '',
+              startTime: existingDraft.startTime || event.startTime || '',
+              endTime: existingDraft.endTime || event.endTime || '',
+            },
+            {
+              serviceDate: first?.startDate || existingDraft.startDate || extractDate(event.start),
+              meetingPoint:
+                first?.meetingPoint ||
+                String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
+                event.location ||
+                event.eventLocation ||
+                '',
+              startTime: first?.startTime || existingDraft.startTime || event.startTime || '',
+              endTime: first?.endTime || existingDraft.endTime || event.endTime || '',
+              workers: String(workers.length),
+              ettProviderId: String(first?.ettProviderId || ''),
+              ettProviderName: String(first?.ettProviderName || ''),
+              ettResponsibleName: String(first?.ettResponsibleName || ''),
+              ettEmail: String(first?.ettEmail || ''),
+            },
+            groupId
+          )
+        }),
       })
       return
     }
@@ -636,18 +730,7 @@ export function useQuadrantFormState({
     setManualResp('')
     setTotalWorkers(event.totalWorkers?.toString() || '')
     setNumDrivers(event.numDrivers?.toString() || '')
-    setEttOpen(false)
-    setEttData({
-      serviceDate: extractDate(event.start),
-      meetingPoint: event.location || event.eventLocation || '',
-      startTime: event.startTime || '',
-      endTime: event.endTime || '',
-      workers: '',
-      ettProviderId: '',
-      ettProviderName: '',
-      ettResponsibleName: '',
-      ettEmail: '',
-    })
+    setLogisticsEtt({ open: false, groups: [] })
   }, [
     modalOpen,
     existingDraft,
@@ -733,10 +816,10 @@ export function useQuadrantFormState({
     addServicePhaseEtt,
     removeServicePhaseEtt,
     updateServicePhaseEtt,
-    ettOpen,
-    setEttOpen,
-    ettData,
-    setEttData,
+    logisticsEtt,
+    addLogisticsEtt,
+    removeLogisticsEtt,
+    updateLogisticsEtt,
     serviceTotals,
     serviceJamoneroAssignments,
     setServiceJamoneroCount,
@@ -746,7 +829,7 @@ export function useQuadrantFormState({
     buildVehiclesPayloadForPhase,
     buildLogisticaPhases,
     validateLocalPersonAssignments,
-    ettEntry,
+    ettEntries,
     availableResponsables,
     availableConductors,
     availableJamoneros,

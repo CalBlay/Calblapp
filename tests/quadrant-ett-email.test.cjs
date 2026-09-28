@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   buildEttScheduleEmailText,
   collectEttEmailSchedules,
+  LOGISTICS_ETT_RECIPIENT,
 } = require('../src/lib/quadrantEttEmail')
 
 test('ETT email schedules aggregate confirmed workers with the same recipient and hours', () => {
@@ -62,6 +63,51 @@ test('ETT email schedules ignore drafts and contacts without email', () => {
   )
 
   assert.deepEqual(schedules, [])
+})
+
+test('logistics ETT schedules always use the fixed Cal Blay HR recipient', () => {
+  const schedules = collectEttEmailSchedules(
+    [{
+      status: 'confirmed',
+      code: 'E26002',
+      eventName: 'Servei logístic',
+      treballadors: [{
+        name: 'ETT',
+        isExternal: true,
+        externalType: 'ett',
+        ettProviderName: 'Proveïdor extern',
+        ettResponsibleName: 'Una altra persona',
+        ettEmail: 'altre@example.com',
+        startDate: '2026-10-06',
+        startTime: '08:00',
+        endTime: '16:00',
+      }],
+    }],
+    'event-2',
+    'logistica'
+  )
+
+  assert.equal(schedules.length, 1)
+  assert.equal(schedules[0].email, LOGISTICS_ETT_RECIPIENT.email)
+  assert.equal(
+    schedules[0].responsibleName,
+    LOGISTICS_ETT_RECIPIENT.responsibleName
+  )
+  assert.equal(schedules[0].providerId, LOGISTICS_ETT_RECIPIENT.providerId)
+})
+
+test('logistics fixed recipient works when the stored ETT has no email', () => {
+  const schedules = collectEttEmailSchedules(
+    [{
+      status: 'confirmed',
+      treballadors: [{ name: 'ETT', isExternal: true, externalType: 'ett' }],
+    }],
+    'event-3',
+    'logistica'
+  )
+
+  assert.equal(schedules.length, 1)
+  assert.equal(schedules[0].email, 'recursoshumans@calblay.com')
 })
 
 test('ETT email schedules do not duplicate a group copied across phase documents', () => {

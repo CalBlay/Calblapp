@@ -90,7 +90,7 @@ export function QuadrantEditor({
   /** Serveis, Cuina, Logística: mateix comportament de modes, training i guardar+confirmar. */
   const isQuadrantCoreDept = isServeis || isCuina || isLogistica
   const { data: ettProvidersData } = useSWR<{ providers: EttProviderPremise[] }>(
-    active && isQuadrantCoreDept
+    active && (isServeis || isCuina)
       ? `/api/quadrants/ett-providers?department=${encodeURIComponent(department)}`
       : null,
     fetchJson
@@ -144,10 +144,10 @@ export function QuadrantEditor({
     addServicePhaseEtt,
     removeServicePhaseEtt,
     updateServicePhaseEtt,
-    ettOpen,
-    setEttOpen,
-    ettData,
-    setEttData,
+    logisticsEtt,
+    addLogisticsEtt,
+    removeLogisticsEtt,
+    updateLogisticsEtt,
     serviceTotals,
     serviceJamoneroAssignments,
     setServiceJamoneroCount,
@@ -156,7 +156,7 @@ export function QuadrantEditor({
     vehiclesPayload: _vehiclesPayload,
     buildLogisticaPhases,
     validateLocalPersonAssignments,
-    ettEntry,
+    ettEntries,
     availableResponsables,
     availableConductors,
     availableJamoneros,
@@ -350,7 +350,10 @@ export function QuadrantEditor({
 
   const handleSendEtt = useCallback(async () => {
     if (sendingEtt) return
-    if (!window.confirm('Vols enviar els horaris confirmats als responsables de les ETT?')) return
+    const confirmationMessage = isLogistica
+      ? 'Vols enviar els horaris confirmats a Marina Ràfols (recursoshumans@calblay.com)?'
+      : 'Vols enviar els horaris confirmats als responsables de les ETT?'
+    if (!window.confirm(confirmationMessage)) return
     setSendingEtt(true)
     try {
       const response = await fetch('/api/quadrants/ett-email', {
@@ -368,16 +371,18 @@ export function QuadrantEditor({
       if (!response.ok) throw new Error(body.error || 'No s’han pogut enviar els horaris')
       const deliveries = Array.isArray(body.deliveries) ? body.deliveries.length : 0
       toast.success(
-        deliveries === 1
-          ? 'Horaris enviats al responsable de l’ETT'
-          : `Horaris enviats a ${deliveries} responsables d’ETT`
+        isLogistica
+          ? 'Horaris ETT enviats a Marina Ràfols'
+          : deliveries === 1
+            ? 'Horaris enviats al responsable de l’ETT'
+            : `Horaris enviats a ${deliveries} responsables d’ETT`
       )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No s’han pogut enviar els horaris')
     } finally {
       setSendingEtt(false)
     }
-  }, [department, event.id, existingDraft?.eventId, existingDraft?.id, sendingEtt])
+  }, [department, event.id, existingDraft?.eventId, existingDraft?.id, isLogistica, sendingEtt])
 
   const handleReopen = useCallback(async () => {
     if (reopening) return
@@ -493,7 +498,7 @@ export function QuadrantEditor({
     vestimentModelChoice,
     buildLogisticaPhases,
     validateLocalPersonAssignments,
-    ettEntry,
+    ettEntries,
     onSaved,
     keepOpenAfterSave: false,
     onOpenChange: (open) => {
@@ -789,11 +794,11 @@ export function QuadrantEditor({
               updatePhaseSetting={updatePhaseSetting}
               updatePhaseVehicleAssignment={updatePhaseVehicleAssignment}
               replacePhaseVehicleAssignments={replacePhaseVehicleAssignments}
-              ettOpen={ettOpen}
-              ettData={ettData}
-              ettProviders={ettProviders}
-              toggleEtt={() => setEttOpen(!ettOpen)}
-              updateEtt={(patch) => setEttData({ ...ettData, ...patch })}
+              ettState={logisticsEtt}
+              addEtt={addLogisticsEtt}
+              removeEtt={removeLogisticsEtt}
+              updateEtt={updateLogisticsEtt}
+              ettEditable={!isConfirmed}
             />
           )}
 

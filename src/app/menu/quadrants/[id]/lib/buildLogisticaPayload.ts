@@ -11,7 +11,7 @@ export type BuildLogisticaPayloadInput = {
   totalWorkers: string | number
   numDrivers: string | number
   buildLogisticaPhases: () => LogisticPhasePayload[]
-  ettEntry: EttEntry | null
+  ettEntries: EttEntry[]
 }
 
 export type BuiltPayload = {
@@ -20,13 +20,13 @@ export type BuiltPayload = {
 }
 
 /**
- * Construeix el payload sencer per al departament de Logística: fases + entrada ETT global.
+ * Construeix el payload sencer per al departament de Logística: fases + grups ETT globals.
  * Important: a diferència de Cuina/Serveis, Logística NO desa l'array `timetables` al payload
  * (cada fase ja porta les seves) — l'acumulador es manté pel principi DRY però el caller pot
  * decidir si l'aplica o no.
  */
 export function buildLogisticaPayload(input: BuildLogisticaPayloadInput): BuiltPayload {
-  const { basePayload, totalWorkers, numDrivers, buildLogisticaPhases, ettEntry } = input
+  const { basePayload, totalWorkers, numDrivers, buildLogisticaPhases, ettEntries } = input
 
   const payload: Record<string, unknown> = {
     ...basePayload,
@@ -40,7 +40,7 @@ export function buildLogisticaPayload(input: BuildLogisticaPayloadInput): BuiltP
     phase.timetables?.forEach((tt) => addTimetable(tt))
   )
 
-  if (ettEntry) {
+  ettEntries.forEach((ettEntry) => {
     const entries = buildEttEntries(Number(ettEntry.workers || 0), {
       meetingPoint: ettEntry.meetingPoint,
       startDate: ettEntry.startDate,
@@ -51,11 +51,11 @@ export function buildLogisticaPayload(input: BuildLogisticaPayloadInput): BuiltP
       ettProviderName: ettEntry.ettProviderName,
       ettResponsibleName: ettEntry.ettResponsibleName,
       ettEmail: ettEntry.ettEmail,
-      ettGroupKey: 'logistica-event',
+      ettGroupKey: ettEntry.ettGroupKey,
     })
     appendExternalWorkers(payload, entries)
     addTimetable({ startTime: ettEntry.startTime, endTime: ettEntry.endTime })
-  }
+  })
 
   return { payload, timetables }
 }
