@@ -6,6 +6,8 @@ import { colorByStage } from '@/lib/colors'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   evaluateSpacesHeaderRule,
+  isSpacesDateManuallyHighlighted,
+  spacesManualHighlightReason,
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
 import { isActiveSpaceReservation } from '@/lib/spacesReservationStatus'
@@ -204,11 +206,14 @@ export default function SpaceMonthView({
               (sum, { event }) => sum + eventPax(event),
               0
             )
-            const highlighted = evaluateSpacesHeaderRule({
-              config: headerRule,
-              totalPax: scopedPax,
-              totalEvents: scopedEntries.length,
-            })
+            const highlighted =
+              isSpacesDateManuallyHighlighted(headerRule, cell.iso) ||
+              evaluateSpacesHeaderRule({
+                config: headerRule,
+                totalPax: scopedPax,
+                totalEvents: scopedEntries.length,
+              })
+            const manualReason = spacesManualHighlightReason(headerRule, cell.iso)
             const isToday = cell.iso === toISODate(new Date())
 
             return (
@@ -216,6 +221,7 @@ export default function SpaceMonthView({
                 key={cell.iso}
                 type="button"
                 onClick={() => setSelectedDate(cell.iso)}
+                title={manualReason || undefined}
                 className={`min-h-[76px] min-w-0 border-b border-r p-1.5 text-left transition hover:bg-blue-50/50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[142px] sm:p-2 ${
                   highlighted
                     ? 'border-red-200 bg-red-50/80 hover:bg-red-50'
@@ -232,7 +238,12 @@ export default function SpaceMonthView({
                     {cell.day}
                   </span>
                   {highlighted ? (
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" aria-label="Llindar superat" />
+                    <span title={manualReason || 'Llindar superat'}>
+                      <AlertTriangle
+                        className="h-3.5 w-3.5 shrink-0 text-red-600"
+                        aria-label={manualReason || 'Llindar superat'}
+                      />
+                    </span>
                   ) : null}
                 </div>
 

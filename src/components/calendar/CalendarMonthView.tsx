@@ -1,7 +1,8 @@
 ﻿// file: src/components/calendar/CalendarMonthView.tsx
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import CalendarModal from './CalendarModal'
 import CalendarNewEventModal from './CalendarNewEventModal'
@@ -96,6 +97,11 @@ export default function CalendarMonthView({
   compactMobile?: boolean
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [highlightedSpaceDays, setHighlightedSpaceDays] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [manualSpaceReasons, setManualSpaceReasons] = useState<Record<string, string>>({})
+  const [spaceHighlightsVersion, setSpaceHighlightsVersion] = useState(0)
   const firstIso = deals.length ? pickDateIso(deals[0], ['DataInici', 'Data']) : ''
   const anchor = start
     ? new Date(start)
@@ -110,6 +116,47 @@ export default function CalendarMonthView({
     month: 'long',
     year: 'numeric',
   })
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadSpaceHighlights = async () => {
+      try {
+        const monthStart = toISO(new Date(year, month, 1))
+        const response = await fetch(
+          `/api/calendar/space-highlights?start=${monthStart}`,
+          { cache: 'no-store', signal: controller.signal }
+        )
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const payload = (await response.json()) as {
+          days?: unknown
+          manualReasons?: unknown
+        }
+        const days = Array.isArray(payload.days)
+          ? payload.days.filter((day): day is string => typeof day === 'string')
+          : []
+        setHighlightedSpaceDays(new Set(days))
+        setManualSpaceReasons(
+          payload.manualReasons && typeof payload.manualReasons === 'object'
+            ? (payload.manualReasons as Record<string, string>)
+            : {}
+        )
+      } catch (error) {
+        if (controller.signal.aborted) return
+        console.error('[CalendarMonthView] space highlights', error)
+        setHighlightedSpaceDays(new Set())
+        setManualSpaceReasons({})
+      }
+    }
+
+    loadSpaceHighlights()
+    return () => controller.abort()
+  }, [month, spaceHighlightsVersion, year])
+
+  const handleSaved = () => {
+    setSpaceHighlightsVersion((version) => version + 1)
+    onCreated?.()
+  }
 
   const dayEventCounts = useMemo(() => {
     const map = new Map<string, Deal[]>()
@@ -189,6 +236,8 @@ export default function CalendarMonthView({
                   const isToday =
                     c.iso === toISO(new Date()) && !c.isOther
                   const isSelected = !c.isOther && selectedDay === c.iso
+                  const isSpaceHighlighted =
+                    !c.isOther && highlightedSpaceDays.has(c.iso)
 
                   return (
                     <button
@@ -196,10 +245,11 @@ export default function CalendarMonthView({
                       type="button"
                       disabled={c.isOther}
                       onClick={() => handleDayClick(c)}
+                      title={manualSpaceReasons[c.iso] || undefined}
                       className={`
                         relative flex min-h-[52px] flex-col items-center justify-start border-r p-1.5
                         transition-colors
-                        ${c.isOther ? 'cursor-default bg-gray-50 text-gray-300' : 'bg-white active:bg-blue-50'}
+                        ${c.isOther ? 'cursor-default bg-gray-50 text-gray-300' : isSpaceHighlighted ? 'bg-red-50 text-red-800 active:bg-red-100' : 'bg-white active:bg-blue-50'}
                         ${isSelected ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/70' : ''}
                       `}
                     >
@@ -211,6 +261,12 @@ export default function CalendarMonthView({
                       >
                         {c.date.getDate()}
                       </span>
+                      {isSpaceHighlighted && (
+                        <AlertTriangle
+                          className="absolute right-1 top-1 h-3 w-3 text-red-600"
+                          aria-label={manualSpaceReasons[c.iso] || "Llindar de reserves d'espais superat"}
+                        />
+                      )}
                       {!c.isOther && dayEvents.length > 0 && (
                         <div className="mt-1 flex max-w-full flex-wrap items-center justify-center gap-0.5">
                           {dayEvents.slice(0, 3).map((ev) => (
@@ -281,26 +337,40 @@ export default function CalendarMonthView({
               className="relative grid grid-cols-7 border-b bg-gray-50"
               style={{ minHeight }}
             >
-              {week.map((c) => (
-                <div
-                  key={c.iso}
-                  onClick={() => handleDayClick(c)}
-                  className={`
-                    relative flex cursor-pointer flex-col border-r p-1
-                    ${c.isOther ? 'bg-gray-50 text-gray-400' : 'bg-white'}
-                    ${!c.isOther && selectedDay === c.iso ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/60' : ''}
-                  `}
-                >
+              {week.map((c) => {
+                const isSpaceHighlighted =
+                  !c.isOther && highlightedSpaceDays.has(c.iso)
+
+                return (
                   <div
+                    key={c.iso}
+                    onClick={() => handleDayClick(c)}
+                    title={manualSpaceReasons[c.iso] || undefined}
                     className={`
-                      ${CALENDAR_DAY_NUMBER}
-                      ${c.isOther ? 'text-gray-300' : 'text-slate-600'}
+                      relative flex cursor-pointer flex-col border-r p-1
+                      ${c.isOther ? 'bg-gray-50 text-gray-400' : isSpaceHighlighted ? 'bg-red-50/80 text-red-800' : 'bg-white'}
+                      ${!c.isOther && selectedDay === c.iso ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/60' : ''}
                     `}
                   >
-                    {c.date.getDate()}
+                    <div className="flex items-start justify-between gap-1">
+                      <div
+                        className={`
+                          ${CALENDAR_DAY_NUMBER}
+                          ${c.isOther ? 'text-gray-300' : isSpaceHighlighted ? 'text-red-700' : 'text-slate-600'}
+                        `}
+                      >
+                        {c.date.getDate()}
+                      </div>
+                      {isSpaceHighlighted && (
+                        <AlertTriangle
+                          className="h-3.5 w-3.5 shrink-0 text-red-600"
+                          aria-label={manualSpaceReasons[c.iso] || "Llindar de reserves d'espais superat"}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               <div
                 className="pointer-events-none absolute inset-0 grid grid-cols-7 gap-2 px-2 pb-2 pt-6"
@@ -314,7 +384,7 @@ export default function CalendarMonthView({
                     <CalendarModal
                       key={`${span.ev.id}-${idx}`}
                       deal={span.ev}
-                      onSaved={onCreated}
+                      onSaved={handleSaved}
                       onRequestPanel={onRequestPanel}
                       trigger={
                         <div
@@ -396,7 +466,7 @@ export default function CalendarMonthView({
           trigger={<div />}
           onSaved={() => {
             setSelectedDate(null)
-            onCreated?.()
+            handleSaved()
           }}
         />
       )}

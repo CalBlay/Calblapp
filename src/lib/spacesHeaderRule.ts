@@ -1,5 +1,6 @@
 export type SpacesHeaderMetricMode = 'pax' | 'events' | 'either' | 'both'
 export type SpacesHeaderStage = 'verd' | 'taronja' | 'groc'
+export type SpacesManualHighlight = { date: string; reason: string }
 
 export type SpacesHeaderRuleConfig = {
   enabled: boolean
@@ -7,6 +8,7 @@ export type SpacesHeaderRuleConfig = {
   metricMode: SpacesHeaderMetricMode
   paxThreshold: number
   eventsThreshold: number
+  manualHighlights: SpacesManualHighlight[]
 }
 
 export const DEFAULT_SPACES_HEADER_RULE: SpacesHeaderRuleConfig = {
@@ -15,6 +17,7 @@ export const DEFAULT_SPACES_HEADER_RULE: SpacesHeaderRuleConfig = {
   metricMode: 'pax',
   paxThreshold: 1000,
   eventsThreshold: 8,
+  manualHighlights: [],
 }
 
 export function normalizeSpacesHeaderRuleConfig(
@@ -22,6 +25,7 @@ export function normalizeSpacesHeaderRuleConfig(
 ): SpacesHeaderRuleConfig {
   const source = (input || {}) as Partial<SpacesHeaderRuleConfig> & {
     stageScope?: 'confirmed' | 'all'
+    manualHighlightedDates?: unknown
   }
   return {
     enabled:
@@ -43,7 +47,28 @@ export function normalizeSpacesHeaderRuleConfig(
       source.eventsThreshold,
       DEFAULT_SPACES_HEADER_RULE.eventsThreshold
     ),
+    manualHighlights: normalizeManualHighlights(
+      source.manualHighlights,
+      source.manualHighlightedDates
+    ),
   }
+}
+
+export function isSpacesDateManuallyHighlighted(
+  config: SpacesHeaderRuleConfig,
+  date: string
+): boolean {
+  return config.manualHighlights.some((highlight) => highlight.date === date)
+}
+
+export function spacesManualHighlightReason(
+  config: SpacesHeaderRuleConfig,
+  date: string
+): string | null {
+  return (
+    config.manualHighlights.find((highlight) => highlight.date === date)
+      ?.reason ?? null
+  )
 }
 
 export function evaluateSpacesHeaderRule(input: {
@@ -93,4 +118,30 @@ function normalizeStages(
   }
 
   return DEFAULT_SPACES_HEADER_RULE.stages
+}
+
+function normalizeManualHighlights(
+  value: unknown,
+  legacyDates?: unknown
+): SpacesManualHighlight[] {
+  const raw = Array.isArray(value)
+    ? value
+    : Array.isArray(legacyDates)
+      ? legacyDates.map((date) => ({ date, reason: 'Excepció manual' }))
+      : []
+  const byDate = new Map<string, SpacesManualHighlight>()
+
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return
+    const date = String((entry as { date?: unknown }).date ?? '').trim()
+    const reason = String((entry as { reason?: unknown }).reason ?? '').trim()
+    if (!reason || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+    const parsed = new Date(`${date}T12:00:00Z`)
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      return
+    }
+    byDate.set(date, { date, reason: reason.slice(0, 300) })
+  })
+
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
 }

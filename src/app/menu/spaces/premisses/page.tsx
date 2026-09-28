@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +38,8 @@ export default function SpacesPremissesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [manualDate, setManualDate] = useState('')
+  const [manualReason, setManualReason] = useState('')
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -114,6 +116,31 @@ export default function SpacesPremissesPage() {
           : [...prev.stages, stage],
       }
     })
+  }
+
+  const addManualDate = () => {
+    const reason = manualReason.trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate) || !reason) return
+    setConfig((prev) => ({
+      ...prev,
+      manualHighlights: [
+        ...prev.manualHighlights.filter((item) => item.date !== manualDate),
+        { date: manualDate, reason },
+      ].sort((a, b) => a.date.localeCompare(b.date)),
+    }))
+    setManualDate('')
+    setManualReason('')
+    setSuccess(null)
+  }
+
+  const removeManualDate = (date: string) => {
+    setConfig((prev) => ({
+      ...prev,
+      manualHighlights: prev.manualHighlights.filter(
+        (item) => item.date !== date
+      ),
+    }))
+    setSuccess(null)
   }
 
   if (status === 'loading') {
@@ -255,6 +282,89 @@ export default function SpacesPremissesPage() {
                   }
                 />
               </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-red-200 bg-red-50/50 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Dies excepcionals en vermell
+                </h3>
+                <p className="mt-1 text-xs text-slate-600">
+                  Aquestes dates es marcaran en vermell encara que no compleixin
+                  la regla automàtica. Cal indicar-ne el motiu.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  type="date"
+                  value={manualDate}
+                  onChange={(event) => setManualDate(event.target.value)}
+                  aria-label="Data excepcional"
+                  className="bg-white sm:max-w-56"
+                />
+                <Input
+                  type="text"
+                  value={manualReason}
+                  onChange={(event) => setManualReason(event.target.value)}
+                  placeholder="Motiu de l'excepció"
+                  maxLength={300}
+                  aria-label="Motiu de l'excepció"
+                  className="bg-white"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addManualDate}
+                  disabled={!manualDate || !manualReason.trim()}
+                  className="bg-white"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Afegir dia
+                </Button>
+              </div>
+
+              {config.manualHighlights.length > 0 ? (
+                <div className="divide-y divide-red-100 rounded-lg border border-red-100 bg-white">
+                  {config.manualHighlights.map(({ date, reason }) => (
+                    <div
+                      key={date}
+                      className="flex min-h-11 items-center justify-between gap-3 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium capitalize text-slate-700">
+                          {new Date(`${date}T12:00:00`).toLocaleDateString('ca-ES', {
+                            weekday: 'long',
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </p>
+                        <p className="mt-0.5 break-words text-xs text-slate-500">
+                          {reason}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeManualDate(date)}
+                        aria-label={`Eliminar l'excepció del ${date}`}
+                        className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  No hi ha cap dia excepcional configurat.
+                </p>
+              )}
+              <p className="text-xs text-slate-500">
+                Els canvis s'aplicaran quan desis les premisses.
+              </p>
             </div>
 
             <div className="flex justify-end">

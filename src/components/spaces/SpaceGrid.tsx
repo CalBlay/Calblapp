@@ -10,6 +10,8 @@ import type { Stage } from '@/services/spaces/spaces'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   evaluateSpacesHeaderRule,
+  isSpacesDateManuallyHighlighted,
+  spacesManualHighlightReason,
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
 import { isActiveSpaceReservation } from '@/lib/spacesReservationStatus'
@@ -154,6 +156,7 @@ export default function SpaceGrid({
             {days.map((day, i) => {
               const dia = format(day, 'EEE', { locale: ca })
               const dataDia = format(day, 'dd/MM', { locale: ca })
+              const dateIso = format(day, 'yyyy-MM-dd')
               let totalPaxScoped = 0
               let totalEventsScoped = 0
 
@@ -179,15 +182,19 @@ export default function SpaceGrid({
                 totalEventsScoped += scopedEvents.length
               }
 
-              const shouldHighlight = evaluateSpacesHeaderRule({
-                config: headerRule,
-                totalPax: totalPaxScoped,
-                totalEvents: totalEventsScoped,
-              })
+              const shouldHighlight =
+                isSpacesDateManuallyHighlighted(headerRule, dateIso) ||
+                evaluateSpacesHeaderRule({
+                  config: headerRule,
+                  totalPax: totalPaxScoped,
+                  totalEvents: totalEventsScoped,
+                })
+              const manualReason = spacesManualHighlightReason(headerRule, dateIso)
 
               return (
                 <th
                   key={`head-${i}`}
+                  title={manualReason || undefined}
                   className={`p-2 lg:p-3 border transition-colors sticky top-0 z-20 ${
                     shouldHighlight
                       ? 'bg-red-100 text-red-700 font-semibold'
