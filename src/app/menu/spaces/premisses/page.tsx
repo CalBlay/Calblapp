@@ -14,6 +14,7 @@ import { SPACES_PREMISSES_PATH } from '@/lib/spacesPermissions'
 import SpacesSectionGate from '../SpacesSectionGate'
 import {
   DEFAULT_SPACES_HEADER_RULE,
+  parseSpacesManualDateInput,
   type SpacesHeaderMetricMode,
   type SpacesHeaderRuleConfig,
   type SpacesHeaderStage,
@@ -40,6 +41,7 @@ export default function SpacesPremissesPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [manualDate, setManualDate] = useState('')
   const [manualReason, setManualReason] = useState('')
+  const parsedManualDate = parseSpacesManualDateInput(manualDate)
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -120,12 +122,12 @@ export default function SpacesPremissesPage() {
 
   const addManualDate = () => {
     const reason = manualReason.trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate) || !reason) return
+    if (!parsedManualDate || !reason) return
     setConfig((prev) => ({
       ...prev,
       manualHighlights: [
-        ...prev.manualHighlights.filter((item) => item.date !== manualDate),
-        { date: manualDate, reason },
+        ...prev.manualHighlights.filter((item) => item.date !== parsedManualDate),
+        { date: parsedManualDate, reason },
       ].sort((a, b) => a.date.localeCompare(b.date)),
     }))
     setManualDate('')
@@ -297,9 +299,12 @@ export default function SpacesPremissesPage() {
 
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
                   value={manualDate}
                   onChange={(event) => setManualDate(event.target.value)}
+                  placeholder="dd/mm/aaaa"
+                  maxLength={10}
                   aria-label="Data excepcional"
                   className="bg-white sm:max-w-56"
                 />
@@ -316,13 +321,19 @@ export default function SpacesPremissesPage() {
                   type="button"
                   variant="outline"
                   onClick={addManualDate}
-                  disabled={!manualDate || !manualReason.trim()}
+                  disabled={!parsedManualDate || !manualReason.trim()}
                   className="bg-white"
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Afegir dia
                 </Button>
               </div>
+
+              {manualDate && !parsedManualDate ? (
+                <p className="text-xs font-medium text-red-700" role="alert">
+                  Escriu una data vàlida amb el format dd/mm/aaaa.
+                </p>
+              ) : null}
 
               {config.manualHighlights.length > 0 ? (
                 <div className="divide-y divide-red-100 rounded-lg border border-red-100 bg-white">

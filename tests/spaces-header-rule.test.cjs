@@ -5,8 +5,16 @@ const {
   DEFAULT_SPACES_HEADER_RULE,
   isSpacesDateManuallyHighlighted,
   normalizeSpacesHeaderRuleConfig,
+  parseSpacesManualDateInput,
   spacesManualHighlightReason,
 } = require('../src/lib/spacesHeaderRule.ts')
+
+test('manual date input always interprets the day before the month', () => {
+  assert.equal(parseSpacesManualDateInput('02/10/2026'), '2026-10-02')
+  assert.equal(parseSpacesManualDateInput('2-10-2026'), '2026-10-02')
+  assert.equal(parseSpacesManualDateInput('2026-10-02'), '2026-10-02')
+  assert.equal(parseSpacesManualDateInput('31/02/2026'), null)
+})
 
 test('manual space highlights require a valid date and a reason', () => {
   const config = normalizeSpacesHeaderRuleConfig({

@@ -19,6 +19,10 @@ import {
   listMeetingDecisions,
   listMeetingEventNotes,
 } from '@/lib/server/quadrantsWeeklyMeetingStore'
+import {
+  buildWeeklyMeetingArrivalPatch,
+  isWeeklyMeetingEventPhase,
+} from '@/lib/quadrantsWeeklyMeetingSync'
 
 export const runtime = 'nodejs'
 
@@ -306,55 +310,26 @@ export async function PATCH(req: NextRequest) {
     const existing = await computeQuadrantsGet(eventDay, eventDay, department)
     const matching = existing.quadrants.filter((quadrant) => {
       if (!quadrantMatches(quadrant, eventId, eventCode, eventDay)) return false
-      const phase = String(quadrant.phaseType || quadrant.phaseLabel || '').toLowerCase()
-      return !phase || phase === 'event'
+      return isWeeklyMeetingEventPhase(quadrant)
     })
     if (matching.length > 0) {
       const collection = await resolveQuadrantCollection(department, { prefer: 'singular' })
       const batch = firestoreAdmin.batch()
-      for (const quadrant of matching) {
-        const ref = firestoreAdmin.collection(collection).doc(String(quadrant.id))
-        const rawSnap = await ref.get()
+      const snapshots = await Promise.all(
+        matching.map((quadrant) =>
+          firestoreAdmin.collection(collection).doc(String(quadrant.id)).get()
+        )
+      )
+      snapshots.forEach((rawSnap) => {
         const raw = (rawSnap.data() || {}) as Record<string, unknown>
-        const withArrival = (value: unknown) => {
-          if (!value || typeof value !== 'object') return value
-          return { ...(value as Record<string, unknown>), arrivalTime }
-        }
-        const patch: Record<string, unknown> = {
-          weeklyMeetingRequired: required,
-          weeklyMeetingUpdatedAt: now,
-        }
-        if (required) {
-          patch.arrivalTime = arrivalTime
-          if (raw.responsable) patch.responsable = withArrival(raw.responsable)
-          if (Array.isArray(raw.responsables)) {
-            patch.responsables = raw.responsables.map(withArrival)
-          }
-          if (Array.isArray(raw.conductors)) {
-            patch.conductors = raw.conductors.map(withArrival)
-          }
-          if (Array.isArray(raw.treballadors)) {
-            patch.treballadors = raw.treballadors.map(withArrival)
-          }
-          if (Array.isArray(raw.groups)) {
-            patch.groups = raw.groups.map((group) => {
-              if (!group || typeof group !== 'object') return group
-              const value = group as Record<string, unknown>
-              return {
-                ...value,
-                arrivalTime,
-                ...(Array.isArray(value.roleLines)
-                  ? { roleLines: value.roleLines.map(withArrival) }
-                  : {}),
-                ...(Array.isArray(value.manualWorkers)
-                  ? { manualWorkers: value.manualWorkers.map(withArrival) }
-                  : {}),
-              }
-            })
-          }
-        }
-        batch.update(ref, patch)
-      }
+        const patch = buildWeeklyMeetingArrivalPatch({
+          raw,
+          required,
+          arrivalTime,
+          updatedAt: now,
+        })
+        batch.update(rawSnap.ref, patch)
+      })
       await batch.commit()
       revalidateQuadrantsListCache()
     }

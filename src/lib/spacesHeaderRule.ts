@@ -2,6 +2,9 @@ export type SpacesHeaderMetricMode = 'pax' | 'events' | 'either' | 'both'
 export type SpacesHeaderStage = 'verd' | 'taronja' | 'groc'
 export type SpacesManualHighlight = { date: string; reason: string }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DAY_FIRST_DATE_PATTERN = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/
+
 export type SpacesHeaderRuleConfig = {
   enabled: boolean
   stages: SpacesHeaderStage[]
@@ -71,6 +74,18 @@ export function spacesManualHighlightReason(
   )
 }
 
+/** Converteix una data escrita com dd/mm/aaaa a YYYY-MM-DD sense dependre del navegador. */
+export function parseSpacesManualDateInput(value: string): string | null {
+  const input = value.trim()
+  if (ISO_DATE_PATTERN.test(input)) return isValidIsoDate(input) ? input : null
+
+  const match = DAY_FIRST_DATE_PATTERN.exec(input)
+  if (!match) return null
+  const [, day, month, year] = match
+  const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  return isValidIsoDate(iso) ? iso : null
+}
+
 export function evaluateSpacesHeaderRule(input: {
   config: SpacesHeaderRuleConfig
   totalPax: number
@@ -135,13 +150,15 @@ function normalizeManualHighlights(
     if (!entry || typeof entry !== 'object') return
     const date = String((entry as { date?: unknown }).date ?? '').trim()
     const reason = String((entry as { reason?: unknown }).reason ?? '').trim()
-    if (!reason || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
-    const parsed = new Date(`${date}T12:00:00Z`)
-    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-      return
-    }
+    if (!reason || !isValidIsoDate(date)) return
     byDate.set(date, { date, reason: reason.slice(0, 300) })
   })
 
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+function isValidIsoDate(date: string): boolean {
+  if (!ISO_DATE_PATTERN.test(date)) return false
+  const parsed = new Date(`${date}T12:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
 }
