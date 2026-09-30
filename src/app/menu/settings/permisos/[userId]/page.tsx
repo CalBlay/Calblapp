@@ -752,12 +752,20 @@ export default function PermisosUserPage() {
         const viewAllowed = effectiveAllowed(PERM.view(p), base.view)
         const editAllowed = effectiveAllowed(PERM.edit(p), base.edit)
 
-        if (!shouldShowActionGroup(viewAllowed, editAllowed, group.requireViewOnly)) return null
+        if (
+          !shouldShowActionGroup(
+            viewAllowed,
+            editAllowed,
+            group.requireViewOnly,
+            group.independentOfModule
+          )
+        ) return null
 
         const defaultExpanded = actionGroupDefaultExpanded(
           viewAllowed,
           editAllowed,
-          group.requireViewOnly
+          group.requireViewOnly,
+          group.independentOfModule
         )
         const expanded = actionGroupExpandedManual[group.id] ?? defaultExpanded
 

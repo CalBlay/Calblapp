@@ -24,6 +24,7 @@ import {
   ensureLogisticRoleLines,
   findAssignmentForLine,
   patchLogisticRoleLines,
+  resizeLogisticPhaseToTotalPersonSlots,
 } from "../lib/logisticPhaseRoleLines"
 import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../lib/quadrantPayloadShared"
 import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
@@ -32,6 +33,7 @@ import type { ComponentProps } from "react"
 import { LOGISTICS_ETT_RECIPIENT } from '@/lib/quadrantEttEmail'
 import { Plus, Trash2 } from 'lucide-react'
 import { IconActionButton } from '@/lib/iconActionButton'
+import SubtleTimeInput from './SubtleTimeInput'
 
 type LogisticaTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarLogistica>, "embedded">
 
@@ -234,7 +236,7 @@ export default function LogisticsPhasePanel({
                     )}
                   >
                     <div className={cn("overflow-x-auto", compact ? "mb-1.5" : "mb-3")}>
-                      <div className="flex min-w-max items-center gap-1.5">
+                      <div className="flex min-w-max items-end gap-1.5">
                         <Input
                           value={form?.meetingPoint || ""}
                           onChange={(e) =>
@@ -247,29 +249,23 @@ export default function LogisticsPhasePanel({
                           placeholder="Lloc"
                           aria-label="Lloc concentració"
                         />
-                        <Input
-                          type="time"
+                        <SubtleTimeInput
+                          id={`logistica-start-${phase.key}`}
+                          label="Hora inici"
                           value={form?.startTime || ""}
-                          onChange={(e) =>
-                            updatePhaseForm(phase.key, { startTime: e.target.value })
+                          onChange={(value) =>
+                            updatePhaseForm(phase.key, { startTime: value })
                           }
-                          className={cn(
-                            "w-[5.35rem] shrink-0 px-1.5 tabular-nums",
-                            compact ? "h-8 text-xs" : "h-9 text-sm"
-                          )}
-                          aria-label="Hora inici esdeveniment"
+                          compact={compact}
                         />
-                        <Input
-                          type="time"
+                        <SubtleTimeInput
+                          id={`logistica-end-${phase.key}`}
+                          label="Hora fi"
                           value={form?.endTime || ""}
-                          onChange={(e) =>
-                            updatePhaseForm(phase.key, { endTime: e.target.value })
+                          onChange={(value) =>
+                            updatePhaseForm(phase.key, { endTime: value })
                           }
-                          className={cn(
-                            "w-[5.35rem] shrink-0 px-1.5 tabular-nums",
-                            compact ? "h-8 text-xs" : "h-9 text-sm"
-                          )}
-                          aria-label="Hora fi esdeveniment"
+                          compact={compact}
                         />
                         <Input
                           type="date"
@@ -295,22 +291,58 @@ export default function LogisticsPhasePanel({
                           )}
                           aria-label="Data fi"
                         />
-                        <Input
-                          type="time"
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Label
+                            htmlFor={`logistica-workers-${phase.key}`}
+                            className="mb-0 whitespace-nowrap text-xs text-slate-600"
+                          >
+                            Treb.
+                          </Label>
+                          <Input
+                            id={`logistica-workers-${phase.key}`}
+                            type="number"
+                            min={0}
+                            max={30}
+                            value={roleLines.length}
+                            onChange={(e) => {
+                              const result = resizeLogisticPhaseToTotalPersonSlots(
+                                form,
+                                assignments,
+                                Number(e.target.value)
+                              )
+                              updatePhaseForm(phase.key, result.formPatch)
+                              replacePhaseVehicleAssignments(phase.key, result.assignments)
+                            }}
+                            className={cn(
+                              "w-[4.5rem] shrink-0 px-2 tabular-nums",
+                              compact ? "h-8 text-xs" : "h-9 text-sm"
+                            )}
+                            aria-label="Nombre total de persones de la fase logística"
+                            title="Total de persones (ja descompta conductors)"
+                          />
+                        </div>
+                        <SubtleTimeInput
+                          id={`logistica-arrival-${phase.key}`}
+                          label="Hora arribada"
                           value={phaseArrivalTime}
-                          onChange={(e) => {
-                            const value = e.target.value
+                          onChange={(value) => {
                             updatePhaseForm(phase.key, { arrivalTime: value })
                             applyRoleLines((lines) =>
                               lines.map((entry) => ({ ...entry, arrivalTime: value }))
                             )
                           }}
-                          className={cn(
-                            "w-[5.35rem] shrink-0 px-1.5 tabular-nums",
-                            compact ? "h-8 text-xs" : "h-9 text-sm"
-                          )}
-                          aria-label="Hora arribada"
-                          title="Hora arribada"
+                          compact={compact}
+                          width="w-[6.4rem]"
+                        />
+                        <SubtleTimeInput
+                          id={`logistica-return-cal-blay-${phase.key}`}
+                          label="Tornada Cal Blay"
+                          value={form?.returnTimeCalBlay || ""}
+                          onChange={(value) =>
+                            updatePhaseForm(phase.key, { returnTimeCalBlay: value })
+                          }
+                          compact={compact}
+                          width="w-[7.6rem]"
                         />
                         <button
                           type="button"

@@ -12,6 +12,7 @@ export interface QuadrantDraft {
   location?: string | null;
   meetingPoint?: string;
   arrivalTime?: string | null;
+  returnTimeCalBlay?: string | null;
   responsableId?: string;
   responsableName?: string;
   treballadors?: Array<string | { id?: string; name?: string }>;

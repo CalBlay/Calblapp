@@ -83,6 +83,8 @@ export type PermissionActionGroup = {
   visibleWhen: { path: string }
   /** Si és cert, el grup es mostra només amb permís de veure (sense editar). */
   requireViewOnly?: boolean
+  /** Acció independent: es pot concedir encara que el mòdul pare no sigui visible. */
+  independentOfModule?: boolean
   actions: Array<{ key: string; label: string }>
 }
 
@@ -147,13 +149,23 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     ],
   },
   {
+    id: 'eventDocumentsAccess',
+    title: 'Esdeveniments · Documents',
+    subtitle:
+      'Permet consultar els documents dels esdeveniments assignats sense donar accés al mòdul complet.',
+    visibleWhen: { path: '/menu/events' },
+    independentOfModule: true,
+    actions: [
+      { key: PERM.action('/menu/events', 'docs:view'), label: 'Veure documents' },
+    ],
+  },
+  {
     id: 'eventsActions',
-    title: 'Esdeveniments · Accions',
+    title: 'Esdeveniments · Altres accions',
     subtitle:
       'Accions de gestió amb impacte. Vídeo visita: marcar allow per usuari (comercial, caps d’àrea comercial…).',
     visibleWhen: { path: '/menu/events' },
     actions: [
-      { key: PERM.action('/menu/events', 'docs:view'), label: 'Veure documents' },
       { key: PERM.action('/menu/events', 'docs:attach:kitchen'), label: 'Adjuntar documents de cuina' },
       {
         key: PERM.action('/menu/events', 'docs:attach:visit-video'),
@@ -375,11 +387,15 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
 export const shouldShowActionGroup = (
   viewAllowed: boolean,
   editAllowed: boolean,
-  requireViewOnly?: boolean
-): boolean => (requireViewOnly ? viewAllowed : viewAllowed && editAllowed)
+  requireViewOnly?: boolean,
+  independentOfModule?: boolean
+): boolean =>
+  independentOfModule === true || (requireViewOnly ? viewAllowed : viewAllowed && editAllowed)
 
 export const actionGroupDefaultExpanded = (
   viewAllowed: boolean,
   editAllowed: boolean,
-  requireViewOnly?: boolean
-): boolean => shouldShowActionGroup(viewAllowed, editAllowed, requireViewOnly)
+  requireViewOnly?: boolean,
+  independentOfModule?: boolean
+): boolean =>
+  shouldShowActionGroup(viewAllowed, editAllowed, requireViewOnly, independentOfModule)

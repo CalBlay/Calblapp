@@ -58,6 +58,21 @@ export function getCommercialReservationDayKeys(
   return days
 }
 
+export function isCommercialReservationVehicleReassignment(
+  reservation: Pick<CommercialReservation, 'status' | 'assignedVehicleId'>,
+  nextVehicleId?: string | null
+) {
+  const currentVehicleId = String(reservation.assignedVehicleId || '').trim()
+  const normalizedNextVehicleId = String(nextVehicleId || '').trim()
+
+  return (
+    reservation.status === 'confirmed' &&
+    Boolean(currentVehicleId) &&
+    Boolean(normalizedNextVehicleId) &&
+    currentVehicleId !== normalizedNextVehicleId
+  )
+}
+
 export const COMMERCIAL_RESERVATION_STATUS_LABELS: Record<
   CommercialReservationStatus,
   string

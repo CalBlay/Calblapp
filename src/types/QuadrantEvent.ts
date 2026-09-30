@@ -16,6 +16,7 @@ export interface QuadrantEvent {
   startTime?: string
   endTime?: string
   arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
   department?: string
   totalWorkers?: number
   numDrivers?: number

@@ -40,6 +40,8 @@ export interface Draft {
   endDate?: string
   startTime?: string
   endTime?: string
+  arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
 
   // Localització
   location?: string | { [key: string]: unknown }

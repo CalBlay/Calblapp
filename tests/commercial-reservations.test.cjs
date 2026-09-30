@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   getCommercialReservationEndDate,
   getCommercialReservationDayKeys,
+  isCommercialReservationVehicleReassignment,
 } = require('../src/lib/commercialReservations')
 
 test('getCommercialReservationEndDate falls back to start date', () => {
@@ -34,4 +35,18 @@ test('getCommercialReservationDayKeys handles missing and inverted ranges safely
   assert.deepEqual(getCommercialReservationDayKeys({ date: 'not-a-date', endDate: '2026-08-01' }), [
     'not-a-date',
   ])
+})
+
+test('detecta el canvi de vehicle sense cancel·lar una reserva confirmada', () => {
+  const confirmed = { status: 'confirmed', assignedVehicleId: 'vehicle-1' }
+
+  assert.equal(isCommercialReservationVehicleReassignment(confirmed, 'vehicle-2'), true)
+  assert.equal(isCommercialReservationVehicleReassignment(confirmed, 'vehicle-1'), false)
+  assert.equal(
+    isCommercialReservationVehicleReassignment(
+      { status: 'pending', assignedVehicleId: 'vehicle-1' },
+      'vehicle-2'
+    ),
+    false
+  )
 })

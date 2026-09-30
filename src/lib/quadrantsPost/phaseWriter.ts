@@ -173,6 +173,8 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
       endDate: phase.endDate || phase.date || body.endDate,
       startTime: phase.startTime || body.startTime,
       endTime: phase.endTime || body.endTime,
+      arrivalTime: phase.arrivalTime || body.arrivalTime || null,
+      returnTimeCalBlay: phase.returnTimeCalBlay || null,
       meetingPoint: phase.meetingPoint || body.meetingPoint || '',
       totalWorkers: Number(phase.totalWorkers || 0),
       jamoneroCount:

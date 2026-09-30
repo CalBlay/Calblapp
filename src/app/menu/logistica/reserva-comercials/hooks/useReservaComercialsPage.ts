@@ -54,7 +54,7 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   handleKeysDatesChange: (next: SmartFiltersChange) => void
   handleOpenReservation: (dayIso: string) => void
   handleSubmit: () => Promise<void>
-  handleValidation: (id: string, status: CommercialReservationStatus) => Promise<void>
+  handleValidation: (id: string, status: CommercialReservationStatus) => Promise<boolean>
   handleCancelReservation: (id: string) => Promise<void>
   availableVehiclesForReservation: (target: CommercialReservation) => ReturnType<typeof useTransports>['data']
   reservationsByDay: Map<string, CommercialReservation[]>
@@ -737,8 +737,10 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
       }
 
       await loadReservations()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error validant la reserva')
+      return false
     } finally {
       setSaving(false)
     }

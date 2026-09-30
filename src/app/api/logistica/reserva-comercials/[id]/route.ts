@@ -6,6 +6,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
+  isCommercialReservationVehicleReassignment,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
 import type { AccessUser } from '@/lib/accessControl'
@@ -234,6 +235,8 @@ export async function PATCH(
     const patch: Record<string, unknown> = {
       updatedAt: admin.firestore.Timestamp.now(),
     }
+    let vehicleWasChanged = false
+    const previousVehiclePlate = current.assignedVehiclePlate || ''
 
     if (nextStatus === 'confirmed') {
       const requestedVehicleId = String(body.assignedVehicleId || '').trim()
@@ -250,6 +253,7 @@ export async function PATCH(
         return NextResponse.json({ error: 'No hi ha cap vehicle lliure per a aquesta franja' }, { status: 409 })
       }
 
+      vehicleWasChanged = isCommercialReservationVehicleReassignment(current, vehicle.id)
       patch.status = 'confirmed'
       patch.assignedVehicleId = String(vehicle.id)
       patch.assignedVehiclePlate = String(vehicle.plate || '')
@@ -276,13 +280,17 @@ export async function PATCH(
         : `${current.date} ${current.startTime}-${current.endTime}`
 
     const title =
-      patch.status === 'confirmed'
+      vehicleWasChanged
+        ? 'Vehicle de reserva modificat'
+        : patch.status === 'confirmed'
         ? 'Reserva confirmada'
         : patch.status === 'rejected'
           ? 'Reserva rebutjada'
           : 'Reserva anul·lada'
     const bodyText =
-      patch.status === 'confirmed'
+      vehicleWasChanged
+        ? `S'ha canviat el vehicle de la teva reserva ${dateLabel}: ${previousVehiclePlate || 'vehicle anterior'} → ${String(patch.assignedVehiclePlate || 'nou vehicle')}.`
+        : patch.status === 'confirmed'
         ? `La teva reserva ${dateLabel} ha estat confirmada${patch.assignedVehiclePlate ? ` amb ${String(patch.assignedVehiclePlate)}` : ''}.`
         : patch.status === 'rejected'
           ? `La teva reserva ${dateLabel} no ha estat validada.`

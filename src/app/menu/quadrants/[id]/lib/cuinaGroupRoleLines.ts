@@ -4,6 +4,10 @@ import {
   getExternalWorkerBaseLabel,
   getExternalWorkerTypeFromName,
 } from '@/lib/quadrantExternalWorkers'
+import {
+  resizeRoleLinesToTotalPersonSlots,
+  resizeStaffRoleLineSlots,
+} from './resizeRoleLineSlots'
 
 const makeSlotId = () => `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
@@ -365,9 +369,6 @@ export function patchCuinaGroupRoleLines(
 const isCuinaStaffRole = (role: ServeiRoleKey) =>
   role === 'treballador' || role === 'jamonero'
 
-const hasAssignedCuinaPerson = (line: ServeiGroupRoleLine) =>
-  Boolean(String(line.personId || '').trim() || String(line.personName || '').trim())
-
 /** Ajusta el nombre de línies de treballador (conserva conductor/responsable). */
 export function resizeCuinaGroupWorkerSlots(
   group: CuinaGroup,
@@ -377,41 +378,18 @@ export function resizeCuinaGroupWorkerSlots(
     assignments?: VehicleAssignment[]
   }
 ): CuinaGroup {
-  const target = Math.max(0, Math.min(30, Math.floor(Number(workerCount) || 0)))
   const assignments =
     precomputed?.assignments ?? ensureCuinaVehicleAssignments(group)
   const current =
     precomputed?.roleLines ?? ensureCuinaRoleLines(group, assignments)
-  const nonStaffLines = current.filter((line) => !isCuinaStaffRole(line.role))
-  const staffLines = current.filter((line) => isCuinaStaffRole(line.role))
+  const resized = resizeStaffRoleLineSlots({
+    roleLines: current,
+    targetCount: workerCount,
+    createStaffLine: () => createEmptyCuinaRoleLine(group, 'treballador'),
+    isStaffRole: isCuinaStaffRole,
+  })
 
-  if (staffLines.length === target) {
-    return syncCuinaGroupFromRoleLines(group, current, assignments)
-  }
-
-  if (staffLines.length < target) {
-    const added = Array.from({ length: target - staffLines.length }, () =>
-      createEmptyCuinaRoleLine(group, 'treballador')
-    )
-    return syncCuinaGroupFromRoleLines(
-      group,
-      [...nonStaffLines, ...staffLines, ...added],
-      assignments
-    )
-  }
-
-  const assigned = staffLines.filter(hasAssignedCuinaPerson)
-  const empty = staffLines.filter((line) => !hasAssignedCuinaPerson(line))
-  const keptStaff =
-    assigned.length >= target
-      ? assigned.slice(0, target)
-      : [...assigned, ...empty.slice(0, target - assigned.length)]
-
-  return syncCuinaGroupFromRoleLines(
-    group,
-    [...nonStaffLines, ...keptStaff],
-    assignments
-  )
+  return syncCuinaGroupFromRoleLines(group, resized, assignments)
 }
 
 /**
@@ -426,17 +404,17 @@ export function resizeCuinaGroupToTotalPersonSlots(
     assignments?: VehicleAssignment[]
   }
 ): CuinaGroup {
-  const targetTotal = Math.max(0, Math.min(30, Math.floor(Number(totalCount) || 0)))
   const assignments =
     precomputed?.assignments ?? ensureCuinaVehicleAssignments(group)
   const current =
     precomputed?.roleLines ?? ensureCuinaRoleLines(group, assignments)
-  const nonStaffCount = current.filter((line) => !isCuinaStaffRole(line.role)).length
-  const staffTarget = Math.max(0, targetTotal - nonStaffCount)
-  return resizeCuinaGroupWorkerSlots(group, staffTarget, {
+  const resized = resizeRoleLinesToTotalPersonSlots({
     roleLines: current,
-    assignments,
+    targetCount: totalCount,
+    createStaffLine: () => createEmptyCuinaRoleLine(group, 'treballador'),
+    isStaffRole: isCuinaStaffRole,
   })
+  return syncCuinaGroupFromRoleLines(group, resized, assignments)
 }
 
 export function applyCuinaDefaultsToRoleLines(group: CuinaGroup): CuinaGroup {

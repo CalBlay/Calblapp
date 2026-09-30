@@ -116,6 +116,8 @@ export type LogisticPhasePayload = {
   endDate: string
   startTime: string
   endTime: string
+  arrivalTime?: string
+  returnTimeCalBlay?: string
   totalWorkers: number
   numDrivers: number
   wantsResp: boolean
@@ -596,6 +598,8 @@ export function useQuadrantFormState({
           endDate: form.endDate,
           startTime: form.startTime,
           endTime: form.endTime,
+          arrivalTime: form.arrivalTime || '',
+          returnTimeCalBlay: form.returnTimeCalBlay || '',
           totalWorkers: form.workers,
           numDrivers: form.drivers,
           wantsResp: phaseSetting.needsResponsible,

@@ -18,6 +18,7 @@ import {
 } from '../lib/quadrantPayloadShared'
 import type { AvailableVehicle, ServeiGroupRoleLine, ServeiRoleKey, VehicleAssignment } from '../phaseConfig'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
+import SubtleTimeInput from './SubtleTimeInput'
 
 type PersonOption = {
   id: string
@@ -215,7 +216,7 @@ export default function LogisticRoleLineRow({
 
   return (
     <div className="overflow-x-auto rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5">
-      <div className="flex min-w-max items-center gap-1.5">
+      <div className="flex min-w-max items-end gap-1.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white ring-1 ring-slate-200">
           {isConductor ? (
             <Truck className="h-4 w-4 text-orange-500" aria-hidden />
@@ -328,33 +329,30 @@ export default function LogisticRoleLineRow({
           className={`${fieldClass} w-[9rem] shrink-0 px-2`}
           aria-label="Data"
         />
-        <Input
-          type="time"
+        <SubtleTimeInput
+          id={`logistica-row-start-${line.slotId}`}
+          label="Hora inici"
           value={line.startTime || ''}
-          onChange={(e) => onLinePatch({ startTime: e.target.value })}
-          className={`${fieldClass} w-[5.35rem] shrink-0 px-1.5 tabular-nums`}
-          aria-label="Hora inici esdeveniment"
-          title="Hora inici esdeveniment"
+          onChange={(value) => onLinePatch({ startTime: value })}
+          compact={compact}
         />
-        <Input
-          type="time"
+        <SubtleTimeInput
+          id={`logistica-row-end-${line.slotId}`}
+          label="Hora fi"
           value={line.endTime || ''}
-          onChange={(e) => onLinePatch({ endTime: e.target.value })}
-          className={`${fieldClass} w-[5.35rem] shrink-0 px-1.5 tabular-nums`}
-          aria-label="Hora fi esdeveniment"
-          title="Hora fi esdeveniment"
+          onChange={(value) => onLinePatch({ endTime: value })}
+          compact={compact}
         />
-        <Input
-          type="time"
+        <SubtleTimeInput
+          id={`logistica-row-arrival-${line.slotId}`}
+          label="Hora arribada"
           value={line.arrivalTime || assignment.arrivalTime || ''}
-          onChange={(e) => {
-            const value = e.target.value
+          onChange={(value) => {
             onLinePatch({ arrivalTime: value })
             if (isConductor) onAssignmentPatch({ arrivalTime: value })
           }}
-          className={`${fieldClass} w-[5.35rem] shrink-0 px-1.5 tabular-nums`}
-          aria-label="Hora arribada"
-          title="Hora arribada"
+          compact={compact}
+          width="w-[6.4rem]"
         />
 
         {canRemove ? (

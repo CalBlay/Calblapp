@@ -89,6 +89,7 @@ export function buildQuadrantSave(
     endDate: bodyForSave.endDate || '',
     endTime: bodyForSave.endTime || '00:00',
     arrivalTime: bodyForSave.arrivalTime || null,
+    returnTimeCalBlay: bodyForSave.returnTimeCalBlay || null,
     department: deptNorm,
     status: 'draft',
     numDrivers: Number(bodyForSave.numDrivers || 0),

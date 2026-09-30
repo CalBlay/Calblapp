@@ -32,6 +32,8 @@ export function draftToQuadrantEvent(draft: Draft): QuadrantEvent {
     originalEnd: endDate ? `${endDate}T00:00:00.000Z` : undefined,
     startTime: String(draft.startTime || '').trim(),
     endTime: String(draft.endTime || '').trim(),
+    arrivalTime: draft.arrivalTime ?? null,
+    returnTimeCalBlay: draft.returnTimeCalBlay ?? null,
     location: normalizeLocation(draft.location) || null,
     eventLocation: normalizeLocation(draft.location) || null,
     meetingPoint: String(draft.meetingPoint || normalizeLocation(draft.location) || '').trim(),

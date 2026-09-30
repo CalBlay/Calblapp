@@ -45,6 +45,9 @@ export function hydrateLogisticPhaseFromDraft(
   const startTime = String(draft.startTime || fallback.startTime || '')
   const endTime = String(draft.endTime || fallback.endTime || '')
   const arrivalTime = String(draft.arrivalTime || fallback.arrivalTime || '')
+  const returnTimeCalBlay = String(
+    draft.returnTimeCalBlay || fallback.returnTimeCalBlay || ''
+  )
 
   const conductors = Array.isArray(draft.conductors) ? draft.conductors : []
   const workers = Array.isArray(draft.treballadors) ? draft.treballadors : []
@@ -148,6 +151,7 @@ export function hydrateLogisticPhaseFromDraft(
       startTime,
       endTime,
       arrivalTime,
+      returnTimeCalBlay,
       meetingPoint,
       roleLines,
       workerIds,

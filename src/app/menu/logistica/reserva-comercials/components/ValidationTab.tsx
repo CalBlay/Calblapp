@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,7 @@ import {
   CorporateFiltersShell,
 } from '@/components/layout/corporate-filters'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, Pencil, XCircle } from 'lucide-react'
 import { reservationDateLabel } from '../utils'
 
 type VehicleOption = {
@@ -30,7 +31,7 @@ type Props = {
   onValidationDatesChange: (next: SmartFiltersChange) => void
   onValidationStatusChange: (value: string) => void
   onVehicleChange: (reservationId: string, vehicleId: string) => void
-  onValidation: (id: string, status: CommercialReservationStatus) => Promise<void>
+  onValidation: (id: string, status: CommercialReservationStatus) => Promise<boolean>
   onCancelReservation: (id: string) => Promise<void>
   getVehicleOptions: (reservation: CommercialReservation) => VehicleOption[]
 }
@@ -48,6 +49,8 @@ export default function ValidationTab({
   onCancelReservation,
   getVehicleOptions,
 }: Props) {
+  const [editingReservationId, setEditingReservationId] = useState<string | null>(null)
+
   return (
     <div className="space-y-4">
       <CorporateFiltersShell variant="toolbar" showHeader={false}>
@@ -100,14 +103,34 @@ export default function ValidationTab({
             ) : null}
 
             {manageableReservations.map((reservation) => {
-              const vehicleOptions = getVehicleOptions(reservation)
+              const availableVehicleOptions = getVehicleOptions(reservation)
+              const vehicleOptions =
+                reservation.assignedVehicleId &&
+                !availableVehicleOptions.some(
+                  (vehicle) => vehicle.id === reservation.assignedVehicleId
+                )
+                  ? [
+                      {
+                        id: reservation.assignedVehicleId,
+                        plate: reservation.assignedVehiclePlate || 'Vehicle actual',
+                        type: '',
+                      },
+                      ...availableVehicleOptions,
+                    ]
+                  : availableVehicleOptions
               const selectedVehicleId =
                 selectedVehicleByReservation[reservation.id] || reservation.assignedVehicleId || ''
               const isPending = reservation.status === 'pending'
+              const isEditing = editingReservationId === reservation.id
               const canConfirm =
                 isPending &&
                 selectedVehicleId &&
                 vehicleOptions.some((vehicle) => vehicle.id === selectedVehicleId)
+              const canSaveVehicleChange =
+                isEditing &&
+                selectedVehicleId &&
+                selectedVehicleId !== reservation.assignedVehicleId &&
+                availableVehicleOptions.some((vehicle) => vehicle.id === selectedVehicleId)
 
               return (
                 <div
@@ -169,13 +192,13 @@ export default function ValidationTab({
 
                     <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
-                        {isPending ? 'Assignació' : 'Reserva activa'}
+                        {isPending ? 'Assignació' : isEditing ? 'Editar vehicle' : 'Reserva activa'}
                       </div>
 
-                      {isPending ? (
+                      {isPending || isEditing ? (
                         <>
                           <label className="mt-2 block text-sm font-medium text-slate-700">
-                            Vehicle a assignar
+                            {isEditing ? 'Nou vehicle' : 'Vehicle a assignar'}
                           </label>
                           <select
                             value={selectedVehicleId}
@@ -185,17 +208,20 @@ export default function ValidationTab({
                             <option value="">Selecciona vehicle</option>
                             {vehicleOptions.map((vehicle) => (
                               <option key={vehicle.id} value={vehicle.id}>
-                                {vehicle.plate} · {TRANSPORT_TYPE_LABELS[vehicle.type] || vehicle.type}
+                                {vehicle.plate}
+                                {vehicle.type
+                                  ? ` · ${TRANSPORT_TYPE_LABELS[vehicle.type] || vehicle.type}`
+                                  : ''}
                               </option>
                             ))}
                           </select>
 
                           <div className="mt-2 min-h-[18px] text-xs">
-                            {vehicleOptions.length === 0 ? (
+                            {availableVehicleOptions.length === 0 ? (
                               <span className="text-red-600">No hi ha comercials lliures per aquesta franja.</span>
                             ) : (
                               <span className="text-slate-500">
-                                {vehicleOptions.length} vehicle{vehicleOptions.length === 1 ? '' : 's'} disponible{vehicleOptions.length === 1 ? '' : 's'}
+                                {availableVehicleOptions.length} vehicle{availableVehicleOptions.length === 1 ? '' : 's'} disponible{availableVehicleOptions.length === 1 ? '' : 's'}
                               </span>
                             )}
                           </div>
@@ -233,6 +259,60 @@ export default function ValidationTab({
                             Rebutjar
                           </Button>
                         ) : null}
+                        {!isPending && !isEditing ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              onVehicleChange(
+                                reservation.id,
+                                reservation.assignedVehicleId || ''
+                              )
+                              setEditingReservationId(reservation.id)
+                            }}
+                            disabled={saving}
+                            className="flex-1 border-sky-200 text-sky-800 hover:bg-sky-100"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar vehicle
+                          </Button>
+                        ) : null}
+                        {!isPending && isEditing ? (
+                          <>
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                void (async () => {
+                                  const saved = await onValidation(
+                                    reservation.id,
+                                    'confirmed'
+                                  )
+                                  if (saved) setEditingReservationId(null)
+                                })()
+                              }}
+                              disabled={saving || !canSaveVehicleChange}
+                              className="flex-1"
+                            >
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Desar canvi
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                onVehicleChange(
+                                  reservation.id,
+                                  reservation.assignedVehicleId || ''
+                                )
+                                setEditingReservationId(null)
+                              }}
+                              disabled={saving}
+                              className="flex-1"
+                            >
+                              Tancar
+                            </Button>
+                          </>
+                        ) : null}
                         <Button
                           type="button"
                           variant={isPending ? 'outline' : 'destructive'}
@@ -244,7 +324,7 @@ export default function ValidationTab({
                           )}
                         >
                           <XCircle className="mr-2 h-4 w-4" />
-                          Anul·lar
+                          Anul·lar reserva
                         </Button>
                       </div>
                     </div>

@@ -84,6 +84,7 @@ export interface QuadrantSave {
   cuinaGroupCount?: number
   service?: string | null
   arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
   distanceKm?: number | null
   distanceCalcAt?: string | null
   timetables?: Array<{ startTime: string; endTime: string }>
@@ -189,6 +190,7 @@ export type QuadrantSaveRequestBody = {
   endDate?: string
   endTime?: string
   arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
   numDrivers?: number | string
   totalWorkers?: number | string
   numPax?: number | null
@@ -241,6 +243,8 @@ export type PhaseRequest = Record<string, unknown> & {
   endDate?: string
   startTime?: string
   endTime?: string
+  arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
   totalWorkers?: number
   jamoneroCount?: number
   numDrivers?: number

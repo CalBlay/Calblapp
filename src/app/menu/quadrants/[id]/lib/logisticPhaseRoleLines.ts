@@ -6,6 +6,7 @@ import {
   type VehicleAssignment,
 } from '../phaseConfig'
 import { dedupeRoleLinePersonAssignments } from './quadrantPayloadShared'
+import { resizeRoleLinesToTotalPersonSlots } from './resizeRoleLineSlots'
 
 export function collectAllLogisticaRoleLines(
   phaseForms: Record<LogisticPhaseKey, LogisticPhaseForm>,
@@ -230,6 +231,21 @@ export function patchLogisticRoleLines(
 ): { formPatch: Partial<LogisticPhaseForm>; assignments: VehicleAssignment[] } {
   const current = ensureLogisticRoleLines(form, assignments)
   return syncLogisticPhaseFromRoleLines(form, updater(current), assignments)
+}
+
+export function resizeLogisticPhaseToTotalPersonSlots(
+  form: LogisticPhaseForm,
+  assignments: VehicleAssignment[],
+  totalCount: number
+): { formPatch: Partial<LogisticPhaseForm>; assignments: VehicleAssignment[] } {
+  const current = ensureLogisticRoleLines(form, assignments)
+  const resized = resizeRoleLinesToTotalPersonSlots({
+    roleLines: current,
+    targetCount: totalCount,
+    createStaffLine: () => createEmptyLogisticRoleLine(form, 'treballador'),
+    isStaffRole: (role) => role === 'treballador',
+  })
+  return syncLogisticPhaseFromRoleLines(form, resized, assignments)
 }
 
 /** @deprecated */

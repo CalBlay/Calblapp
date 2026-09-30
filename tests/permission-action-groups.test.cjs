@@ -20,6 +20,7 @@ test('shouldShowActionGroup requires view+edit unless the group is view-only', (
 test('actionGroupDefaultExpanded follows the same visibility rule', () => {
   assert.equal(actionGroupDefaultExpanded(true, false, true), true)
   assert.equal(actionGroupDefaultExpanded(true, false, false), false)
+  assert.equal(actionGroupDefaultExpanded(false, false, false, true), true)
 })
 
 test('comanda and preparation action groups stay visible with view-only access', () => {
@@ -29,6 +30,9 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(byId.logisticsPreparationActions.requireViewOnly, true)
   assert.equal(byId.logisticsPreparationWarehouses.requireViewOnly, true)
   assert.equal(byId.eventsActions.requireViewOnly, undefined)
+  assert.equal(byId.eventDocumentsAccess.independentOfModule, true)
+  assert.equal(byId.eventDocumentsAccess.actions.length, 1)
+  assert.match(byId.eventDocumentsAccess.actions[0].key, /docs:view$/)
   assert.equal(byId.mediaDelete.requireViewOnly, undefined)
   assert.equal(byId.decoTicketsActions.visibleWhen.path, '/menu/deco/tickets')
   assert.equal(byId.decoTicketsActions.actions.length, 6)
@@ -41,5 +45,14 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(
     shouldShowActionGroup(true, false, byId.eventsActions.requireViewOnly),
     false
+  )
+  assert.equal(
+    shouldShowActionGroup(
+      false,
+      false,
+      byId.eventDocumentsAccess.requireViewOnly,
+      byId.eventDocumentsAccess.independentOfModule
+    ),
+    true
   )
 })

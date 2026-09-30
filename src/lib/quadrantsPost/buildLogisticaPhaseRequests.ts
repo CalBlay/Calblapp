@@ -20,6 +20,8 @@ export function buildLogisticaPhaseRequests(
       endDate: (phase.endDate as string) || (phase.date as string) || (body.endDate as string),
       startTime: (phase.startTime as string) || (body.startTime as string),
       endTime: (phase.endTime as string) || (body.endTime as string),
+      arrivalTime: (phase.arrivalTime as string) || null,
+      returnTimeCalBlay: (phase.returnTimeCalBlay as string) || null,
       totalWorkers: Number(phase.totalWorkers || 0),
       numDrivers: Number(phase.numDrivers || 0),
       wantsResp: !!phase.wantsResp,

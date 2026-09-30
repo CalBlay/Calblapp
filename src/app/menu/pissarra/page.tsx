@@ -20,6 +20,13 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { useFilters } from '@/context/FiltersContext'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import {
+  ALL_PISSARRA_PERSONNEL,
+  defaultPissarraPersonnelFilter,
+  getLogisticsPersonnelNames,
+  logisticsItemIncludesPerson,
+  normalizePissarraPersonName,
+} from '@/lib/pissarraPersonnelFilter'
 
 type PissarraExportRow = {
   Data: string
@@ -69,6 +76,8 @@ export default function PissarraPage() {
 
   const initialLn = searchParamsSafe.get('ln') || '__all__'
   const initialCommercial = searchParamsSafe.get('commercial') || '__all__'
+  const hasPersonnelParam = searchParamsSafe.has('worker')
+  const initialPersonnel = searchParamsSafe.get('worker') || ALL_PISSARRA_PERSONNEL
   const statusParam = (searchParamsSafe.get('status') || '').toLowerCase()
   const initialStatusFilter: '__all__' | 'confirmed' | 'draft' =
     statusParam === 'confirmed' || statusParam === 'draft' ? statusParam : '__all__'
@@ -85,6 +94,8 @@ export default function PissarraPage() {
   const [mode, setMode] = useState<'produccio' | 'logistica' | 'cuina'>(initialMode)
   const [lnFilter, setLnFilter] = useState<string>(initialLn)
   const [commercialFilter, setCommercialFilter] = useState<string>(initialCommercial)
+  const [personnelFilter, setPersonnelFilter] = useState<string>(initialPersonnel)
+  const [personnelFilterReady, setPersonnelFilterReady] = useState(hasPersonnelParam)
   const [statusFilter, setStatusFilter] = useState<'__all__' | 'confirmed' | 'draft'>(
     initialStatusFilter
   )
@@ -131,6 +142,21 @@ export default function PissarraPage() {
   const canOpenQuadrants = hasQuadrantsEditAction && Boolean(userQuadrantsDepartment)
 
   useEffect(() => {
+    if (personnelFilterReady || status === 'loading') return
+
+    setPersonnelFilter(
+      defaultPissarraPersonnelFilter({
+        role,
+        department: dept,
+        userName: session?.user?.name,
+      })
+    )
+    setPersonnelFilterReady(true)
+  }, [dept, personnelFilterReady, role, session?.user?.name, status])
+
+  useEffect(() => {
+    if (!personnelFilterReady) return
+
     const next = new URLSearchParams(searchParamsSafe.toString())
     next.set('start', week.startISO)
     next.set('end', week.endISO)
@@ -138,13 +164,14 @@ export default function PissarraPage() {
     next.set('ln', lnFilter || '__all__')
     next.set('commercial', commercialFilter || '__all__')
     next.set('status', statusFilter || '__all__')
+    next.set('worker', personnelFilter || ALL_PISSARRA_PERSONNEL)
 
     const nextQs = next.toString()
     const currentQs = searchParamsSafe.toString()
     if (nextQs !== currentQs) {
       router.replace(`${pathname}?${nextQs}`)
     }
-  }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, pathname, router, searchParamsSafe])
+  }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, personnelFilter, personnelFilterReady, pathname, router, searchParamsSafe])
 
   const lnOptions = useMemo(
     () => Array.from(new Set(flat.map((e) => e.LN).filter(Boolean))).sort(),
@@ -154,6 +181,27 @@ export default function PissarraPage() {
     () => Array.from(new Set(flat.map((e) => e.comercial).filter(Boolean))).sort(),
     [flat]
   )
+  const personnelOptions = useMemo(() => {
+    const people = new Map<string, string>()
+
+    flat.forEach((item) => {
+      getLogisticsPersonnelNames(item).forEach((name) => {
+        const normalizedName = normalizePissarraPersonName(name)
+        if (normalizedName && !people.has(normalizedName)) {
+          people.set(normalizedName, name)
+        }
+      })
+    })
+
+    const selectedPerson =
+      personnelFilter === ALL_PISSARRA_PERSONNEL ? '' : personnelFilter.trim()
+    const normalizedSelectedPerson = normalizePissarraPersonName(selectedPerson)
+    if (normalizedSelectedPerson && !people.has(normalizedSelectedPerson)) {
+      people.set(normalizedSelectedPerson, selectedPerson)
+    }
+
+    return Array.from(people.values()).sort((a, b) => a.localeCompare(b, 'ca'))
+  }, [flat, personnelFilter])
 
   const filteredFlat = useMemo(() => {
     return flat.filter((ev) => {
@@ -163,9 +211,15 @@ export default function PissarraPage() {
         const st = (ev.status || '').toLowerCase()
         if (st !== statusFilter) return false
       }
+      if (
+        mode === 'logistica' &&
+        !logisticsItemIncludesPerson(ev, personnelFilter)
+      ) {
+        return false
+      }
       return true
     })
-  }, [flat, lnFilter, commercialFilter, statusFilter])
+  }, [flat, lnFilter, commercialFilter, mode, personnelFilter, statusFilter])
 
   const filteredDataByDay = useMemo(() => {
     const grouped: Record<string, typeof flat> = {}
@@ -398,6 +452,29 @@ export default function PissarraPage() {
   const openFiltersPanel = () => {
     setContent(
       <div className="p-4 space-y-3">
+        {mode === 'logistica' && (
+          <div className="space-y-1">
+            <label className="text-sm text-gray-700">Treballador</label>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              value={personnelFilter}
+              onChange={(e) => setPersonnelFilter(e.target.value)}
+            >
+              <option value={ALL_PISSARRA_PERSONNEL}>Tots els treballadors</option>
+              {personnelOptions.map((name) => (
+                <option key={normalizePissarraPersonName(name)} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            {personnelFilter !== ALL_PISSARRA_PERSONNEL && (
+              <p className="text-xs text-gray-500">
+                Treu aquest filtre per veure tots els esdeveniments.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1">
           <label className="text-sm text-gray-700">Línia de negoci</label>
           <select
@@ -452,6 +529,7 @@ export default function PissarraPage() {
             setLnFilter('__all__')
             setCommercialFilter('__all__')
             setStatusFilter('__all__')
+            setPersonnelFilter(ALL_PISSARRA_PERSONNEL)
             setOpen(false)
           }}
         >

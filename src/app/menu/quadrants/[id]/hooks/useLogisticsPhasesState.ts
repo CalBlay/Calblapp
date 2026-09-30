@@ -29,6 +29,7 @@ type PhaseFormParams = {
   startTime: string
   endTime: string
   arrivalTime?: string
+  returnTimeCalBlay?: string
   workers: number
   drivers: number
   meetingPoint: string
@@ -49,6 +50,7 @@ const createPhaseForms = (params: PhaseFormParams) =>
       startTime: params.startTime,
       endTime: params.endTime,
       arrivalTime: params.arrivalTime || '',
+      returnTimeCalBlay: params.returnTimeCalBlay || '',
       workers: params.workers,
       drivers: params.drivers,
       meetingPoint: params.meetingPoint,
@@ -163,6 +165,7 @@ export function useLogisticsPhasesState({
     startTime: startTime || '',
     endTime: endTime || '',
     arrivalTime: arrivalTime || event.arrivalTime || '',
+    returnTimeCalBlay: event.returnTimeCalBlay || '',
     workers: totalWorkers,
     drivers: numDrivers,
     meetingPoint: baseMeetingPoint,
@@ -232,6 +235,7 @@ export function useLogisticsPhasesState({
       startTime: startTime || '',
       endTime: endTime || '',
       arrivalTime: arrivalTime || event.arrivalTime || '',
+      returnTimeCalBlay: event.returnTimeCalBlay || '',
       workers: totalWorkers,
       drivers: numDrivers,
       meetingPoint: baseMeetingPoint,
@@ -283,6 +287,7 @@ export function useLogisticsPhasesState({
     baseMeetingPoint,
     endTime,
     event.arrivalTime,
+    event.returnTimeCalBlay,
     event.id,
     event.phaseKey,
     event.phaseLabel,

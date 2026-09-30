@@ -73,6 +73,7 @@ export type EditorDraftInput = {
   endDate?: string
   endTime?: string
   arrivalTime?: string | null
+  returnTimeCalBlay?: string | null
   meetingPoint?: string
   groups?: EditorGroup[]
   /** Firestore / client sync stamp; triggers editor reset when changed */

@@ -1,4 +1,8 @@
 import type { ServeiGroup, ServeiGroupRoleLine, ServeiRoleKey } from '../phaseConfig'
+import {
+  resizeRoleLinesToTotalPersonSlots,
+  resizeStaffRoleLineSlots,
+} from './resizeRoleLineSlots'
 
 const makeSlotId = () => `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
@@ -153,29 +157,14 @@ export function resizeServiceGroupWorkerSlots(
   group: ServeiGroup,
   workerCount: number
 ): ServeiGroup {
-  const target = Math.max(0, Math.min(30, Math.floor(Number(workerCount) || 0)))
   const current = ensureGroupRoleLines(group)
-  const nonStaffLines = current.filter((line) => !isStaffRole(line.role))
-  const staffLines = current.filter((line) => isStaffRole(line.role))
-
-  if (staffLines.length === target) return syncGroupFromRoleLines(group, current)
-
-  if (staffLines.length < target) {
-    const added = Array.from(
-      { length: target - staffLines.length },
-      () => createEmptyRoleLine(group, 'treballador')
-    )
-    return syncGroupFromRoleLines(group, [...nonStaffLines, ...staffLines, ...added])
-  }
-
-  const assigned = staffLines.filter(hasAssignedPerson)
-  const empty = staffLines.filter((line) => !hasAssignedPerson(line))
-  const keptStaff =
-    assigned.length >= target
-      ? assigned.slice(0, target)
-      : [...assigned, ...empty.slice(0, target - assigned.length)]
-
-  return syncGroupFromRoleLines(group, [...nonStaffLines, ...keptStaff])
+  const resized = resizeStaffRoleLineSlots({
+    roleLines: current,
+    targetCount: workerCount,
+    createStaffLine: () => createEmptyRoleLine(group, 'treballador'),
+    isStaffRole,
+  })
+  return syncGroupFromRoleLines(group, resized)
 }
 
 /**
@@ -186,11 +175,14 @@ export function resizeServiceGroupToTotalPersonSlots(
   group: ServeiGroup,
   totalCount: number
 ): ServeiGroup {
-  const targetTotal = Math.max(0, Math.min(30, Math.floor(Number(totalCount) || 0)))
   const current = ensureGroupRoleLines(group)
-  const nonStaffCount = current.filter((line) => !isStaffRole(line.role)).length
-  const staffTarget = Math.max(0, targetTotal - nonStaffCount)
-  return resizeServiceGroupWorkerSlots(group, staffTarget)
+  const resized = resizeRoleLinesToTotalPersonSlots({
+    roleLines: current,
+    targetCount: totalCount,
+    createStaffLine: () => createEmptyRoleLine(group, 'treballador'),
+    isStaffRole,
+  })
+  return syncGroupFromRoleLines(group, resized)
 }
 
 export function getPrimaryServiceRoleLines(roleLines: ServeiGroupRoleLine[]) {

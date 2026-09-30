@@ -41,6 +41,8 @@ export type LogisticPhaseForm = {
   endTime: string
   /** Hora d'arribada per defecte de la fase (capçalera / Aplicar tot). */
   arrivalTime?: string
+  /** Hora prevista de tornada a Cal Blay de la fase logística. */
+  returnTimeCalBlay?: string
   workers: number
   drivers: number
   meetingPoint: string
