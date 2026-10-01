@@ -3,7 +3,9 @@ const { test } = require('node:test')
 
 const {
   applyMeetingDecisionsToDashboard,
+  canEditMeetingCommentDepartment,
   meetingDecisionKey,
+  normalizeMeetingCommentDepartment,
 } = require('../src/lib/quadrantsWeeklyMeeting')
 
 const event = {
@@ -82,4 +84,17 @@ test('meeting decision keys distinguish day and department', () => {
     meetingDecisionKey('event-1', '2026-09-15', 'cuina'),
     meetingDecisionKey('event-1', '2026-09-16', 'cuina')
   )
+})
+
+test('meeting comment departments accept the three operational departments', () => {
+  assert.equal(normalizeMeetingCommentDepartment('Serveis'), 'serveis')
+  assert.equal(normalizeMeetingCommentDepartment('Logística'), 'logistica')
+  assert.equal(normalizeMeetingCommentDepartment('CUINA'), 'cuina')
+  assert.equal(normalizeMeetingCommentDepartment('Empresa'), null)
+})
+
+test('a department can edit only its own meeting observations', () => {
+  assert.equal(canEditMeetingCommentDepartment('Logística', 'logistica'), true)
+  assert.equal(canEditMeetingCommentDepartment('Logística', 'cuina'), false)
+  assert.equal(canEditMeetingCommentDepartment('Empresa', 'serveis'), false)
 })

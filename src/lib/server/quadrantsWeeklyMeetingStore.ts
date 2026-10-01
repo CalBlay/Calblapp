@@ -76,6 +76,22 @@ export async function listMeetingEventNotes(
       scheduleEntries: storedEntries.length ? storedEntries : legacyEntries,
       meetingComment: String(data.meetingComment || ''),
       meetingCommentSaved: Object.prototype.hasOwnProperty.call(data, 'meetingComment'),
+      departmentComments: {
+        serveis: {
+          text: String(data.meetingCommentServeis ?? data.meetingComment ?? ''),
+          saved:
+            Object.prototype.hasOwnProperty.call(data, 'meetingCommentServeis') ||
+            Object.prototype.hasOwnProperty.call(data, 'meetingComment'),
+        },
+        logistica: {
+          text: String(data.meetingCommentLogistica || ''),
+          saved: Object.prototype.hasOwnProperty.call(data, 'meetingCommentLogistica'),
+        },
+        cuina: {
+          text: String(data.meetingCommentCuina || ''),
+          saved: Object.prototype.hasOwnProperty.call(data, 'meetingCommentCuina'),
+        },
+      },
       updatedAt: String(data.updatedAt || ''),
       updatedByName: String(data.updatedByName || ''),
     }

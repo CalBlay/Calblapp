@@ -21,13 +21,17 @@ import {
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import type {
+  MeetingCommentDepartment,
   MeetingDepartment,
   MeetingScheduleEntry,
   WeeklyMeetingRow,
 } from '@/lib/quadrantsWeeklyMeeting'
 import { cn } from '@/lib/utils'
 
-type MeetingResponse = { rows: WeeklyMeetingRow[] }
+type MeetingResponse = {
+  rows: WeeklyMeetingRow[]
+  editableCommentDepartment: MeetingCommentDepartment | null
+}
 type MeetingSession = {
   id: string
   weekStart: string
@@ -64,22 +68,31 @@ function decisionLabel(row: WeeklyMeetingRow, department: MeetingDepartment) {
 
 function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRow[]) {
   const rows = session.rows.length ? session.rows : fallbackRows
+  const departmentComment = (row: WeeklyMeetingRow, department: MeetingCommentDepartment) => {
+    const stored = row.departmentComments?.[department]
+    const text = stored?.saved
+      ? stored.text
+      : department === 'serveis'
+        ? row.meetingComment
+        : stored?.text || ''
+    return text || 'Sense observacions.'
+  }
   const body = rows.map((row) => `
     <tr>
       <td><strong>${escapeHtml(format(parseISO(row.eventDay), 'dd/MM/yyyy'))}</strong>${row.eventCode ? `<br><small>Codi: ${escapeHtml(row.eventCode)}</small>` : ''}${row.servicesResponsible ? `<br><strong>${escapeHtml(row.servicesResponsible)}</strong>` : ''}</td>
       <td><strong>${escapeHtml(row.location || 'Ubicació pendent')}</strong>${row.eventName ? `<br><small>${escapeHtml(row.eventName)}</small>` : ''}${row.servicesTeam ? `<br><small>${escapeHtml(row.servicesTeam).replaceAll('\n', '<br>')}</small>` : ''}</td>
       <td>${escapeHtml(row.pax)}</td>
       <td>${escapeHtml(row.scheduleNotes || row.eventSchedule).replaceAll('\n', '<br>')}</td>
-      <td>${escapeHtml(row.meetingComment || 'Sense comentaris.').replaceAll('\n', '<br>')}</td>
-      <td>${escapeHtml(decisionLabel(row, 'logistica'))}</td>
-      <td>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
+      <td>${escapeHtml(departmentComment(row, 'serveis')).replaceAll('\n', '<br>')}</td>
+      <td>${escapeHtml(departmentComment(row, 'logistica')).replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'logistica'))}</td>
+      <td>${escapeHtml(departmentComment(row, 'cuina')).replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
     </tr>`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Acta reunió de quadrants</title>
     <style>
-      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:11px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:7px;vertical-align:top}th{background:#111827;color:white;text-align:left}th:nth-child(1){width:12%}th:nth-child(2){width:27%}th:nth-child(3){width:6%}th:nth-child(4){width:11%}th:nth-child(5){width:20%}th:nth-child(6),th:nth-child(7){width:12%}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
+      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:10px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:6px;vertical-align:top}th{background:#111827;color:white;text-align:left}th:nth-child(1){width:8%}th:nth-child(2){width:22%}th:nth-child(3){width:4%}th:nth-child(4){width:13%}th:nth-child(5){width:16%}th:nth-child(6),th:nth-child(7){width:18.5%}hr{border:0;border-top:1px solid #cbd5e1;margin:7px 0}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
     <div class="meta">Setmana del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
-    <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>COMENTARIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
+    <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
     <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes) || 'Sense observacions.'}</p></div></body></html>`
 }
 
@@ -96,9 +109,9 @@ function DepartmentDecisionCell({
 }) {
   const decision = row[department]
   return (
-    <div className="flex min-w-[145px] flex-col gap-2">
+    <div className="flex w-[88px] shrink-0 flex-col gap-1.5">
       <label className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition',
+        'flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-bold transition',
         decision.required
           ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
           : 'border-rose-300 bg-rose-50 text-rose-700'
@@ -112,31 +125,28 @@ function DepartmentDecisionCell({
           })}
           className="h-4 w-4 rounded border-slate-300 accent-emerald-600"
         />
-        {decision.required ? 'Sí, va' : 'No va'}
+        {decision.required ? 'Va' : 'No va'}
       </label>
       {decision.required ? (
-        <label className="flex items-center gap-2 text-xs text-slate-500">
+        <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           Hora
           <input
             type="time"
+            aria-label={`Hora d'arribada de ${department}`}
             value={decision.arrivalTime}
             onChange={(event) =>
               onChange({ required: true, arrivalTime: event.target.value })
             }
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="mt-0.5 w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
         </label>
-      ) : (
-        <span className="rounded-lg bg-rose-50 px-2 py-1.5 text-center text-xs font-bold text-rose-700">
-          NO VA
-        </span>
-      )}
-      <span className="h-4 text-[11px] text-slate-400">
+      ) : null}
+      <span className="h-3 text-[10px] text-slate-400">
         {saving ? (
           <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Desant</span>
         ) : decision.saved ? (
           <span className="inline-flex items-center gap-1 text-emerald-700"><Check className="h-3 w-3" /> Desat</span>
-        ) : 'Valor per defecte'}
+        ) : 'Per defecte'}
       </span>
     </div>
   )
@@ -165,7 +175,7 @@ function ScheduleNotesCell({
 
   return (
     <div
-      className="min-w-[245px] space-y-2"
+      className="min-w-0 space-y-2"
       onBlur={(event) => {
         const nextTarget = event.relatedTarget as Node | null
         if (!nextTarget || !event.currentTarget.contains(nextTarget)) onSave(entries)
@@ -178,7 +188,7 @@ function ScheduleNotesCell({
             aria-label={`Hora del servei ${index + 1}`}
             value={entry.time}
             onChange={(event) => updateEntry(entry.id, { time: event.target.value })}
-            className="w-[92px] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-[76px] rounded-lg border border-slate-300 bg-white px-1.5 py-1.5 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
           <input
             type="text"
@@ -197,7 +207,7 @@ function ScheduleNotesCell({
               setEntries(next)
               onSave(next)
             }}
-            className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -227,39 +237,63 @@ function ScheduleNotesCell({
   )
 }
 
-function EventCommentCell({
+function DepartmentCommentCell({
   row,
+  department,
+  canEdit,
   saving,
   onSave,
 }: {
   row: WeeklyMeetingRow
+  department: MeetingCommentDepartment
+  canEdit: boolean
   saving: boolean
   onSave: (comment: string) => void
 }) {
-  const [comment, setComment] = useState(row.meetingComment)
+  const storedDepartmentComment = row.departmentComments?.[department]
+  const saved = !!(
+    storedDepartmentComment?.saved ||
+    (department === 'serveis' && row.meetingCommentSaved)
+  )
+  const storedComment = storedDepartmentComment?.saved
+    ? storedDepartmentComment.text
+    : department === 'serveis'
+      ? row.meetingComment
+      : storedDepartmentComment?.text || ''
+  const [comment, setComment] = useState(storedComment)
 
   useEffect(() => {
-    setComment(row.meetingComment)
-  }, [row.meetingComment])
+    setComment(storedComment)
+  }, [storedComment])
 
   return (
-    <div className="min-w-[220px]">
+    <div className="min-w-0 flex-1">
       <textarea
-        aria-label={`Comentaris de ${row.eventName || row.eventCode || 'l’esdeveniment'}`}
+        aria-label={`Observacions de ${department} per ${row.eventName || row.eventCode || 'l’esdeveniment'}`}
         value={comment}
-        onChange={(event) => setComment(event.target.value)}
-        onBlur={() => {
-          if (comment !== row.meetingComment) onSave(comment)
+        readOnly={!canEdit}
+        onChange={(event) => {
+          if (canEdit) setComment(event.target.value)
         }}
-        rows={5}
+        onBlur={() => {
+          if (canEdit && comment !== storedComment) onSave(comment)
+        }}
+        rows={3}
         maxLength={4000}
-        placeholder="Comentaris i acords d’aquest esdeveniment…"
-        className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        placeholder={canEdit ? 'Observacions del departament…' : 'Sense observacions'}
+        className={cn(
+          'w-full rounded-lg border px-2.5 py-2 text-sm outline-none',
+          canEdit
+            ? 'resize-none border-slate-300 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+            : 'resize-none border-slate-200 bg-slate-50 text-slate-600'
+        )}
       />
       <span className="mt-1 block h-4 text-[11px] text-slate-400">
-        {saving ? (
+        {!canEdit ? (
+          'Només lectura'
+        ) : saving ? (
           <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Desant comentari</span>
-        ) : row.meetingCommentSaved ? (
+        ) : saved ? (
           <span className="inline-flex items-center gap-1 text-emerald-700"><Check className="h-3 w-3" /> Comentari desat</span>
         ) : 'Es desa en sortir del camp'}
       </span>
@@ -310,13 +344,14 @@ export default function QuadrantsWeeklyMeetingPage() {
     const previous = data
     setSavingKeys((current) => new Set(current).add(saveKey))
     await mutate(
-      (current) => ({
+      (current) => current ? ({
+        ...current,
         rows: (current?.rows || []).map((item) =>
           item.key === row.key
             ? { ...item, [department]: { ...patch, saved: true } }
             : item
         ),
-      }),
+      }) : current,
       false
     )
     try {
@@ -352,13 +387,14 @@ export default function QuadrantsWeeklyMeetingPage() {
       .join('\n')
     setSavingKeys((current) => new Set(current).add(saveKey))
     await mutate(
-      (current) => ({
+      (current) => current ? ({
+        ...current,
         rows: (current?.rows || []).map((item) =>
           item.key === row.key
             ? { ...item, scheduleNotes, scheduleEntries, scheduleNotesSaved: true }
             : item
         ),
-      }),
+      }) : current,
       false
     )
     try {
@@ -385,19 +421,33 @@ export default function QuadrantsWeeklyMeetingPage() {
     }
   }
 
-  const updateMeetingComment = async (row: WeeklyMeetingRow, meetingComment: string) => {
-    const saveKey = `${row.key}:comment`
+  const updateMeetingComment = async (
+    row: WeeklyMeetingRow,
+    department: MeetingCommentDepartment,
+    meetingComment: string
+  ) => {
+    const saveKey = `${row.key}:comment:${department}`
     const previous = data
     const normalizedComment = meetingComment.trim()
     setSavingKeys((current) => new Set(current).add(saveKey))
     await mutate(
-      (current) => ({
+      (current) => current ? ({
+        ...current,
         rows: (current?.rows || []).map((item) =>
           item.key === row.key
-            ? { ...item, meetingComment: normalizedComment, meetingCommentSaved: true }
+            ? {
+                ...item,
+                departmentComments: {
+                  ...item.departmentComments,
+                  [department]: { text: normalizedComment, saved: true },
+                },
+                ...(department === 'serveis'
+                  ? { meetingComment: normalizedComment, meetingCommentSaved: true }
+                  : {}),
+              }
             : item
         ),
-      }),
+      }) : current,
       false
     )
     try {
@@ -409,6 +459,7 @@ export default function QuadrantsWeeklyMeetingPage() {
           eventId: row.eventId,
           eventCode: row.eventCode,
           eventDay: row.eventDay,
+          commentDepartment: department,
           meetingComment: normalizedComment,
         }),
       })
@@ -501,15 +552,15 @@ export default function QuadrantsWeeklyMeetingPage() {
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3">
           <h2 className="font-semibold text-slate-900">Graella setmanal</h2>
-          <p className="text-sm text-slate-500">Serveis és informatiu. Només s’editen les decisions de Logística i Cuina.</p>
+          <p className="text-sm text-slate-500">Tothom pot veure les observacions dels tres departaments; cada departament només pot editar les seves.</p>
         </div>
         {isLoading ? <div className="flex items-center justify-center gap-2 p-12 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> Carregant esdeveniments…</div>
         : error ? <div className="p-8 text-center text-rose-700">{error.message}</div>
         : !data?.rows.length ? <div className="p-12 text-center text-slate-500">No hi ha esdeveniments aquesta setmana.</div>
         : <div className="overflow-x-auto">
-          <table className="w-full min-w-[1380px] border-collapse text-sm">
+          <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
             <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-white">
-              <tr><th className="w-[11%] p-3">Dia</th><th className="w-[27%] p-3">Lloc / quadrant de Serveis</th><th className="w-[6%] p-3 text-center">PAX</th><th className="w-[12%] p-3">Horari</th><th className="w-[20%] p-3">Comentaris</th><th className="w-[12%] p-3">Logística</th><th className="w-[12%] p-3">Cuina</th></tr>
+              <tr><th className="w-[8%] p-2.5">Dia</th><th className="w-[21%] p-2.5">Lloc / quadrant de Serveis</th><th className="w-[4%] p-2 text-center">PAX</th><th className="w-[13%] p-2.5">Horari</th><th className="w-[16%] p-2.5">Obs. Serveis</th><th className="w-[19%] p-2.5">Logística</th><th className="w-[19%] p-2.5">Cuina</th></tr>
             </thead>
             <tbody>
               {data.rows.map((row, index) => (
@@ -525,11 +576,49 @@ export default function QuadrantsWeeklyMeetingPage() {
                     {row.servicesTeam ? <div className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-600">{row.servicesTeam}</div> : <div className="mt-2 text-xs italic text-slate-400">Quadrant de Serveis pendent</div>}
                     {row.servicesClosing ? <div className="mt-1 text-xs font-medium text-slate-700">Tancament: {row.servicesClosing}</div> : null}
                   </td>
-                  <td className="p-3 text-center font-bold">{row.pax || '—'}</td>
-                  <td className="p-3"><ScheduleNotesCell row={row} saving={savingKeys.has(`${row.key}:schedule`)} onSave={(entries) => updateScheduleNotes(row, entries)} /></td>
-                  <td className="p-3"><EventCommentCell row={row} saving={savingKeys.has(`${row.key}:comment`)} onSave={(comment) => updateMeetingComment(row, comment)} /></td>
-                  <td className="p-3"><DepartmentDecisionCell row={row} department="logistica" saving={savingKeys.has(`${row.key}:logistica`)} onChange={(patch) => updateDecision(row, 'logistica', patch)} /></td>
-                  <td className="p-3"><DepartmentDecisionCell row={row} department="cuina" saving={savingKeys.has(`${row.key}:cuina`)} onChange={(patch) => updateDecision(row, 'cuina', patch)} /></td>
+                  <td className="p-2 text-center font-bold">{row.pax || '—'}</td>
+                  <td className="p-2.5"><ScheduleNotesCell row={row} saving={savingKeys.has(`${row.key}:schedule`)} onSave={(entries) => updateScheduleNotes(row, entries)} /></td>
+                  <td className="p-2.5">
+                    <DepartmentCommentCell
+                      row={row}
+                      department="serveis"
+                      canEdit={data.editableCommentDepartment === 'serveis'}
+                      saving={savingKeys.has(`${row.key}:comment:serveis`)}
+                      onSave={(comment) => updateMeetingComment(row, 'serveis', comment)}
+                    />
+                  </td>
+                  <td className="p-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <DepartmentCommentCell
+                          row={row}
+                          department="logistica"
+                          canEdit={data.editableCommentDepartment === 'logistica'}
+                          saving={savingKeys.has(`${row.key}:comment:logistica`)}
+                          onSave={(comment) => updateMeetingComment(row, 'logistica', comment)}
+                        />
+                      </div>
+                      <div className="border-l border-slate-200 pl-2">
+                        <DepartmentDecisionCell row={row} department="logistica" saving={savingKeys.has(`${row.key}:logistica`)} onChange={(patch) => updateDecision(row, 'logistica', patch)} />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <DepartmentCommentCell
+                          row={row}
+                          department="cuina"
+                          canEdit={data.editableCommentDepartment === 'cuina'}
+                          saving={savingKeys.has(`${row.key}:comment:cuina`)}
+                          onSave={(comment) => updateMeetingComment(row, 'cuina', comment)}
+                        />
+                      </div>
+                      <div className="border-l border-slate-200 pl-2">
+                        <DepartmentDecisionCell row={row} department="cuina" saving={savingKeys.has(`${row.key}:cuina`)} onChange={(patch) => updateDecision(row, 'cuina', patch)} />
+                      </div>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

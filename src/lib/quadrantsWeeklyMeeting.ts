@@ -6,6 +6,43 @@ export const QUADRANTS_MEETING_EVENT_NOTES_COLLECTION =
   'quadrant_weekly_meeting_event_notes'
 
 export type MeetingDepartment = 'logistica' | 'cuina'
+export type MeetingCommentDepartment = 'serveis' | MeetingDepartment
+
+export const MEETING_COMMENT_DEPARTMENTS: MeetingCommentDepartment[] = [
+  'serveis',
+  'logistica',
+  'cuina',
+]
+
+export function normalizeMeetingCommentDepartment(
+  value: unknown
+): MeetingCommentDepartment | null {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+  return MEETING_COMMENT_DEPARTMENTS.includes(normalized as MeetingCommentDepartment)
+    ? (normalized as MeetingCommentDepartment)
+    : null
+}
+
+export function canEditMeetingCommentDepartment(
+  userDepartment: unknown,
+  commentDepartment: MeetingCommentDepartment
+): boolean {
+  return normalizeMeetingCommentDepartment(userDepartment) === commentDepartment
+}
+
+export type MeetingDepartmentComment = {
+  text: string
+  saved: boolean
+}
+
+export type MeetingDepartmentComments = Record<
+  MeetingCommentDepartment,
+  MeetingDepartmentComment
+>
 
 export type MeetingDecision = {
   id: string
@@ -28,6 +65,7 @@ export type MeetingEventNote = {
   scheduleEntries: MeetingScheduleEntry[]
   meetingComment: string
   meetingCommentSaved: boolean
+  departmentComments: MeetingDepartmentComments
   updatedAt: string
   updatedByName: string
 }
@@ -53,6 +91,7 @@ export type WeeklyMeetingRow = {
   scheduleNotesSaved: boolean
   meetingComment: string
   meetingCommentSaved: boolean
+  departmentComments: MeetingDepartmentComments
   servicesResponsible: string
   servicesTeam: string
   servicesClosing: string

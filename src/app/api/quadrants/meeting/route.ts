@@ -9,9 +9,12 @@ import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
   QUADRANTS_MEETING_DECISIONS_COLLECTION,
   QUADRANTS_MEETING_EVENT_NOTES_COLLECTION,
+  canEditMeetingCommentDepartment,
   decisionMap,
   meetingDecisionKey,
   meetingEventKey,
+  normalizeMeetingCommentDepartment,
+  type MeetingCommentDepartment,
   type MeetingDepartment,
   type WeeklyMeetingRow,
 } from '@/lib/quadrantsWeeklyMeeting'
@@ -25,6 +28,9 @@ import {
 } from '@/lib/quadrantsWeeklyMeetingSync'
 
 export const runtime = 'nodejs'
+
+const meetingCommentField = (department: MeetingCommentDepartment) =>
+  `meetingComment${department.charAt(0).toUpperCase()}${department.slice(1)}`
 
 const normalizeEventId = (value: unknown) =>
   String(value || '').trim().split('__')[0].trim()
@@ -193,6 +199,11 @@ export async function GET(req: NextRequest) {
         scheduleNotesSaved: !!eventNote,
         meetingComment: eventNote?.meetingComment || '',
         meetingCommentSaved: eventNote?.meetingCommentSaved || false,
+        departmentComments: eventNote?.departmentComments || {
+          serveis: { text: '', saved: false },
+          logistica: { text: '', saved: false },
+          cuina: { text: '', saved: false },
+        },
         servicesResponsible: services.responsible,
         servicesTeam: services.team,
         servicesClosing: services.closing,
@@ -214,7 +225,10 @@ export async function GET(req: NextRequest) {
         `${b.eventDay}${b.eventSchedule}${b.eventName}`
       )
     )
-    return NextResponse.json({ rows })
+    return NextResponse.json({
+      rows,
+      editableCommentDepartment: normalizeMeetingCommentDepartment(auth.user.department),
+    })
   } catch (error) {
     console.error('[quadrants/meeting GET]', error)
     return NextResponse.json({ error: 'No s’ha pogut carregar la reunió' }, { status: 500 })
@@ -236,24 +250,36 @@ export async function PATCH(req: NextRequest) {
         : null
     const isScheduleUpdate = body.kind === 'schedule'
     const isCommentUpdate = body.kind === 'comment'
+    const commentDepartment = normalizeMeetingCommentDepartment(body.commentDepartment)
     const required = body.required !== false
     const arrivalTime = normalizeTime(body.arrivalTime)
     if (
       !eventId ||
       !isIsoDateDayParam(eventDay) ||
-      (!isScheduleUpdate && !isCommentUpdate && !department)
+      (!isScheduleUpdate && !isCommentUpdate && !department) ||
+      (isCommentUpdate && !commentDepartment)
     ) {
       return NextResponse.json({ error: 'Dades de decisió invàlides' }, { status: 400 })
     }
 
     const now = new Date().toISOString()
     if (isCommentUpdate) {
+      if (
+        !commentDepartment ||
+        !canEditMeetingCommentDepartment(auth.user.department, commentDepartment)
+      ) {
+        return NextResponse.json(
+          { error: 'Només pots editar les observacions del teu departament' },
+          { status: 403 }
+        )
+      }
       const docId = Buffer.from(meetingEventKey(eventId, eventDay)).toString('base64url')
+      const meetingComment = String(body.meetingComment || '').trim().slice(0, 4000)
       const payload = {
         eventId,
         eventCode,
         eventDay,
-        meetingComment: String(body.meetingComment || '').trim().slice(0, 4000),
+        [meetingCommentField(commentDepartment)]: meetingComment,
         updatedAt: now,
         updatedById: auth.user.id,
         updatedByName: String(auth.user.name || auth.user.email || ''),
@@ -262,7 +288,11 @@ export async function PATCH(req: NextRequest) {
         .collection(QUADRANTS_MEETING_EVENT_NOTES_COLLECTION)
         .doc(docId)
         .set(payload, { merge: true })
-      return NextResponse.json({ eventNote: { ...payload, id: docId } })
+      return NextResponse.json({
+        eventNote: { ...payload, id: docId },
+        commentDepartment,
+        meetingComment,
+      })
     }
 
     if (isScheduleUpdate) {
