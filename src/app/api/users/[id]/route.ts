@@ -12,6 +12,10 @@ import {
   serializeAdminUserResponse,
   serializeUserResponse,
 } from '@/lib/server/userApiSerialization'
+import {
+  additionalWorkDepartmentKeys,
+  normalizeAdditionalWorkDepartments,
+} from '@/lib/additionalWorkDepartments'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -69,6 +73,8 @@ interface UserUpdate {
   isAdmin?: boolean
   department?: string
   departmentLower?: string
+  additionalWorkDepartments?: string[]
+  additionalWorkDepartmentsLower?: string[]
   commercialName?: string
   commercialNameFold?: string
   opsEventsConfigurable?: boolean
@@ -213,15 +219,27 @@ export async function PUT(
       typeof rawUpdate.role === 'string' ? rawUpdate.role : String(currentData.role || '')
     const finalDepartment =
       typeof rawUpdate.department === 'string' ? rawUpdate.department : String(currentData.department || '')
+    const finalAdditionalWorkDepartments = normalizeAdditionalWorkDepartments(
+      rawUpdate.additionalWorkDepartments ?? currentData.additionalWorkDepartments,
+      finalDepartment
+    )
     const canKeepTransportLead =
       isCapDepartament(finalRole) && normLower(finalDepartment) === 'logistica'
     rawUpdate.isTransportLead = canKeepTransportLead ? Boolean(rawUpdate.isTransportLead) : false
 
     // 🔹 Si NO és treballador → netegem camps específics de torns
-    if (!isTreballador(rawUpdate.role) && !isCapDepartament(rawUpdate.role)) {
+    if (!isTreballador(finalRole) && !isCapDepartament(finalRole)) {
       rawUpdate.available = undefined
       rawUpdate.isDriver = undefined
       rawUpdate.workerRank = undefined
+      rawUpdate.additionalWorkDepartments = []
+      rawUpdate.additionalWorkDepartmentsLower = []
+    } else {
+      rawUpdate.additionalWorkDepartments = finalAdditionalWorkDepartments
+      rawUpdate.additionalWorkDepartmentsLower = additionalWorkDepartmentKeys(
+        finalAdditionalWorkDepartments,
+        finalDepartment
+      )
     }
 
     const passwordPlain =
@@ -258,6 +276,10 @@ export async function PUT(
         department: update.department ?? snapData.department ?? '',
         departmentLower:
           update.departmentLower ?? snapData.departmentLower ?? '',
+        additionalWorkDepartments:
+          update.additionalWorkDepartments ?? snapData.additionalWorkDepartments ?? [],
+        additionalWorkDepartmentsLower:
+          update.additionalWorkDepartmentsLower ?? snapData.additionalWorkDepartmentsLower ?? [],
         role: isCap ? 'responsable' : 'treballador',
         available: update.available ?? snapData.available ?? true,
         isDriver: update.isDriver ?? snapData.isDriver ?? false,

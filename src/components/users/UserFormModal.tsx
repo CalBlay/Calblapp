@@ -40,6 +40,7 @@ export interface User {
   role?: string
   isAdmin?: boolean
   department?: string
+  additionalWorkDepartments?: string[]
   commercialName?: string
   available?: boolean
   driver?: { isDriver?: boolean }
@@ -61,6 +62,7 @@ export interface NewUserPayload {
   role: string
   isAdmin?: boolean
   department: string
+  additionalWorkDepartments?: string[]
   commercialName?: string
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
@@ -140,6 +142,8 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [role, setRole] = React.useState<string>('Treballador')
   const [isAdmin, setIsAdmin] = React.useState(false)
   const [department, setDepartment] = React.useState<string>(DEFAULT_USER_DEPARTMENT)
+  const [additionalWorkDepartments, setAdditionalWorkDepartments] = React.useState<string[]>([])
+  const [worksAcrossDepartments, setWorksAcrossDepartments] = React.useState(false)
   const [commercialName, setCommercialName] = React.useState('')
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
@@ -274,9 +278,27 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       .trim() === 'logistica'
 
   const departmentOptions = React.useMemo(
-    () => getUserDepartmentSelectOptions(department),
-    [department],
+    () => getUserDepartmentSelectOptions(department, ...additionalWorkDepartments),
+    [additionalWorkDepartments, department],
   )
+
+  React.useEffect(() => {
+    const primaryKey = department
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+    setAdditionalWorkDepartments((current) =>
+      current.filter(
+        (item) =>
+          item
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim() !== primaryKey
+      )
+    )
+  }, [department])
 
   React.useEffect(() => {
     let active = true
@@ -293,6 +315,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         setRole(data.role ?? 'Treballador')
         setIsAdmin(Boolean(data.isAdmin || normalizeRole(data.role) === 'admin'))
         setDepartment(data.department ?? data.departmentLower ?? DEFAULT_USER_DEPARTMENT)
+        const additionalDepartments = Array.isArray(data.additionalWorkDepartments)
+          ? data.additionalWorkDepartments.map(String).filter(Boolean)
+          : []
+        setAdditionalWorkDepartments(additionalDepartments)
+        setWorksAcrossDepartments(additionalDepartments.length > 0)
         setPhone(data.phone ?? '')
         setEmail(data.email ?? '')
         setAvailable(data.available ?? true)
@@ -321,6 +348,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setRole(user.role ?? 'Treballador')
     setIsAdmin(Boolean(user.isAdmin || normalizeRole(user.role) === 'admin'))
     setDepartment(user.department ?? DEFAULT_USER_DEPARTMENT)
+    const additionalDepartments = Array.isArray(user.additionalWorkDepartments)
+      ? user.additionalWorkDepartments.map(String).filter(Boolean)
+      : []
+    setAdditionalWorkDepartments(additionalDepartments)
+    setWorksAcrossDepartments(additionalDepartments.length > 0)
     setCommercialName(user.commercialName ?? '')
     setPhone(user.phone ?? '')
     setEmail(user.email ?? '')
@@ -361,6 +393,10 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       alert('Email corporatiu obligatori per aquest nivell')
       return false
     }
+    if (isWorker && worksAcrossDepartments && additionalWorkDepartments.length === 0) {
+      alert('Selecciona com a minim un departament addicional')
+      return false
+    }
     return true
   }
 
@@ -395,6 +431,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
           role,
           isAdmin,
           department,
+          additionalWorkDepartments: isWorker ? additionalWorkDepartments : [],
           commercialName,
           phone,
           email,
@@ -440,6 +477,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         role,
         isAdmin,
         department,
+        additionalWorkDepartments: isWorker ? additionalWorkDepartments : [],
         commercialName,
         phone,
         email,
@@ -473,6 +511,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       role,
       isAdmin,
       department,
+      additionalWorkDepartments: isWorker ? additionalWorkDepartments : [],
       commercialName,
       phone,
       email,
@@ -782,6 +821,50 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                   <div className="text-xs text-gray-500">Pot ser assignat a torns</div>
                 </div>
                 <Switch checked={available} onCheckedChange={setAvailable} />
+              </div>
+
+              <div className="border-t py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="text-sm">Treballa també en altres departaments</Label>
+                    <div className="text-xs text-gray-500">
+                      Permet que aparegui als quadrants seleccionats mentre estigui disponible.
+                    </div>
+                  </div>
+                  <Switch
+                    checked={worksAcrossDepartments}
+                    onCheckedChange={(checked) => {
+                      setWorksAcrossDepartments(checked)
+                      if (!checked) setAdditionalWorkDepartments([])
+                    }}
+                  />
+                </div>
+
+                {worksAcrossDepartments ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {departmentOptions
+                      .filter((item) => item !== department)
+                      .map((item) => (
+                        <label
+                          key={item}
+                          className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={additionalWorkDepartments.includes(item)}
+                            onChange={(event) =>
+                              setAdditionalWorkDepartments((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, item])]
+                                  : current.filter((departmentItem) => departmentItem !== item)
+                              )
+                            }
+                          />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between py-2">

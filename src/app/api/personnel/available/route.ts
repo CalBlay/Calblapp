@@ -7,6 +7,7 @@ import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { evaluateRangeEligibility } from '@/services/eligibility'
+import { worksInDepartment } from '@/lib/additionalWorkDepartments'
 import {
   loadPersonnelRules,
   listQuadrantCollections,
@@ -69,6 +70,10 @@ interface PersonnelDoc {
   name?: string
   role?: string
   department?: string
+  departmentLower?: string
+  additionalWorkDepartments?: string[]
+  additionalWorkDepartmentsLower?: string[]
+  available?: boolean
   isDriver?: boolean
   /** Alguns documents dupliquen flags a l’arrel. */
   camioPetit?: boolean
@@ -394,32 +399,37 @@ export async function GET(request: NextRequest) {
      * llegir tota la col·leccio i filtrar en memoria. Si el camp
      * encara no esta migrat a alguns docs, aplicar fallback.
      */
-    let deptPersonnel: FirebaseFirestore.QueryDocumentSnapshot[] = []
+    const departmentPersonnelById = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
     try {
-      const lowerSnap = await db
-        .collection('personnel')
-        .where('departmentLower', '==', deptNorm)
-        .get()
-      deptPersonnel = lowerSnap.docs
+      const [lowerSnap, additionalSnap] = await Promise.all([
+        db.collection('personnel').where('departmentLower', '==', deptNorm).get(),
+        db
+          .collection('personnel')
+          .where('additionalWorkDepartmentsLower', 'array-contains', deptNorm)
+          .get(),
+      ])
+      lowerSnap.docs.forEach((doc) => departmentPersonnelById.set(doc.id, doc))
+      additionalSnap.docs.forEach((doc) => departmentPersonnelById.set(doc.id, doc))
     } catch {}
 
-    if (deptPersonnel.length === 0) {
+    if (departmentPersonnelById.size === 0) {
       try {
         const exactSnap = await db
           .collection('personnel')
           .where('department', '==', deptParam)
           .get()
-        deptPersonnel = exactSnap.docs
+        exactSnap.docs.forEach((doc) => departmentPersonnelById.set(doc.id, doc))
       } catch {}
     }
 
-    if (deptPersonnel.length === 0) {
+    if (departmentPersonnelById.size === 0) {
       const personnelSnap = await db.collection('personnel').get()
-      deptPersonnel = personnelSnap.docs.filter((doc) => {
+      personnelSnap.docs.forEach((doc) => {
         const data = doc.data() as PersonnelDoc
-        return norm(data.department) === deptNorm
+        if (worksInDepartment(data, deptNorm)) departmentPersonnelById.set(doc.id, doc)
       })
     }
+    const deptPersonnel = Array.from(departmentPersonnelById.values())
 
     const responsables: AvailEntry[] = []
     const workers: AvailEntry[] = []
@@ -427,6 +437,7 @@ export async function GET(request: NextRequest) {
 
     for (const doc of deptPersonnel) {
       const data = doc.data() as PersonnelDoc
+      if (data.available === false || !worksInDepartment(data, deptNorm)) continue
       const roleNorm = norm(data.role)
       const personRanges = [
         ...(occupancyIndex.get(norm(doc.id)) || []),

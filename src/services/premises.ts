@@ -1,4 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { worksInDepartment } from '@/lib/additionalWorkDepartments'
 
 export type PremiseCondition = {
   id: string
@@ -105,7 +106,7 @@ export async function loadDepartmentPersonnel(
 
   const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
 
-  const [lowerSnap, exactSnap] = await Promise.all([
+  const [lowerSnap, exactSnap, additionalSnap] = await Promise.all([
     db
       .collection('personnel')
       .where('departmentLower', '==', dept)
@@ -116,14 +117,22 @@ export async function loadDepartmentPersonnel(
       .where('department', '==', department)
       .get()
       .catch(() => null),
+    db
+      .collection('personnel')
+      .where('additionalWorkDepartmentsLower', 'array-contains', dept)
+      .get()
+      .catch(() => null),
   ])
 
   lowerSnap?.docs.forEach((doc) => byId.set(doc.id, doc))
   exactSnap?.docs.forEach((doc) => byId.set(doc.id, doc))
+  additionalSnap?.docs.forEach((doc) => byId.set(doc.id, doc))
 
   type PersonnelDoc = {
     department?: string
     departmentLower?: string
+    additionalWorkDepartments?: string[]
+    additionalWorkDepartmentsLower?: string[]
     name?: string
     role?: string
     available?: boolean
@@ -148,12 +157,16 @@ export async function loadDepartmentPersonnel(
   }
 
   return Array.from(byId.values())
+    .filter((doc) => {
+      const data = doc.data() as PersonnelDoc
+      return data.available !== false && worksInDepartment(data, dept)
+    })
     .map((doc) => {
       const data = doc.data() as PersonnelDoc
       return {
         id: doc.id,
         name: String(data?.name || '').trim(),
-        department: norm(data?.department || ''),
+        department: dept,
         role: normRole(data?.role || ''),
         isDriver:
           data?.isDriver === true ||
@@ -167,7 +180,7 @@ export async function loadDepartmentPersonnel(
         available: data?.available !== false,
       }
     })
-    .filter((person) => person.department === dept && person.name)
+    .filter((person) => person.name)
 }
 
 async function hydrateConditionResponsibles(

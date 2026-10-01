@@ -14,6 +14,10 @@ import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { stripPassword } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
+import {
+  additionalWorkDepartmentKeys,
+  normalizeAdditionalWorkDepartments,
+} from '@/lib/additionalWorkDepartments'
 
 const unaccent = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -39,6 +43,8 @@ interface Personnel {
   name?: string
   department?: string
   departmentLower?: string
+  additionalWorkDepartments?: string[]
+  additionalWorkDepartmentsLower?: string[]
   email?: string
   phone?: string
   available?: boolean
@@ -124,6 +130,7 @@ type ApproveBody = {
   role?: string
   isAdmin?: boolean
   department?: string
+  additionalWorkDepartments?: string[]
   commercialName?: string
   email?: string
   phone?: string
@@ -220,6 +227,14 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const commercialName = (body.commercialName || '').toString().trim()
     const departmentLower = normLower(department || p?.departmentLower)
+    const additionalWorkDepartments = normalizeAdditionalWorkDepartments(
+      body.additionalWorkDepartments ?? p?.additionalWorkDepartments,
+      department
+    )
+    const additionalWorkDepartmentsLower = additionalWorkDepartmentKeys(
+      additionalWorkDepartments,
+      department
+    )
 
     // Payload per crear usuari nou
     const userPayload: Record<string, unknown> = {
@@ -230,6 +245,12 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       isAdmin,
       department,
       departmentLower,
+      additionalWorkDepartments:
+        isTreballador(role) || isCapDepartament(role) ? additionalWorkDepartments : [],
+      additionalWorkDepartmentsLower:
+        isTreballador(role) || isCapDepartament(role)
+          ? additionalWorkDepartmentsLower
+          : [],
       commercialName: commercialName || undefined,
       commercialNameFold: commercialName ? normLower(commercialName) : undefined,
       email,
@@ -293,6 +314,8 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
           name: desiredUsername,
           department,
           departmentLower,
+          additionalWorkDepartments,
+          additionalWorkDepartmentsLower,
           role: isCap ? 'responsable' : 'treballador',
           available: (cleanedPayload.available as boolean | undefined) ?? true,
           isDriver: (cleanedPayload.isDriver as boolean | undefined) ?? false,

@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { requireQuadrantsPremissesEdit } from '@/lib/server/quadrantsApiAuth'
 import { QUADRANTS_ALLOWED_DEPARTMENTS } from '@/lib/quadrantsPermissions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { worksInDepartment } from '@/lib/additionalWorkDepartments'
 
 export const runtime = 'nodejs'
 
@@ -46,7 +47,12 @@ export async function GET(req: NextRequest) {
         .where('departmentLower', '==', requestedDept)
         .get()
       lowerSnap.docs.forEach((doc) => byId.set(doc.id, doc))
-      if (lowerSnap.empty) {
+      const additionalSnap = await db
+        .collection('personnel')
+        .where('additionalWorkDepartmentsLower', 'array-contains', requestedDept)
+        .get()
+      additionalSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+      if (byId.size === 0) {
         const exactSnap = await db
           .collection('personnel')
           .where('department', '==', requestedDept)
@@ -58,8 +64,13 @@ export async function GET(req: NextRequest) {
     if (byId.size === 0) {
       const fallbackSnap = await db.collection('personnel').get()
       fallbackSnap.docs.forEach((doc) => {
-        const data = doc.data() as { department?: string; departmentLower?: string }
-        if (norm(data?.department || data?.departmentLower || '') === requestedDept) {
+        const data = doc.data() as {
+          department?: string
+          departmentLower?: string
+          additionalWorkDepartments?: string[]
+          additionalWorkDepartmentsLower?: string[]
+        }
+        if (worksInDepartment(data, requestedDept)) {
           byId.set(doc.id, doc)
         }
       })
@@ -71,6 +82,9 @@ export async function GET(req: NextRequest) {
           name?: string
           department?: string
           departmentLower?: string
+          additionalWorkDepartments?: string[]
+          additionalWorkDepartmentsLower?: string[]
+          available?: boolean
           isDriver?: boolean
           driver?: { isDriver?: boolean; camioGran?: boolean; camioPetit?: boolean }
         }
@@ -83,11 +97,13 @@ export async function GET(req: NextRequest) {
         return {
           id: doc.id,
           name: String(data?.name || '').trim(),
-          department: norm(data?.department || data?.departmentLower || ''),
+          department: requestedDept,
+          eligible:
+            data?.available !== false && worksInDepartment(data, requestedDept),
           isDriver,
         }
       })
-      .filter((item) => item.department === requestedDept && item.name)
+      .filter((item) => item.eligible && item.name)
       .sort((a, b) => a.name.localeCompare(b.name, 'ca'))
 
     const people: PersonnelItem[] = personnel.map((item) => ({

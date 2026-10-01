@@ -9,6 +9,10 @@ import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
 import { preparePasswordForStorage } from '@/lib/server/passwords'
 import { serializeAdminUserResponse } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
+import {
+  additionalWorkDepartmentKeys,
+  normalizeAdditionalWorkDepartments,
+} from '@/lib/additionalWorkDepartments'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -67,6 +71,8 @@ interface UserPayload {
   isAdmin?: boolean
   department: string
   departmentLower: string
+  additionalWorkDepartments: string[]
+  additionalWorkDepartmentsLower: string[]
   commercialName?: string
   commercialNameFold?: string
   email: string | null
@@ -158,6 +164,7 @@ export async function POST(req: Request) {
       role?: string
       isAdmin?: boolean
       department?: string
+      additionalWorkDepartments?: string[]
       commercialName?: string
       email?: string
       phone?: string
@@ -181,6 +188,7 @@ export async function POST(req: Request) {
       role = '',
       isAdmin = false,
       department = '',
+      additionalWorkDepartments = [],
       commercialName = '',
       email = '',
       phone = '',
@@ -196,6 +204,11 @@ export async function POST(req: Request) {
       isDepartmentRobaLead = false,
       accessAssignment,
     } = body
+
+    const normalizedAdditionalWorkDepartments = normalizeAdditionalWorkDepartments(
+      additionalWorkDepartments,
+      department
+    )
 
     if (requiresCorporateEmail(role, isAdmin) && !email.trim()) {
       return NextResponse.json(
@@ -218,6 +231,14 @@ export async function POST(req: Request) {
       isAdmin: Boolean(isAdmin || normalizeRole(role) === 'admin'),
       department: department.trim(),
       departmentLower: normLower(department),
+      additionalWorkDepartments:
+        isTreballador(role) || isCapDepartament(role)
+          ? normalizedAdditionalWorkDepartments
+          : [],
+      additionalWorkDepartmentsLower:
+        isTreballador(role) || isCapDepartament(role)
+          ? additionalWorkDepartmentKeys(normalizedAdditionalWorkDepartments, department)
+          : [],
       commercialName: commercialName.trim() || undefined,
       commercialNameFold: commercialName.trim() ? normLower(commercialName) : undefined,
       email: email.trim() || null,
@@ -277,6 +298,8 @@ export async function POST(req: Request) {
         name: userPayload.name,
         department: userPayload.department,
         departmentLower: userPayload.departmentLower,
+        additionalWorkDepartments: userPayload.additionalWorkDepartments,
+        additionalWorkDepartmentsLower: userPayload.additionalWorkDepartmentsLower,
         role: isCap ? 'responsable' : 'treballador',
         available: userPayload.available ?? true,
         isDriver: userPayload.isDriver ?? false,
