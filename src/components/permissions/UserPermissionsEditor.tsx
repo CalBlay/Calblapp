@@ -232,7 +232,8 @@ export function UserPermissionsEditor({
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {group.actions.map((a) => {
-                const checked = getClientOverrideEffect(overrides, a.key) === 'allow'
+                const effect = getClientOverrideEffect(overrides, a.key)
+                const checked = group.defaultAllowed ? effect !== 'deny' : effect === 'allow'
                 return (
                   <label
                     key={a.key}

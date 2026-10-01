@@ -79,6 +79,7 @@ export type EventsWorkersEntryRow = {
   actualHours: number
   noShow: boolean
   leftEarly: boolean
+  isEtt: boolean
   notes: string
 }
 

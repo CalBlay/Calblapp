@@ -5,11 +5,7 @@ import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireAuth } from '@/lib/server/apiAuth'
-import {
-  requireRobaTabView,
-  robaTabForbiddenResponse,
-} from '@/lib/server/robaApiAuth'
-import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 
 const COL = DOTACIO_COLLECTIONS.products
 const WORKERS_COL = DOTACIO_COLLECTIONS.workers
@@ -24,8 +20,8 @@ export type RrhhFilterDepartmentOption = { value: string; label: string }
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  if (!(await requireRobaTabView(auth, ROBA_SUBMODULE_PATHS.informes))) {
-    return robaTabForbiddenResponse()
+  if (!(await canViewReportsDomain(auth.user, 'rrhh'))) {
+    return reportsDomainForbiddenResponse()
   }
 
   const snap = await db.collection(COL).limit(LIMIT).get()

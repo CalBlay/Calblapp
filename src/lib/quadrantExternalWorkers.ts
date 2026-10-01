@@ -24,6 +24,11 @@ export function getExternalWorkerTypeFromName(
   return null
 }
 
+/** Detecta l'etiqueta ETT a qualsevol posició del nom (p. ex. "Joan ETT"). */
+export function hasEttWorkerMarker(value?: string | null): boolean {
+  return /(?:^|[^a-z0-9])ett(?:$|[^a-z0-9])/.test(normalize(value))
+}
+
 export function getExternalWorkerBaseLabel(
   type?: ExternalWorkerType | null
 ): string {

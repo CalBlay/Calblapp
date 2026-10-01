@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
 import { buildTransportsOverview } from '@/lib/informes/buildTransportsOverview'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -16,8 +17,9 @@ export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  const forbidden = requireRoles(auth, ['admin', 'direccio'])
-  if (forbidden) return forbidden.res
+  if (!(await canViewReportsDomain(auth.user, 'transports'))) {
+    return reportsDomainForbiddenResponse()
+  }
 
   try {
     const { searchParams } = new URL(req.url)

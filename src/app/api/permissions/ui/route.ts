@@ -91,6 +91,11 @@ import {
   TRANSPORTS_TYPES_MANAGE_PERM,
   TRANSPORTS_UI_PATH,
 } from '@/lib/transportsPermissions'
+import {
+  REPORTS_DOMAIN_ACTION,
+  REPORTS_DOMAIN_PERMISSIONS,
+  REPORTS_UI_PATH,
+} from '@/lib/informes/permissions'
 
 type UiPermissionMap = Record<string, boolean>
 type UiEditMap = Record<string, boolean>
@@ -107,6 +112,10 @@ type UserAccessAssignment = {
 
 // Catàleg mínim d'accions especials (MVP). Anirem ampliant per mòduls.
 const ACTION_CATALOG: Array<{ path: string; action: string }> = [
+  ...Object.values(REPORTS_DOMAIN_ACTION).map((action) => ({
+    path: REPORTS_UI_PATH,
+    action,
+  })),
   { path: TRANSPORTS_UI_PATH, action: TRANSPORTS_ACTION.TYPES_MANAGE },
   { path: '/menu/allergens/bbdd', action: 'import' },
   { path: '/menu/allergens/bbdd', action: 'replace' },
@@ -309,6 +318,13 @@ export async function GET() {
   }
 
   // Settings: edició al pare implica edició als submòduls (llevat de deny explícit)
+  // Informes: les pestanyes mantenen l'acces actual per defecte. Cada usuari
+  // pot tenir un deny individual sense haver de reconfigurar la resta.
+  for (const permission of Object.values(REPORTS_DOMAIN_PERMISSIONS)) {
+    actions[permission] =
+      map[REPORTS_UI_PATH] === true && effectFor(assignment, permission) !== 'deny'
+  }
+
   if (edit['/menu/settings'] === true) {
     const settingsMod = MODULES.find((m) => m.path === '/menu/settings')
     for (const sub of settingsMod?.submodules || []) {

@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { INFORMES_DOMAINS } from '@/lib/informes/domains'
 import type { EventsWorkersOverview } from '@/lib/informes/eventsWorkersOverview'
 import { DataSourceLegend } from '@/components/informes/DataSourceLegend'
+import { EventsWorkersByEventReport } from '@/components/informes/EventsWorkersByEventReport'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,6 +17,20 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import SmartFilters from '@/components/filters/SmartFilters'
+import {
+  CorporateFilterField,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { hasEttWorkerMarker } from '@/lib/quadrantExternalWorkers'
+import { groupEventsWorkersByEvent } from '@/lib/informes/eventsWorkersByEvent'
+import { formatDateOnly } from '@/lib/date-format'
+import { loadXlsx } from '@/lib/loadXlsx'
+import { exportRowsToPdf } from '@/lib/roba-personal/robaExport'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
+import { toast } from '@/components/ui/use-toast'
 
 const EVENTS_META = INFORMES_DOMAINS.find((domain) => domain.id === 'events')!
 
@@ -30,6 +46,99 @@ function defaultCustomRange() {
   const start = new Date()
   start.setDate(start.getDate() - 29)
   return { from: toYmd(start), to: toYmd(end) }
+}
+
+function currentWeekRange() {
+  const today = new Date()
+  return {
+    from: format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    to: format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+  }
+}
+
+type EventsWorkersExportRow = {
+  Data: string
+  Codi: string
+  Esdeveniment: string
+  Ubicació: string
+  Departament: string
+  Treballador: string
+  Rols: string
+  Convocatòria: string
+  'Hora final oficial': string
+  'Hores oficials': number | string
+  'Total hores treballador': number
+}
+
+function roleExportLabel(role: string) {
+  if (role === 'responsable') return 'Responsable'
+  if (role === 'conductor') return 'Conductor/a'
+  return 'Treballador/a'
+}
+
+function buildEventsWorkersExportRows(entries: EventsWorkersOverview['entries']): EventsWorkersExportRow[] {
+  return groupEventsWorkersByEvent(entries).flatMap((event) =>
+    event.departments.flatMap((department) =>
+      department.rows.map((row) => ({
+        Data: formatDateOnly(event.eventDate, event.eventDate),
+        Codi: event.eventCode,
+        Esdeveniment: event.eventName,
+        Ubicació: event.location,
+        Departament: department.department,
+        Treballador: row.workerName,
+        Rols: row.roles.map(roleExportLabel).join(', '),
+        Convocatòria: row.plannedStartTime,
+        'Hora final oficial': row.realEndTime || 'Pendent',
+        'Hores oficials': row.realEndTime ? Number(row.actualHours.toFixed(2)) : '',
+        'Total hores treballador': Number(row.periodActualHours.toFixed(2)),
+      }))
+    )
+  )
+}
+
+function escapeExportHtml(value: unknown) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function buildEventsWorkersPrintHtml(rows: EventsWorkersExportRow[], period: string) {
+  const columns = Object.keys(rows[0] ?? {}) as Array<keyof EventsWorkersExportRow>
+  const head = columns.map((column) => `<th>${escapeExportHtml(column)}</th>`).join('')
+  const body = rows
+    .map(
+      (row) =>
+        `<tr>${columns.map((column) => `<td>${escapeExportHtml(row[column])}</td>`).join('')}</tr>`
+    )
+    .join('')
+
+  return `<!doctype html>
+<html lang="ca">
+  <head>
+    <meta charset="utf-8" />
+    <title>Personal per esdeveniment</title>
+    <style>
+      @page { size: A4 landscape; margin: 10mm; }
+      body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+      h1 { margin: 0 0 6px; font-size: 18px; }
+      .period { margin-bottom: 14px; color: #64748b; font-size: 11px; }
+      table { width: 100%; border-collapse: collapse; font-size: 8px; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      th, td { border: 1px solid #cbd5e1; padding: 4px; text-align: left; vertical-align: top; }
+      th { background: #ecfdf5; color: #14532d; }
+      tr:nth-child(even) td { background: #f8fafc; }
+    </style>
+  </head>
+  <body>
+    <h1>Personal per esdeveniment</h1>
+    <div class="period">Període: ${escapeExportHtml(period)}</div>
+    <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+  </body>
+</html>`
 }
 
 function formatHours(value: number) {
@@ -111,7 +220,7 @@ function RankingList({
 }
 
 export function EventsWorkersInformesPanel() {
-  const [tab, setTab] = useState<'kpis' | 'custom'>('kpis')
+  const [tab, setTab] = useState<'kpis' | 'events' | 'custom'>('kpis')
   const [days, setDays] = useState('30')
   const [kpiDepartment, setKpiDepartment] = useState('')
   const [kpiData, setKpiData] = useState<EventsWorkersOverview | null>(null)
@@ -119,6 +228,7 @@ export function EventsWorkersInformesPanel() {
   const [kpiError, setKpiError] = useState<string | null>(null)
 
   const defRange = useMemo(() => defaultCustomRange(), [])
+  const defaultEventsRange = useMemo(() => currentWeekRange(), [])
   const [customDateFrom, setCustomDateFrom] = useState(defRange.from)
   const [customDateTo, setCustomDateTo] = useState(defRange.to)
   const [customDepartment, setCustomDepartment] = useState('')
@@ -128,6 +238,13 @@ export function EventsWorkersInformesPanel() {
   const [customData, setCustomData] = useState<EventsWorkersOverview | null>(null)
   const [customLoading, setCustomLoading] = useState(false)
   const [customError, setCustomError] = useState<string | null>(null)
+  const [eventsDateFrom, setEventsDateFrom] = useState(defaultEventsRange.from)
+  const [eventsDateTo, setEventsDateTo] = useState(defaultEventsRange.to)
+  const [eventsData, setEventsData] = useState<EventsWorkersOverview | null>(null)
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+  const [eventsDepartment, setEventsDepartment] = useState('')
+  const [eventsWorker, setEventsWorker] = useState('')
   const [filterOptions, setFilterOptions] = useState<EventsWorkersOverview['filterOptions'] | null>(
     null
   )
@@ -219,7 +336,164 @@ export function EventsWorkersInformesPanel() {
     customOnlyClosed,
   ])
 
-  const activeData = tab === 'kpis' ? kpiData : customData
+  const runEventsReport = useCallback(async (signal?: AbortSignal) => {
+    setEventsLoading(true)
+    setEventsError(null)
+    try {
+      const params = new URLSearchParams({
+        dateFrom: eventsDateFrom,
+        dateTo: eventsDateTo,
+      })
+      const res = await fetch(`/api/reports/events-workers/overview?${params}`, {
+        cache: 'no-store',
+        signal,
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error || res.statusText)
+      }
+      setEventsData((await res.json()) as EventsWorkersOverview)
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') return
+      setEventsData(null)
+      setEventsError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (!signal?.aborted) setEventsLoading(false)
+    }
+  }, [eventsDateFrom, eventsDateTo])
+
+  useEffect(() => {
+    if (tab !== 'events' || !eventsDateFrom || !eventsDateTo) return
+    const controller = new AbortController()
+    void runEventsReport(controller.signal)
+    return () => controller.abort()
+  }, [eventsDateFrom, eventsDateTo, runEventsReport, tab])
+
+  const activeData = tab === 'kpis' ? kpiData : tab === 'custom' ? customData : eventsData
+
+  const eventsDepartmentOptions = useMemo(() => {
+    const values = new Map<string, string>()
+    ;(eventsData?.entries ?? []).forEach((entry) => {
+      if (
+        entry.noShow ||
+        entry.isEtt ||
+        hasEttWorkerMarker(entry.workerName) ||
+        !entry.department ||
+        (eventsWorker && entry.workerName !== eventsWorker)
+      ) return
+      const key = entry.department.trim().toLowerCase()
+      if (!values.has(key)) values.set(key, entry.department)
+    })
+    return Array.from(values.values()).sort((a, b) => a.localeCompare(b, 'ca'))
+  }, [eventsData, eventsWorker])
+
+  const eventsWorkerOptions = useMemo(() => {
+    const values = new Map<string, string>()
+    ;(eventsData?.entries ?? []).forEach((entry) => {
+      if (entry.noShow || entry.isEtt || hasEttWorkerMarker(entry.workerName) || !entry.workerName) return
+      if (eventsDepartment && entry.department !== eventsDepartment) return
+      const key = entry.workerName.trim().toLowerCase()
+      if (!values.has(key)) values.set(key, entry.workerName)
+    })
+    return Array.from(values.values()).sort((a, b) => a.localeCompare(b, 'ca'))
+  }, [eventsData, eventsDepartment])
+
+  const filteredEventEntries = useMemo(
+    () =>
+      (eventsData?.entries ?? []).filter(
+        (entry) =>
+          !entry.noShow &&
+          !entry.isEtt &&
+          !hasEttWorkerMarker(entry.workerName) &&
+          (!eventsDepartment || entry.department === eventsDepartment) &&
+          (!eventsWorker || entry.workerName === eventsWorker)
+      ),
+    [eventsData, eventsDepartment, eventsWorker]
+  )
+
+  const eventExportRows = useMemo(
+    () => buildEventsWorkersExportRows(filteredEventEntries),
+    [filteredEventEntries]
+  )
+  const eventExportPeriod = `${formatDateOnly(eventsDateFrom, eventsDateFrom)} – ${formatDateOnly(
+    eventsDateTo,
+    eventsDateTo
+  )}`
+  const eventExportBase = `informes-personal-esdeveniments-${eventsDateFrom}-${eventsDateTo}`
+
+  const handleEventsExportXlsx = useCallback(async () => {
+    if (eventExportRows.length === 0) return
+    try {
+      const XLSX = await loadXlsx()
+      const workbook = XLSX.utils.book_new()
+      const worksheet = XLSX.utils.json_to_sheet(eventExportRows)
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Personal')
+      XLSX.writeFile(workbook, `${eventExportBase}.xlsx`)
+      toast({ title: 'Informe Excel descarregat', description: eventExportPeriod })
+    } catch (error: unknown) {
+      toast({
+        title: 'Error generant Excel',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      })
+    }
+  }, [eventExportBase, eventExportPeriod, eventExportRows])
+
+  const handleEventsExportPdf = useCallback(async () => {
+    if (eventExportRows.length === 0) return
+    try {
+      await exportRowsToPdf(
+        eventExportRows,
+        `Personal per esdeveniment · ${eventExportPeriod}`,
+        eventExportBase
+      )
+      toast({ title: 'Informe PDF descarregat', description: eventExportPeriod })
+    } catch (error: unknown) {
+      toast({
+        title: 'Error generant PDF',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      })
+    }
+  }, [eventExportBase, eventExportPeriod, eventExportRows])
+
+  const handleEventsPrintView = useCallback(() => {
+    if (eventExportRows.length === 0) return
+    printBrandedHtmlInNewWindow(buildEventsWorkersPrintHtml(eventExportRows, eventExportPeriod))
+  }, [eventExportPeriod, eventExportRows])
+
+  const eventExportItems = useMemo(
+    () =>
+      tab === 'events'
+        ? [
+            {
+              label: 'Excel (.xlsx)',
+              onClick: handleEventsExportXlsx,
+              disabled: eventsLoading || eventExportRows.length === 0,
+            },
+            {
+              label: 'PDF',
+              onClick: handleEventsExportPdf,
+              disabled: eventsLoading || eventExportRows.length === 0,
+            },
+            {
+              label: 'Vista d’impressió',
+              onClick: handleEventsPrintView,
+              disabled: eventsLoading || eventExportRows.length === 0,
+            },
+          ]
+        : null,
+    [
+      eventExportRows.length,
+      eventsLoading,
+      handleEventsExportPdf,
+      handleEventsExportXlsx,
+      handleEventsPrintView,
+      tab,
+    ]
+  )
+
+  useRegisterModuleExportMenu(eventExportItems)
 
   const trendPoints = useMemo(() => activeData?.trend.slice(-10) ?? [], [activeData])
 
@@ -291,6 +565,13 @@ export function EventsWorkersInformesPanel() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
+              variant={tab === 'events' ? 'default' : 'outline'}
+              onClick={() => setTab('events')}
+            >
+              Per esdeveniment
+            </Button>
+            <Button
+              type="button"
               variant={tab === 'kpis' ? 'default' : 'outline'}
               onClick={() => setTab('kpis')}
             >
@@ -324,12 +605,12 @@ export function EventsWorkersInformesPanel() {
               </Select>
             </div>
             <div className="space-y-2 xl:col-span-2">
-              <Label>Departament</Label>
+              <Label htmlFor="events-kpi-department">Departament</Label>
               <Select
                 value={kpiDepartment || '__all__'}
                 onValueChange={(value) => setKpiDepartment(value === '__all__' ? '' : value)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="events-kpi-department">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -351,6 +632,61 @@ export function EventsWorkersInformesPanel() {
               ))}
             </div>
           </div>
+        ) : tab === 'events' ? (
+          <CorporateFiltersShell
+            variant="toolbar"
+            showHeader={false}
+            className="mt-4 border-slate-200/90 shadow-none"
+            bodyClassName="items-end sm:flex-wrap"
+          >
+            <SmartFilters
+              role="Direcció"
+              modeDefault="week"
+              modeOptions={['week', 'month', 'year', 'range']}
+              initialStart={defaultEventsRange.from}
+              initialEnd={defaultEventsRange.to}
+              showDepartment={false}
+              showWorker={false}
+              showLocation={false}
+              showStatus={false}
+              showImportance={false}
+              showAdvanced={false}
+              compact
+              onChange={(filters) => {
+                if (filters.start && filters.end) {
+                  setEventsDateFrom(filters.start)
+                  setEventsDateTo(filters.end)
+                }
+              }}
+            />
+            <CorporateFilterField label="Departament" htmlFor="events-report-department">
+              <CorporateFilterSelect
+                id="events-report-department"
+                value={eventsDepartment || '__all__'}
+                onChange={(event) => {
+                  setEventsDepartment(event.target.value === '__all__' ? '' : event.target.value)
+                  setEventsWorker('')
+                }}
+              >
+                <option value="__all__">Tots els departaments</option>
+                {eventsDepartmentOptions.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </CorporateFilterSelect>
+            </CorporateFilterField>
+            <CorporateFilterField label="Treballador" htmlFor="events-report-worker">
+              <CorporateFilterSelect
+                id="events-report-worker"
+                value={eventsWorker || '__all__'}
+                onChange={(event) => setEventsWorker(event.target.value === '__all__' ? '' : event.target.value)}
+              >
+                <option value="__all__">Tots els treballadors</option>
+                {eventsWorkerOptions.map((worker) => (
+                  <option key={worker} value={worker}>{worker}</option>
+                ))}
+              </CorporateFilterSelect>
+            </CorporateFilterField>
+          </CorporateFiltersShell>
         ) : (
           <div className="mt-4 grid gap-3 xl:grid-cols-12">
             <div className="space-y-2 xl:col-span-2">
@@ -452,13 +788,24 @@ export function EventsWorkersInformesPanel() {
 
       {kpiError ? <p className="text-sm text-red-600">{kpiError}</p> : null}
       {customError ? <p className="text-sm text-red-600">{customError}</p> : null}
+      {eventsError ? <p className="text-sm text-red-600">{eventsError}</p> : null}
       {(kpiLoading && tab === 'kpis') || (customLoading && tab === 'custom') ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
           Carregant...
         </div>
       ) : null}
 
-      {activeData ? (
+      {eventsLoading && tab === 'events' ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
+          Generant l’informe per esdeveniment...
+        </div>
+      ) : null}
+
+      {tab === 'events' && eventsData && !eventsLoading ? (
+        <EventsWorkersByEventReport entries={filteredEventEntries} />
+      ) : null}
+
+      {activeData && tab !== 'events' ? (
         <>
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
             {primaryKpis.map((kpi) => (

@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { AlertTriangle } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
@@ -66,6 +67,11 @@ export default function CalendarWeekView({
   onRequestPanel?: (deal: Deal) => void
 }) {
   const [layout, setLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
+  const [highlightedSpaceDays, setHighlightedSpaceDays] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [manualSpaceReasons, setManualSpaceReasons] = useState<Record<string, string>>({})
+  const [spaceHighlightsVersion, setSpaceHighlightsVersion] = useState(0)
 
   useEffect(() => {
     const update = () => {
@@ -83,6 +89,58 @@ export default function CalendarWeekView({
     const base = start ? parseISO(start) : new Date()
     return Array.from({ length: 7 }, (_, i) => addDays(base, i))
   }, [start])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadSpaceHighlights = async () => {
+      try {
+        const monthStarts = Array.from(
+          new Set(weekDays.map((day) => format(day, 'yyyy-MM-01')))
+        )
+        const payloads = await Promise.all(
+          monthStarts.map(async (monthStart) => {
+            const response = await fetch(
+              `/api/calendar/space-highlights?start=${monthStart}`,
+              { cache: 'no-store', signal: controller.signal }
+            )
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            return response.json() as Promise<{ days?: unknown; manualReasons?: unknown }>
+          })
+        )
+
+        const days = payloads.flatMap((payload) =>
+          Array.isArray(payload.days)
+            ? payload.days.filter((day): day is string => typeof day === 'string')
+            : []
+        )
+        const manualReasons = Object.assign(
+          {},
+          ...payloads.map((payload) =>
+            payload.manualReasons && typeof payload.manualReasons === 'object'
+              ? payload.manualReasons
+              : {}
+          )
+        ) as Record<string, string>
+
+        setHighlightedSpaceDays(new Set(days))
+        setManualSpaceReasons(manualReasons)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        console.error('[CalendarWeekView] space highlights', error)
+        setHighlightedSpaceDays(new Set())
+        setManualSpaceReasons({})
+      }
+    }
+
+    void loadSpaceHighlights()
+    return () => controller.abort()
+  }, [spaceHighlightsVersion, weekDays])
+
+  const handleSaved = () => {
+    setSpaceHighlightsVersion((version) => version + 1)
+    onCreated?.()
+  }
 
   const spans = useMemo(() => {
     if (!weekDays.length) return [] as Span[]
@@ -160,25 +218,50 @@ export default function CalendarWeekView({
           className={`grid border-b bg-slate-50 ${CALENDAR_WEEK_HEADER} text-gray-600`}
           style={{ gridTemplateColumns: gridCols }}
         >
-          {weekDays.map((d) => (
-            <div
-              key={d.toISOString()}
-              className={`min-h-11 py-2 text-center font-medium leading-tight ${
-                layout === 'mobile' ? 'whitespace-pre-line text-[11px]' : ''
-              }`}
-            >
-              {layout === 'mobile'
-                ? `${format(d, 'EEE', { locale: es })}\n${format(d, 'd', { locale: es })}`
-                : format(d, 'EEE d', { locale: es })}
-            </div>
-          ))}
+          {weekDays.map((d) => {
+            const iso = format(d, 'yyyy-MM-dd')
+            const isSpaceHighlighted = highlightedSpaceDays.has(iso)
+            return (
+              <div
+                key={d.toISOString()}
+                title={manualSpaceReasons[iso] || undefined}
+                className={`relative flex min-h-11 items-center justify-center gap-1 py-2 text-center font-medium leading-tight ${
+                  layout === 'mobile' ? 'whitespace-pre-line text-[11px]' : ''
+                } ${isSpaceHighlighted ? 'bg-red-50 text-red-800' : ''}`}
+              >
+                <span>
+                  {layout === 'mobile'
+                    ? `${format(d, 'EEE', { locale: es })}\n${format(d, 'd', { locale: es })}`
+                    : format(d, 'EEE d', { locale: es })}
+                </span>
+                {isSpaceHighlighted && (
+                  <AlertTriangle
+                    className="h-3.5 w-3.5 shrink-0 text-red-600"
+                    aria-label={
+                      manualSpaceReasons[iso] || "Llindar de reserves d'espais superat"
+                    }
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Cells + events */}
         <div className="relative grid bg-gray-50" style={{ gridTemplateColumns: gridCols }}>
-          {weekCells.map((c) => (
-            <div key={c.iso} className="relative border-r bg-white" style={{ minHeight }} />
-          ))}
+          {weekCells.map((c) => {
+            const isSpaceHighlighted = highlightedSpaceDays.has(c.iso)
+            return (
+              <div
+                key={c.iso}
+                title={manualSpaceReasons[c.iso] || undefined}
+                className={`relative border-r ${
+                  isSpaceHighlighted ? 'bg-red-50/80' : 'bg-white'
+                }`}
+                style={{ minHeight }}
+              />
+            )
+          })}
 
           {/* Layer d'events: IMPORTANT overflow-hidden per evitar "bleed" en Android horitzontal */}
           <div
@@ -198,7 +281,7 @@ export default function CalendarWeekView({
                 <CalendarModal
                   key={`${span.ev.id}-${idx}`}
                   deal={span.ev}
-                  onSaved={onCreated}
+                  onSaved={handleSaved}
                   onRequestPanel={onRequestPanel}
                   trigger={
                     <div

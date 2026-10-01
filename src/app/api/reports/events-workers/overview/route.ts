@@ -3,16 +3,18 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
 import { buildEventsWorkersOverview } from '@/lib/informes/buildEventsWorkersOverview'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 
 const MAX_RANGE_DAYS = 366
 
 export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const forbidden = requireRoles(auth, ['admin', 'direccio'])
-  if (forbidden) return forbidden.res
+  if (!(await canViewReportsDomain(auth.user, 'events'))) {
+    return reportsDomainForbiddenResponse()
+  }
 
   const { searchParams } = new URL(req.url)
   const dateFrom = searchParams.get('dateFrom')?.trim() ?? ''

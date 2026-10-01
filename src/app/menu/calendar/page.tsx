@@ -465,7 +465,9 @@ export default function CalendarPage() {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await fetch('/api/sync/zoho-to-firestore?mode=manual&includeAttachments=1')
+      const res = await fetch(
+        '/api/sync/zoho-to-firestore?mode=manual&includeAttachments=1&full=1'
+      )
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error')
       alert(

@@ -806,7 +806,8 @@ export default function PermisosUserPage() {
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {group.actions.map((a) => {
-                const checked = getOverrideEffect(a.key) === 'allow'
+                const effect = getOverrideEffect(a.key)
+                const checked = group.defaultAllowed ? effect !== 'deny' : effect === 'allow'
                 return (
                   <label key={a.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
                     <input

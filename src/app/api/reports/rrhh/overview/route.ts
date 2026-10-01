@@ -5,11 +5,7 @@ import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
 import { requireAuth } from '@/lib/server/apiAuth'
-import {
-  requireRobaTabView,
-  robaTabForbiddenResponse,
-} from '@/lib/server/robaApiAuth'
-import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 import {
   buildRrhhRobaOverview,
   type BuildRrhhOverviewWindow,
@@ -20,8 +16,8 @@ const MAX_RANGE_MS = 366 * 86_400_000
 export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  if (!(await requireRobaTabView(auth, ROBA_SUBMODULE_PATHS.informes))) {
-    return robaTabForbiddenResponse()
+  if (!(await canViewReportsDomain(auth.user, 'rrhh'))) {
+    return reportsDomainForbiddenResponse()
   }
 
   const { searchParams } = new URL(req.url)

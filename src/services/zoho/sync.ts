@@ -280,6 +280,7 @@ async function cleanupGrocTaronjaStageDocs(
   idsGroc: Set<string>,
   idsTaronja: Set<string>,
   eligibleZohoIds: ReadonlySet<string>,
+  zohoById: ReadonlyMap<string, ZohoDeal>,
   existingDocs?: {
     groc?: StageSnapshotMap
     taronja?: StageSnapshotMap
@@ -319,6 +320,12 @@ async function cleanupGrocTaronjaStageDocs(
         pendingWrites += 1
         console.log(`ðŸ§¹ Eliminat de ${name} (ara Ã©s verd): ${id}`)
       } else if (!idsActuals.has(id)) {
+        const isLostZohoTaronja =
+          name === 'stage_taronja' &&
+          data?.origen === 'zoho' &&
+          isLostZohoStage(zohoById.get(id)?.Stage || '')
+        if (isLostZohoTaronja) continue
+
         const absentFromSyncedStages =
           !idsVerd.has(id) && !idsGroc.has(id) && !idsTaronja.has(id)
         if (
@@ -437,9 +444,10 @@ async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   return new Map(snap.docs.map((doc) => [doc.id, doc]))
 }
 
-async function cancelLostZohoDealsInVerd(
-  existingVerd: StageSnapshotMap,
-  zohoById: Map<string, ZohoDeal>
+async function cancelLostZohoDealsInStage(
+  collectionName: 'stage_verd' | 'stage_taronja',
+  existingDocs: StageSnapshotMap,
+  zohoById: ReadonlyMap<string, ZohoDeal>
 ): Promise<number> {
   let batch = firestore.batch()
   let pending = 0
@@ -452,7 +460,7 @@ async function cancelLostZohoDealsInVerd(
     pending = 0
   }
 
-  for (const doc of existingVerd.values()) {
+  for (const doc of existingDocs.values()) {
     const data = doc.data()
     if (data?.origen !== 'zoho') continue
 
@@ -494,7 +502,7 @@ async function cancelLostZohoDealsInVerd(
   await flush()
   if (cancelled > 0) {
     console.info(
-      `[zoho-sync] Cancel·lats ${cancelled} esdeveniments de stage_verd per etapa perduda a Zoho`
+      `[zoho-sync] Cancel·lats ${cancelled} esdeveniments de ${collectionName} per etapa perduda a Zoho`
     )
   }
   return cancelled
@@ -736,7 +744,8 @@ async function syncStageCollections({
   ])
 
   await repairStoredManualOverrides(existingVerd, new Date().toISOString().slice(0, 10))
-  await cancelLostZohoDealsInVerd(existingVerd, zohoById)
+  await cancelLostZohoDealsInStage('stage_verd', existingVerd, zohoById)
+  await cancelLostZohoDealsInStage('stage_taronja', existingTaronja, zohoById)
 
   const getExistingStageDoc = (id: string) =>
     existingVerd.get(id)?.data() ||
@@ -833,6 +842,7 @@ async function syncStageCollections({
       idsGroc,
       idsTaronja,
       eligibleZohoIds,
+      zohoById,
       {
         groc: existingGroc,
         taronja: existingTaronja,

@@ -83,6 +83,9 @@ import {
   TRANSPORTS_TYPES_MANAGE_PERM,
   TRANSPORTS_UI_PATH,
 } from '@/lib/transportsPermissions'
+import { REPORTS_DOMAIN_PERMISSIONS, REPORTS_UI_PATH } from '@/lib/informes/permissions'
+
+const REPORTS_DOMAIN_PERMISSION_SET = new Set(Object.values(REPORTS_DOMAIN_PERMISSIONS))
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
 
@@ -195,8 +198,17 @@ export async function isUiPermissionGranted(params: {
     role: params.user.role,
     permission: params.permission,
   })
-  if (override === true && params.permission !== SPACES_REQUESTS_MANAGE_PERM) return true
   if (override === false) return false
+
+  const parsed = parseActionPermission(params.permission)
+  if (
+    parsed?.path === REPORTS_UI_PATH &&
+    REPORTS_DOMAIN_PERMISSION_SET.has(params.permission)
+  ) {
+    return canViewUiPath({ user: params.user, path: parsed.path })
+  }
+
+  if (override === true && params.permission !== SPACES_REQUESTS_MANAGE_PERM) return true
 
   if (isViewPerm(params.permission)) {
     const path = viewPathFromPerm(params.permission)
@@ -207,7 +219,6 @@ export async function isUiPermissionGranted(params: {
     return canEditUiPath({ user: params.user, path: editPathFromPerm(params.permission) || '' })
   }
 
-  const parsed = parseActionPermission(params.permission)
   if (parsed?.path === RESERVA_COMERCIALS_UI_PATH) {
     const canView = await canViewUiPath({ user: params.user, path: parsed.path })
     if (!canView) return false

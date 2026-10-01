@@ -27,6 +27,13 @@ test('comanda and preparation action groups stay visible with view-only access',
   const byId = Object.fromEntries(PERMISSION_ACTION_GROUPS.map((group) => [group.id, group]))
 
   assert.equal(byId.eventsComanda.requireViewOnly, true)
+  assert.equal(byId.reportsTabs.requireViewOnly, true)
+  assert.equal(byId.reportsTabs.defaultAllowed, true)
+  assert.equal(byId.reportsTabs.actions.length, 4)
+  assert.deepEqual(
+    byId.reportsTabs.actions.map((action) => action.label),
+    ['RRHH', 'Transports', 'Manteniment', 'Esdeveniments']
+  )
   assert.equal(byId.logisticsPreparationActions.requireViewOnly, true)
   assert.equal(byId.logisticsPreparationWarehouses.requireViewOnly, true)
   assert.equal(byId.eventsActions.requireViewOnly, undefined)

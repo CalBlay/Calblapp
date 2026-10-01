@@ -1,5 +1,6 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
+import { getExternalWorkerTypeFromName, hasEttWorkerMarker } from '@/lib/quadrantExternalWorkers'
 import type {
   EventsWorkersDepartmentRow,
   EventsWorkersEntryRow,
@@ -47,6 +48,8 @@ type QuadrantPersonLine = {
   sortidaNotes?: string
   noShow?: boolean
   leftEarly?: boolean
+  isExternal?: boolean
+  externalType?: 'ett' | 'centerExternalExtra' | null
 }
 
 type QuadrantDoc = {
@@ -221,6 +224,7 @@ function collectPersonLines(doc: QuadrantDoc) {
     realEndTime: string
     noShow: boolean
     leftEarly: boolean
+    isEtt: boolean
     notes: string
   }> = []
 
@@ -242,6 +246,11 @@ function collectPersonLines(doc: QuadrantDoc) {
       realEndTime: String(person.endTimeReal || '').trim(),
       noShow: person.noShow === true,
       leftEarly: person.leftEarly === true,
+      isEtt:
+        person.externalType === 'ett' ||
+        getExternalWorkerTypeFromName(name) === 'ett' ||
+        hasEttWorkerMarker(name) ||
+        (person.isExternal === true && person.externalType !== 'centerExternalExtra'),
       notes: String(person.sortidaNotes || '').trim(),
     })
   }
@@ -351,6 +360,7 @@ export async function buildEventsWorkersOverview({
         actualHours,
         noShow: line.noShow,
         leftEarly: line.leftEarly,
+        isEtt: line.isEtt,
         notes: line.notes,
       }
 

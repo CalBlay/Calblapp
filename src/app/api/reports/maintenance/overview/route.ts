@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { buildMaintenanceOverview } from '@/lib/informes/buildMaintenanceOverview'
 import { normalizeMaintenanceOverview } from '@/lib/informes/normalizeMaintenanceOverview'
-import { canViewUiPath } from '@/lib/server/permissions'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,27 +13,8 @@ export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  const requester = {
-    id: auth.user.id,
-    role: auth.user.role ?? undefined,
-    department: auth.user.department ?? undefined,
-    canRespondSurveys: Boolean(auth.user.canRespondSurveys),
-    isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
-    robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,
-    opsProjectsConfigurable:
-      typeof auth.user.opsProjectsConfigurable === 'boolean'
-        ? auth.user.opsProjectsConfigurable
-        : undefined,
-    isTransportLead: Boolean(auth.user.isTransportLead),
-  }
-
-  const [canViewMaintenanceReports, canViewReportsModule] = await Promise.all([
-    canViewUiPath({ user: requester, path: '/menu/manteniment/informes' }),
-    canViewUiPath({ user: requester, path: '/menu/reports' }),
-  ])
-
-  if (!canViewMaintenanceReports && !canViewReportsModule) {
-    return NextResponse.json({ error: 'No tens permisos per veure aquests informes.' }, { status: 403 })
+  if (!(await canViewReportsDomain(auth.user, 'maintenance'))) {
+    return reportsDomainForbiddenResponse()
   }
 
   try {

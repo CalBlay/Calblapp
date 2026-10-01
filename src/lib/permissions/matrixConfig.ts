@@ -38,6 +38,10 @@ import {
   TRANSPORTS_TYPES_MANAGE_PERM,
   TRANSPORTS_UI_PATH,
 } from '@/lib/transportsPermissions'
+import {
+  REPORTS_DOMAIN_PERMISSIONS,
+  REPORTS_UI_PATH,
+} from '@/lib/informes/permissions'
 
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
@@ -85,10 +89,26 @@ export type PermissionActionGroup = {
   requireViewOnly?: boolean
   /** Acció independent: es pot concedir encara que el mòdul pare no sigui visible. */
   independentOfModule?: boolean
+  /** Estat base de les caselles quan l'usuari no te cap override guardat. */
+  defaultAllowed?: boolean
   actions: Array<{ key: string; label: string }>
 }
 
 export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
+  {
+    id: 'reportsTabs',
+    title: 'Informes · Pestanyes',
+    subtitle: 'Tria quines pestanyes del mòdul Informes pot consultar aquest usuari.',
+    visibleWhen: { path: REPORTS_UI_PATH },
+    requireViewOnly: true,
+    defaultAllowed: true,
+    actions: [
+      { key: REPORTS_DOMAIN_PERMISSIONS.rrhh, label: 'RRHH' },
+      { key: REPORTS_DOMAIN_PERMISSIONS.transports, label: 'Transports' },
+      { key: REPORTS_DOMAIN_PERMISSIONS.maintenance, label: 'Manteniment' },
+      { key: REPORTS_DOMAIN_PERMISSIONS.events, label: 'Esdeveniments' },
+    ],
+  },
   {
     id: 'transportTypeActions',
     title: 'Transports · Tipologies',

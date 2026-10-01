@@ -3,14 +3,16 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
 import { buildEventsWorkersOverview } from '@/lib/informes/buildEventsWorkersOverview'
+import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
 
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const forbidden = requireRoles(auth, ['admin', 'direccio'])
-  if (forbidden) return forbidden.res
+  if (!(await canViewReportsDomain(auth.user, 'events'))) {
+    return reportsDomainForbiddenResponse()
+  }
 
   const payload = await buildEventsWorkersOverview({
     db,

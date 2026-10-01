@@ -1,13 +1,15 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { BarChart3 } from 'lucide-react'
 import { INFORMES_DOMAINS } from '@/lib/informes/domains'
 import type { InformesDomainId } from '@/lib/informes/types'
 import { cn } from '@/lib/utils'
 import { ModuleExportMenuActions } from '@/components/export/ModuleExportMenuContext'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { reportsDomainPermission } from '@/lib/informes/permissions'
 
 const panelLoadingFallback = () => (
   <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
@@ -54,9 +56,32 @@ function ComingSoonPanel({ label }: { label: string }) {
 }
 
 export function InformesModule() {
-  const enabledDomains = useMemo(() => INFORMES_DOMAINS.filter((d) => !d.comingSoon), [])
-  const [active, setActive] = useState<InformesDomainId>(
-    (enabledDomains[0]?.id as InformesDomainId) ?? 'rrhh'
+  const { uiActions, ready: permissionsReady } = useUiPermissions()
+  const enabledDomains = useMemo(
+    () =>
+      INFORMES_DOMAINS.filter((domain) => {
+        if (domain.comingSoon) return false
+        const permission = reportsDomainPermission(domain.id)
+        return permission ? uiActions[permission] === true : false
+      }),
+    [uiActions]
+  )
+  const [active, setActive] = useState<InformesDomainId>('rrhh')
+
+  useEffect(() => {
+    if (!permissionsReady || enabledDomains.some((domain) => domain.id === active)) return
+    const firstDomain = enabledDomains[0]
+    if (firstDomain) setActive(firstDomain.id)
+  }, [active, enabledDomains, permissionsReady])
+
+  const visibleDomains = useMemo(
+    () =>
+      INFORMES_DOMAINS.filter(
+        (domain) =>
+          (domain.comingSoon && enabledDomains.length > 0) ||
+          enabledDomains.some((enabled) => enabled.id === domain.id)
+      ),
+    [enabledDomains]
   )
 
   return (
@@ -70,7 +95,7 @@ export function InformesModule() {
       />
 
       <nav className="flex flex-wrap gap-2">
-        {INFORMES_DOMAINS.map((d) => (
+        {permissionsReady ? visibleDomains.map((d) => (
           <button
             key={d.id}
             type="button"
@@ -89,16 +114,22 @@ export function InformesModule() {
               <span className="ml-1 text-[10px] text-muted-foreground">Aviat</span>
             ) : null}
           </button>
-        ))}
+        )) : null}
       </nav>
 
       <main className="w-full max-w-none min-w-0">
-        {active === 'rrhh' ? <RrhhInformesPanel /> : null}
-        {active === 'transports' ? <TransportsInformesPanel /> : null}
-        {active === 'maintenance' ? <MaintenanceInformesPanel /> : null}
-        {active === 'events' ? <EventsWorkersInformesPanel /> : null}
-        {active === 'finances' ? <ComingSoonPanel label="Finances" /> : null}
-        {active === 'compres' ? <ComingSoonPanel label="Compres" /> : null}
+        {!permissionsReady ? panelLoadingFallback() : null}
+        {permissionsReady && enabledDomains.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            No tens cap pestanya d&apos;informes habilitada.
+          </div>
+        ) : null}
+        {permissionsReady && active === 'rrhh' && enabledDomains.some((d) => d.id === 'rrhh') ? <RrhhInformesPanel /> : null}
+        {permissionsReady && active === 'transports' && enabledDomains.some((d) => d.id === 'transports') ? <TransportsInformesPanel /> : null}
+        {permissionsReady && active === 'maintenance' && enabledDomains.some((d) => d.id === 'maintenance') ? <MaintenanceInformesPanel /> : null}
+        {permissionsReady && active === 'events' && enabledDomains.some((d) => d.id === 'events') ? <EventsWorkersInformesPanel /> : null}
+        {permissionsReady && active === 'finances' ? <ComingSoonPanel label="Finances" /> : null}
+        {permissionsReady && active === 'compres' ? <ComingSoonPanel label="Compres" /> : null}
       </main>
     </div>
   )
