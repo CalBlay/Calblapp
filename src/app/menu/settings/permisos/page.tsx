@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Shield } from 'lucide-react'
+import { Shield, Users } from 'lucide-react'
 import {
   DEPARTMENTS,
   getUserDepartmentSelectOptions,
@@ -15,7 +15,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { buildMatrixRows } from '@/lib/permissions/matrixConfig'
+import { buildMatrixRows, PERMISSION_ACTION_GROUPS } from '@/lib/permissions/matrixConfig'
 import { PERM } from '@/lib/permissionKeys'
 import { normalizeRole, type Role } from '@/lib/roles'
 import { matchesUserSearch } from '@/lib/userSearch'
@@ -176,6 +176,11 @@ export default function AdminPermisosPage() {
   const [departmentFilter, setDepartmentFilter] = useState('__all__')
   const [moduleQuery, setModuleQuery] = useState('')
   const [selectedPath, setSelectedPath] = useState('')
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
+  const [bulkTarget, setBulkTarget] = useState('__access__')
+  const [bulkValue, setBulkValue] = useState('view')
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const [savingByUser, setSavingByUser] = useState<Record<string, boolean>>({})
   const [rowMessageByUser, setRowMessageByUser] = useState<Record<string, string>>({})
 
@@ -221,6 +226,29 @@ export default function AdminPermisosPage() {
     () => matrixRows.find((row) => row.path === selectedPath) ?? null,
     [matrixRows, selectedPath]
   )
+
+  const selectedModuleActions = useMemo(() => {
+    const seen = new Set<string>()
+    return PERMISSION_ACTION_GROUPS.filter((group) => group.visibleWhen.path === selectedPath)
+      .flatMap((group) =>
+        group.actions.map((action) => ({
+          ...action,
+          groupTitle: group.title,
+        }))
+      )
+      .filter((action) => {
+        if (seen.has(action.key)) return false
+        seen.add(action.key)
+        return true
+      })
+  }, [selectedPath])
+
+  useEffect(() => {
+    setSelectedUserIds([])
+    setBulkTarget('__access__')
+    setBulkValue('view')
+    setBulkMessage(null)
+  }, [selectedPath])
 
   useEffect(() => {
     const query = moduleQuery.trim()
@@ -278,8 +306,6 @@ export default function AdminPermisosPage() {
   const filteredAuditUsers = useMemo(
     () =>
       (moduleAuditData?.users ?? []).filter((u) => {
-        const hasModuleActivated = u.audit.view || u.audit.edit
-        if (!hasModuleActivated) return false
         return (
           matchesUserSearch(
             {
@@ -295,6 +321,35 @@ export default function AdminPermisosPage() {
       }),
     [moduleAuditData?.users, searchQuery, departmentFilter]
   )
+
+  const filteredAuditUserIds = useMemo(
+    () => filteredAuditUsers.map((user) => user.id),
+    [filteredAuditUsers]
+  )
+  const selectedUserIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds])
+  const allFilteredUsersSelected =
+    filteredAuditUserIds.length > 0 &&
+    filteredAuditUserIds.every((userId) => selectedUserIdSet.has(userId))
+
+  const toggleUserSelection = (userId: string, selected: boolean) => {
+    setSelectedUserIds((current) => {
+      const next = new Set(current)
+      if (selected) next.add(userId)
+      else next.delete(userId)
+      return [...next]
+    })
+  }
+
+  const toggleAllFilteredUsers = (selected: boolean) => {
+    setSelectedUserIds((current) => {
+      const next = new Set(current)
+      for (const userId of filteredAuditUserIds) {
+        if (selected) next.add(userId)
+        else next.delete(userId)
+      }
+      return [...next]
+    })
+  }
 
   const hasActiveFilters =
     Boolean(searchQuery.trim()) || (departmentFilter && departmentFilter !== '__all__')
@@ -381,6 +436,46 @@ export default function AdminPermisosPage() {
       }))
     } finally {
       setSavingByUser((current) => ({ ...current, [user.id]: false }))
+    }
+  }
+
+  const applyBulkPermission = async () => {
+    if (!selectedPath || selectedUserIds.length === 0) return
+
+    const targetLabel =
+      bulkTarget === '__access__'
+        ? `l'acces a ${selectedModule?.label || selectedPath}`
+        : selectedModuleActions.find((action) => action.key === bulkTarget)?.label || 'el permis'
+    if (
+      !window.confirm(
+        `Vols modificar ${targetLabel} per a ${selectedUserIds.length} usuaris?`
+      )
+    ) {
+      return
+    }
+
+    setBulkSaving(true)
+    setBulkMessage(null)
+    try {
+      const operation =
+        bulkTarget === '__access__'
+          ? { kind: 'access', path: selectedPath, level: bulkValue }
+          : { kind: 'action', permission: bulkTarget, effect: bulkValue }
+      const res = await fetch('/api/admin/permissions/bulk', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: selectedUserIds, operation }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(typeof json?.error === 'string' ? json.error : 'No s ha pogut aplicar')
+      }
+      setBulkMessage(`Canvi aplicat a ${json.updated ?? selectedUserIds.length} usuaris.`)
+      await Promise.all([mutateModuleAudit(), mutate()])
+    } catch (error) {
+      setBulkMessage(error instanceof Error ? error.message : 'Error aplicant el canvi massiu')
+    } finally {
+      setBulkSaving(false)
     }
   }
 
@@ -507,8 +602,8 @@ export default function AdminPermisosPage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Pots continuar entrant usuari per usuari, pero ara tambe pots buscar un modul concret i
-          veure rapidament qui el te actiu i qui el pot editar.
+          Pots continuar entrant usuari per usuari o filtrar un departament, seleccionar-ne tots
+          els usuaris i aplicar un acces o permis en bloc.
           {users.length > 0 ? <> Llistat general: {filteredUsers.length} de {users.length} usuaris.</> : null}
         </p>
 
@@ -543,9 +638,89 @@ export default function AdminPermisosPage() {
         ) : null}
 
         {selectedPath ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor="bulk-target">Que vols canviar?</Label>
+                  <select
+                    id="bulk-target"
+                    value={bulkTarget}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setBulkTarget(value)
+                      setBulkValue(value === '__access__' ? 'view' : 'allow')
+                      setBulkMessage(null)
+                    }}
+                    className={selectClassName}
+                  >
+                    <option value="__access__">Acces al modul o submodul</option>
+                    {selectedModuleActions.map((action) => (
+                      <option key={action.key} value={action.key}>
+                        {action.groupTitle} · {action.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor="bulk-value">Valor</Label>
+                  <select
+                    id="bulk-value"
+                    value={bulkValue}
+                    onChange={(event) => setBulkValue(event.target.value)}
+                    className={selectClassName}
+                  >
+                    {bulkTarget === '__access__' ? (
+                      <>
+                        <option value="none">Sense acces</option>
+                        <option value="view">Veure</option>
+                        <option value="edit">Editar</option>
+                        <option value="base">Tornar al valor base</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="allow">Activar permis</option>
+                        <option value="deny">Desactivar permis</option>
+                        <option value="base">Tornar al valor base</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void applyBulkPermission()}
+                  disabled={bulkSaving || selectedUserIds.length === 0}
+                  className="shrink-0"
+                >
+                  <Users className="h-4 w-4" aria-hidden />
+                  {bulkSaving
+                    ? 'Aplicant...'
+                    : `Aplicar a ${selectedUserIds.length || 0} usuaris`}
+                </Button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  {selectedUserIds.length > 0
+                    ? `${selectedUserIds.length} usuaris seleccionats`
+                    : 'Marca usuaris a la taula o selecciona tots els resultats filtrats.'}
+                </span>
+                {bulkMessage ? <span className="font-medium text-foreground">{bulkMessage}</span> : null}
+              </div>
+            </div>
+
           <div className="overflow-hidden rounded-xl border border-border">
             <div className="grid grid-cols-12 bg-muted/40 px-3 py-2 text-xs font-semibold">
-              <div className="col-span-4">Usuari</div>
+              <div className="col-span-1 flex items-center">
+                <input
+                  type="checkbox"
+                  checked={allFilteredUsersSelected}
+                  onChange={(event) => toggleAllFilteredUsers(event.target.checked)}
+                  aria-label="Selecciona tots els usuaris filtrats"
+                  disabled={filteredAuditUserIds.length === 0}
+                  className="h-4 w-4"
+                />
+              </div>
+              <div className="col-span-3">Usuari</div>
               <div className="col-span-2">Departament</div>
               <div className="col-span-4">Acces</div>
               <div className="col-span-2">Estat</div>
@@ -563,7 +738,16 @@ export default function AdminPermisosPage() {
                     key={user.id}
                     className="grid grid-cols-12 gap-3 px-3 py-3 text-sm items-center"
                   >
-                    <div className="col-span-4 min-w-0">
+                    <div className="col-span-1 flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIdSet.has(user.id)}
+                        onChange={(event) => toggleUserSelection(user.id, event.target.checked)}
+                        aria-label={`Selecciona ${user.name || user.email || user.id}`}
+                        className="h-4 w-4"
+                      />
+                    </div>
+                    <div className="col-span-3 min-w-0">
                       <div className="truncate font-medium">{user.name || user.id}</div>
                       <div className="truncate text-xs text-muted-foreground">
                         {user.email || '-'} · {user.role || '-'}
@@ -634,7 +818,7 @@ export default function AdminPermisosPage() {
 
               {!isModuleAuditLoading && selectedPath && filteredAuditUsers.length === 0 ? (
                 <div className="px-3 py-6 text-sm text-muted-foreground">
-                  No hi ha cap usuari amb aquest modul activat que coincideixi amb els filtres.
+                  No hi ha cap usuari que coincideixi amb els filtres.
                 </div>
               ) : null}
 
@@ -644,6 +828,7 @@ export default function AdminPermisosPage() {
                 </div>
               ) : null}
             </div>
+          </div>
           </div>
         ) : null}
       </div>
