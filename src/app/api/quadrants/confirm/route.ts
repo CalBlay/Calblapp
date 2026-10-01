@@ -17,6 +17,10 @@ import {
 } from '@/lib/quadrantsConfirmDeferred'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
+import {
+  assignmentsByDocId,
+  buildQuadrantNotificationPlan,
+} from '@/lib/quadrantNotificationAssignments'
 
 export const runtime = 'nodejs'
 
@@ -85,6 +89,13 @@ export async function POST(req: NextRequest) {
     ])
     const stageData = stageSnap.exists ? (stageSnap.data() as Record<string, unknown>) : null
     const firstPrev = firstSnap.exists ? (firstSnap.data() as QuadrantConfirmDoc) : null
+    const notificationDocs = currentDocsSnap
+      .filter((snap) => snap.exists)
+      .map((snap) => ({
+        docId: snap.id,
+        doc: snap.data() as QuadrantConfirmDoc,
+      }))
+    const notificationPlan = buildQuadrantNotificationPlan(notificationDocs)
     const overlapAssignments = currentDocsSnap.flatMap((snap) => {
       if (!snap.exists) return []
       const data = snap.data() as QuadrantConfirmDoc & {
@@ -154,6 +165,9 @@ export async function POST(req: NextRequest) {
         confirmedBy,
         code: quadrantConfirmTrim(stageData?.code ?? stageData?.C_digo ?? ''),
       },
+      notificationAssignmentsByDocId: assignmentsByDocId(
+        notificationPlan.currentAssignments
+      ),
     })
 
     const requestOrigin = req.nextUrl.origin
@@ -169,6 +183,7 @@ export async function POST(req: NextRequest) {
         stageData,
         assigned,
         diff,
+        notificationPlan,
       })
     })
 

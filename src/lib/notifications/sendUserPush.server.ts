@@ -201,15 +201,24 @@ export async function sendUserPush(params: SendUserPushParams): Promise<SendUser
 
     sent += res.successCount
 
+    const invalidTokenDeletes: Array<Promise<FirebaseFirestore.WriteResult>> = []
     res.responses.forEach((r, idx) => {
       if (r.success) return
       const code = r.error?.code
+      console.warn('[sendUserPush] FCM delivery failed', {
+        userId: uid,
+        platformTokenIndex: idx,
+        code: code || 'unknown',
+        message: r.error?.message || 'Unknown FCM error',
+      })
       if (code === 'messaging/registration-token-not-registered') {
-        void fcmTargets[idx]?.docRef.delete()
+        const docRef = fcmTargets[idx]?.docRef
+        if (docRef) invalidTokenDeletes.push(docRef.delete())
       }
     })
+    await Promise.all(invalidTokenDeletes)
 
-    return { success: true, sent }
+    return { success: res.failureCount === 0, sent }
   }
 
   const webTargets = pickWebPushTargets(subsSnap.docs)
@@ -264,15 +273,19 @@ export async function sendUserPush(params: SendUserPushParams): Promise<SendUser
 export async function sendPushToUsers(
   userIds: string[],
   notification: { title: string; body: string; url?: string }
-): Promise<void> {
+): Promise<Array<SendUserPushResult & { userId: string }>> {
   const uniqueIds = Array.from(new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean)))
-  if (!uniqueIds.length) return
+  if (!uniqueIds.length) return []
 
-  await Promise.all(
-    uniqueIds.map((userId) =>
-      sendUserPush({ userId, ...notification }).catch((err) => {
+  return Promise.all(
+    uniqueIds.map(async (userId) => {
+      try {
+        const result = await sendUserPush({ userId, ...notification })
+        return { userId, ...result }
+      } catch (err) {
         console.error('[sendPushToUsers]', userId, err)
-      })
-    )
+        return { userId, success: false, sent: 0 }
+      }
+    })
   )
 }

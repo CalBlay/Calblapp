@@ -10,6 +10,10 @@ import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
+import type {
+  QuadrantNotificationAssignment,
+  QuadrantNotificationPlan,
+} from '@/lib/quadrantNotificationAssignments'
 
 export const QUADRANT_TRAINING_COLLECTION = 'quadrantTrainingSamples'
 
@@ -32,6 +36,7 @@ export type QuadrantConfirmDoc = {
     violations?: string[]
     notes?: string[]
   }
+  quadrantNotificationAssignments?: QuadrantNotificationAssignment[]
   [key: string]: unknown
 }
 
@@ -251,8 +256,35 @@ export function computeQuadrantProposalDiff(params: {
   }
 }
 
-async function lookupUserDocByAssignedDisplayName(rawName: string): Promise<ValidUser | null> {
-  const name = safeString(rawName)
+async function lookupUserByPersonId(personId: string, fallbackName = ''): Promise<ValidUser | null> {
+  let userDoc = await db.collection('users').doc(personId).get()
+  if (userDoc.exists) {
+    const data = userDoc.data() as { name?: string }
+    return { userId: userDoc.id, name: safeString(data.name || fallbackName) }
+  }
+
+  const byUserId = await db.collection('users').where('userId', '==', personId).limit(1).get()
+  if (!byUserId.empty) {
+    userDoc = byUserId.docs[0]
+    const data = userDoc.data() as { name?: string }
+    return { userId: userDoc.id, name: safeString(data.name || fallbackName) }
+  }
+
+  return null
+}
+
+async function lookupUserForAssignment(assignment: {
+  personId?: string
+  name?: string
+}): Promise<ValidUser | null> {
+  const personId = safeString(assignment.personId)
+  const name = safeString(assignment.name)
+
+  if (personId) {
+    const byId = await lookupUserByPersonId(personId, name)
+    if (byId) return byId
+  }
+
   if (!name) return null
 
   let snap = await db.collection('users').where('name', '==', name).limit(1).get()
@@ -265,40 +297,44 @@ async function lookupUserDocByAssignedDisplayName(rawName: string): Promise<Vali
 
   snap = await db.collection('personnel').where('name', '==', name).limit(1).get()
   if (!snap.empty) {
-    const personId = snap.docs[0].id
-    const userDoc = await db.collection('users').doc(personId).get()
-    if (userDoc.exists) {
-      const data = userDoc.data() as { name?: string }
-      return { userId: userDoc.id, name: safeString(data.name || name) }
-    }
+    const byId = await lookupUserByPersonId(snap.docs[0].id, name)
+    if (byId) return byId
+  }
+
+  const nameFold = qcNorm(name).replace(/\s+/g, ' ')
+  snap = await db.collection('users').where('nameFold', '==', nameFold).limit(1).get()
+  if (!snap.empty) {
+    const userDoc = snap.docs[0]
+    const data = userDoc.data() as { name?: string }
+    return { userId: userDoc.id, name: safeString(data.name || name) }
+  }
+
+  snap = await db.collection('personnel').where('nameFold', '==', nameFold).limit(1).get()
+  if (!snap.empty) {
+    const byId = await lookupUserByPersonId(snap.docs[0].id, name)
+    if (byId) return byId
   }
 
   return null
 }
 
-async function resolveValidUsersFromQuadrant(doc: QuadrantConfirmDoc | null): Promise<ValidUser[]> {
-  if (!doc) return []
-
-  const assignedNames = [
-    doc.responsable?.name,
-    ...(doc.conductors || []).map((person) => person.name),
-    ...(doc.treballadors || []).map((person) => person.name),
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-
-  if (assignedNames.length === 0) return []
-
-  const uniqueNames = Array.from(new Set(assignedNames))
-  const matches = await Promise.all(uniqueNames.map((n) => lookupUserDocByAssignedDisplayName(n)))
-
-  const wanted = new Set(assignedNames.map((value) => qcNorm(value)))
+async function resolveValidUsers(
+  assignments: Array<{ personId?: string; name?: string }>
+): Promise<ValidUser[]> {
+  if (assignments.length === 0) return []
+  const unique = new Map<string, { personId?: string; name?: string }>()
+  assignments.forEach((assignment) => {
+    const personId = safeString(assignment.personId)
+    const name = safeString(assignment.name)
+    const key = personId ? `id:${personId}` : `name:${qcNorm(name)}`
+    if (personId || name) unique.set(key, { personId, name })
+  })
+  const matches = await Promise.all([...unique.values()].map(lookupUserForAssignment))
   const seenId = new Set<string>()
   const out: ValidUser[] = []
 
   for (const m of matches) {
     if (!m || seenId.has(m.userId)) continue
-    if (!wanted.has(qcNorm(m.name))) continue
     seenId.add(m.userId)
     out.push(m)
   }
@@ -315,11 +351,24 @@ export async function commitQuadrantConfirmedFirestoreBatch(params: {
     confirmedBy: string
     code: string
   }
+  notificationAssignmentsByDocId?: Record<string, QuadrantNotificationAssignment[]>
 }) {
   const batch = db.batch()
   const colRef = db.collection(params.colName)
   for (const docId of params.docIds) {
-    batch.set(colRef.doc(docId), params.confirmPatch, { merge: true })
+    batch.set(
+      colRef.doc(docId),
+      {
+        ...params.confirmPatch,
+        ...(params.notificationAssignmentsByDocId
+          ? {
+              quadrantNotificationAssignments:
+                params.notificationAssignmentsByDocId[docId] || [],
+            }
+          : {}),
+      },
+      { merge: true }
+    )
   }
   await batch.commit()
 }
@@ -335,6 +384,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
   stageData: Record<string, unknown> | null
   assigned: ReturnType<typeof extractAssignedNamesFromQuadrant>
   diff: ReturnType<typeof computeQuadrantProposalDiff>
+  notificationPlan: QuadrantNotificationPlan
 }) {
   try {
     revalidateQuadrantsListCache()
@@ -342,7 +392,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
     /* ignore */
   }
 
-  const validUsers = await resolveValidUsersFromQuadrant(ctx.firstPrev)
+  const validUsers = await resolveValidUsers(ctx.notificationPlan.recipients)
 
   await Promise.all([
     (async () => {
@@ -369,9 +419,19 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
         safeString(doc.eventName),
         safeString(doc.summary)
       ) || 'Nou esdeveniment'
-    const pushTitle = 'Tens un nou torn assignat'
+    const pushTitle =
+      ctx.notificationPlan.kind === 'first_confirmation'
+        ? 'Tens un nou torn assignat'
+        : 'Tens canvis al teu torn'
     const pushBody = formatTornNotificationLabel(eventName, ctx.firstPrev?.startDate)
-    if (validUsers.length === 0) return
+    if (validUsers.length === 0) {
+      console.info('[quadrantsConfirmDeferred] no push recipients', {
+        eventId: ctx.eventId,
+        notificationKind: ctx.notificationPlan.kind,
+        affectedAssignments: ctx.notificationPlan.affectedAssignments.length,
+      })
+      return
+    }
 
     const notifBatch = db.batch()
     const now = Date.now()
@@ -416,7 +476,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
       }
     }
 
-    await sendPushToUsers(
+    const pushResults = await sendPushToUsers(
       validUsers.map((u) => u.userId),
       {
         title: pushTitle,
@@ -424,6 +484,22 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
         url: `/menu/torns?open=${ctx.eventId}`,
       }
     )
+    const sent = pushResults.reduce((total, result) => total + result.sent, 0)
+    const failed = pushResults.filter((result) => !result.success).length
+    const skipped = pushResults.filter((result) => result.skipped).length
+    const deliverySummary = {
+      eventId: ctx.eventId,
+      notificationKind: ctx.notificationPlan.kind,
+      recipients: validUsers.length,
+      sent,
+      failed,
+      skipped,
+    }
+    if (sent > 0) {
+      console.info('[quadrantsConfirmDeferred] notifications dispatched', deliverySummary)
+    } else {
+      console.warn('[quadrantsConfirmDeferred] notifications dispatched with zero deliveries', deliverySummary)
+    }
   } catch (err) {
     console.warn('[quadrantsConfirmDeferred] notifications/push failed', err)
   }

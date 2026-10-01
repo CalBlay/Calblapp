@@ -30,7 +30,6 @@ import type {
   JamoneroAssignmentNormalized,
   JamoneroAssignmentRaw,
   PhaseRequest,
-  QuadrantSave,
 } from '@/lib/quadrantsPost/types'
 
 export async function handlePostQuadrant(req: NextRequest) {
@@ -245,7 +244,6 @@ export async function handlePostQuadrant(req: NextRequest) {
 
     let phaseRequests: PhaseRequest[] = []
     const createdDocIds: string[] = []
-    const savedDraftSnapshotByDocId = new Map<string, QuadrantSave>()
     const remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
       body.serviceJamoneroAssignments
     )
@@ -288,7 +286,6 @@ export async function handlePostQuadrant(req: NextRequest) {
       remainingServiceJamoneroAssignments: { current: remainingServiceJamoneroAssignments },
       remainingServiceEventGroups: { current: remainingServiceEventGroups },
       createdDocIds,
-      savedDraftSnapshotByDocId,
     })
 
     if (phaseRequests.length > 0) {
@@ -309,7 +306,6 @@ export async function handlePostQuadrant(req: NextRequest) {
         writePhaseDoc,
         ensureNoOverlapForQuadrantSave,
         createdDocIds,
-        savedDraftSnapshotByDocId,
       })
       if ('errorResponse' in result && result.errorResponse) {
         return NextResponse.json(result.errorResponse, { status: result.errorResponse.status })

@@ -10,6 +10,10 @@ import {
   quadrantConfirmTrim,
   type QuadrantConfirmDoc,
 } from '@/lib/quadrantsConfirmDeferred'
+import {
+  assignmentsByDocId,
+  buildQuadrantNotificationPlan,
+} from '@/lib/quadrantNotificationAssignments'
 import { autoAssign } from '@/services/autoAssign'
 import { buildLedger } from '@/services/workloadLedger'
 import { buildQuadrantSave } from '@/lib/quadrantsPost/buildQuadrantSave'
@@ -188,8 +192,15 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
       }
     }
     const uniqSf = Array.from(new Set(createdDocIds))
-    const stagePayloadSf = await getStageVerdCached(canonicalEventId)
-    const firstPrevSf = toSave as unknown as QuadrantConfirmDoc
+    const [stagePayloadSf, confirmationDocsSf] = await Promise.all([
+      getStageVerdCached(canonicalEventId),
+      Promise.all(uniqSf.map((docId) => db.collection(collectionName).doc(docId).get())),
+    ])
+    const notificationDocsSf = confirmationDocsSf
+      .filter((snap) => snap.exists)
+      .map((snap) => ({ docId: snap.id, doc: snap.data() as QuadrantConfirmDoc }))
+    const notificationPlanSf = buildQuadrantNotificationPlan(notificationDocsSf)
+    const firstPrevSf = notificationDocsSf[0]?.doc || (toSave as unknown as QuadrantConfirmDoc)
     const confirmedAtSf = Timestamp.fromDate(new Date())
     const confirmedBySf =
       jwtSessionForInlineConfirm.user?.email || jwtSessionForInlineConfirm.email || 'system'
@@ -202,6 +213,9 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
         confirmedBy: confirmedBySf,
         code: quadrantConfirmTrim(stagePayloadSf?.code ?? stagePayloadSf?.C_digo ?? ''),
       },
+      notificationAssignmentsByDocId: assignmentsByDocId(
+        notificationPlanSf.currentAssignments
+      ),
     })
     const assignedSf = extractAssignedNamesFromQuadrant(firstPrevSf)
     const diffSf = computeQuadrantProposalDiff({
@@ -220,6 +234,7 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
         stageData: stagePayloadSf,
         assigned: assignedSf,
         diff: diffSf,
+        notificationPlan: notificationPlanSf,
       })
     })
     confirmInlineApplied = true

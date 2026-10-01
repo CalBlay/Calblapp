@@ -12,6 +12,11 @@ import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 import { formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
+import {
+  assignmentsByDocId,
+  buildQuadrantNotificationPlan,
+  type QuadrantNotificationDoc,
+} from '@/lib/quadrantNotificationAssignments'
 
 export const runtime = 'nodejs'
 
@@ -51,20 +56,6 @@ type TokenLike = {
 }
 
 type EventStageData = Record<string, unknown>
-
-type AssignedUserSrc = {
-  name?: string
-  id?: string
-  userId?: string
-  personId?: string
-  startDate?: string
-  startTime?: string
-  endDate?: string
-  endTime?: string
-  meetingPoint?: string
-  vehicleType?: string
-  plate?: string
-}
 
 /* ------------------ Utils ------------------ */
 const norm = (v?: string) =>
@@ -118,8 +109,18 @@ async function lookupUidByName(name?: string): Promise<string | null> {
   q = await db.collection('personnel').where('name', '==', rawName).limit(1).get()
   if (!q.empty) {
     const personId = q.docs[0].id
-    const userDoc = await db.collection('users').doc(personId).get()
-    if (userDoc.exists) return userDoc.id
+    const byId = await lookupUidForAssigned({ id: personId })
+    if (byId) return byId
+  }
+
+  const nameFold = norm(rawName).replace(/\s+/g, ' ')
+  q = await db.collection('users').where('nameFold', '==', nameFold).limit(1).get()
+  if (!q.empty) return q.docs[0].id
+
+  q = await db.collection('personnel').where('nameFold', '==', nameFold).limit(1).get()
+  if (!q.empty) {
+    const byId = await lookupUidForAssigned({ id: q.docs[0].id })
+    if (byId) return byId
   }
 
   return null
@@ -144,7 +145,16 @@ async function sendPushToUids(params: {
   url: string
 }) {
   const { uids, title, body, url } = params
-  await sendPushToUsers(uids, { title, body, url })
+  const results = await sendPushToUsers(uids, { title, body, url })
+  const sent = results.reduce((total, result) => total + result.sent, 0)
+  const failed = results.filter((result) => !result.success).length
+  const skipped = results.filter((result) => result.skipped).length
+  const summary = { recipients: uids.length, sent, failed, skipped }
+  if (sent > 0) {
+    console.info('[quadrantsDraft/confirm] push dispatched', summary)
+  } else {
+    console.warn('[quadrantsDraft/confirm] push dispatched with zero deliveries', summary)
+  }
 }
 
 async function createTornNotifications(params: {
@@ -296,7 +306,6 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       )
     }
-    const prev = prevDocs[0]?.exists ? (prevDocs[0].data() as QuadrantDoc) : null
     const already = prevDocs.length > 0 && prevDocs.every((doc) => {
       const data = doc.data() as QuadrantDoc | undefined
       return data?.status === 'confirmed'
@@ -338,59 +347,27 @@ export async function POST(req: NextRequest) {
         : await Promise.all(Array.from(targetDocs.values()).map((doc) => doc.ref.get()))
     const currentDocs = currentDocsSnap.filter((doc) => doc.exists)
 
-    const extract = (q?: QuadrantDoc) => {
-      if (!q) return []
-      const arr: AssignedUser[] = []
-      const pushUser = (src: AssignedUserSrc | undefined, fallbackName?: string) => {
-        if (!src) return
-        const name = String(fallbackName || src.name || '').trim()
-        const id = String(src.id || src.userId || src.personId || '').trim()
-        if (!name && !id) return
-        arr.push({
-          id: id || undefined,
-          name,
-          startDate: src.startDate,
-          startTime: src.startTime,
-          endDate: src.endDate,
-          endTime: src.endTime,
-          meetingPoint: src.meetingPoint,
-          vehicleType: src.vehicleType,
-          plate: src.plate,
-        })
-      }
-      const respFallback = q.responsable || {
-        id: q.responsableId,
-        name: q.responsableName,
-      }
-      if (respFallback?.name || respFallback?.id) {
-        pushUser(respFallback, respFallback.name)
-      }
-      ;(q.responsables || []).forEach(r => pushUser(r, r?.name))
-      ;(q.conductors || []).forEach(c => pushUser(c, c?.name))
-      ;(q.treballadors || []).forEach(t => pushUser(t, t?.name))
-      return arr
-    }
-
-    const oldUsers = prevDocs.flatMap((doc) => extract(doc.exists ? (doc.data() as QuadrantDoc) : undefined))
-    const newUsers = currentDocs.flatMap((doc) => extract(doc.exists ? (doc.data() as QuadrantDoc) : undefined))
-    const isFirstConfirm = !prev?.status || prev?.status !== 'confirmed'
-    let changed = newUsers
-    if (!isFirstConfirm) {
-      changed = newUsers.filter(nu => {
-        const old = nu.id
-          ? oldUsers.find(ou => ou.id === nu.id)
-          : oldUsers.find(ou => ou.name === nu.name)
-        if (!old) return true
-        return (
-          old.startDate !== nu.startDate ||
-          old.startTime !== nu.startTime ||
-          old.endDate !== nu.endDate ||
-          old.endTime !== nu.endTime ||
-          old.meetingPoint !== nu.meetingPoint ||
-          old.vehicleType !== nu.vehicleType ||
-          old.plate !== nu.plate
+    const notificationDocs = currentDocs.map((doc) => ({
+      docId: doc.id,
+      doc: doc.data() as QuadrantNotificationDoc,
+    }))
+    const notificationPlan = buildQuadrantNotificationPlan(notificationDocs)
+    const notificationAssignmentsByDocId = assignmentsByDocId(
+      notificationPlan.currentAssignments
+    )
+    if (notificationDocs.length > 0) {
+      const snapshotBatch = db.batch()
+      notificationDocs.forEach(({ docId }) => {
+        snapshotBatch.set(
+          collection.doc(docId),
+          {
+            quadrantNotificationAssignments:
+              notificationAssignmentsByDocId[docId] || [],
+          },
+          { merge: true }
         )
       })
+      await snapshotBatch.commit()
     }
 
     const mainDoc = (currentDocs[0]?.data() as QuadrantDoc | undefined) || {}
@@ -399,8 +376,19 @@ export async function POST(req: NextRequest) {
       'Nou esdeveniment'
     const notificationBody = formatTornNotificationLabel(eventName, mainDoc.startDate)
 
-    if (isFirstConfirm) {
-      const uids = await resolveUids(newUsers)
+    const affectedUsers: AssignedUser[] = notificationPlan.recipients.map((recipient) => ({
+      id: recipient.personId || undefined,
+      name: recipient.name,
+    }))
+    const uids = await resolveUids(affectedUsers)
+    if (affectedUsers.length > 0 && uids.length === 0) {
+      console.warn('[quadrantsDraft/confirm] no app users resolved for affected assignments', {
+        eventId,
+        affectedAssignments: affectedUsers.length,
+        assignmentsWithId: affectedUsers.filter((user) => user.id).length,
+      })
+    }
+    if (notificationPlan.kind === 'first_confirmation') {
       await createTornNotifications({
         uids,
         title: 'Tens un nou torn assignat',
@@ -415,8 +403,7 @@ export async function POST(req: NextRequest) {
         body: notificationBody,
         url: `/menu/torns?open=${eventId}`,
       })
-    } else if (changed.length > 0) {
-      const uids = await resolveUids(changed)
+    } else if (affectedUsers.length > 0) {
       await createTornNotifications({
         uids,
         title: 'Tens canvis al teu torn',

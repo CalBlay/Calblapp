@@ -6,6 +6,10 @@ import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { QUADRANTS_REOPEN_PERM } from '@/lib/quadrantsPermissions'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  extractQuadrantNotificationAssignments,
+  type QuadrantNotificationDoc,
+} from '@/lib/quadrantNotificationAssignments'
 
 export const runtime = 'nodejs'
 
@@ -64,11 +68,11 @@ export async function POST(req: NextRequest) {
     const directSnap = await directRef.get()
     const byEvent = await collection.where('eventId', '==', eventId).get()
 
-    const refs = new Map<string, FirebaseFirestore.DocumentReference>()
-    if (directSnap.exists) refs.set(directRef.id, directRef)
-    byEvent.docs.forEach((doc) => refs.set(doc.id, doc.ref))
+    const docs = new Map<string, FirebaseFirestore.DocumentSnapshot>()
+    if (directSnap.exists) docs.set(directSnap.id, directSnap)
+    byEvent.docs.forEach((doc) => docs.set(doc.id, doc))
 
-    if (refs.size === 0) {
+    if (docs.size === 0) {
       await directRef.set(
         {
           status: 'draft',
@@ -80,14 +84,24 @@ export async function POST(req: NextRequest) {
       )
     } else {
       const batch = db.batch()
-      refs.forEach((ref) => {
+      docs.forEach((snap) => {
+        const current = snap.data() as QuadrantNotificationDoc
+        const hasNotificationSnapshot = Array.isArray(
+          current.quadrantNotificationAssignments
+        )
         batch.set(
-          ref,
+          snap.ref,
           {
             status: 'draft',
             confirmedAt: null,
             confirmedBy: null,
             updatedAt: new Date(),
+            ...(!hasNotificationSnapshot
+              ? {
+                  quadrantNotificationAssignments:
+                    extractQuadrantNotificationAssignments(current, snap.id),
+                }
+              : {}),
           },
           { merge: true }
         )

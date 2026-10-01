@@ -1,5 +1,5 @@
 import { after, type NextRequest } from 'next/server'
-import { FieldPath, Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore'
+import { FieldPath, Timestamp, type DocumentData } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
@@ -10,6 +10,10 @@ import {
   quadrantConfirmTrim,
   type QuadrantConfirmDoc,
 } from '@/lib/quadrantsConfirmDeferred'
+import {
+  assignmentsByDocId,
+  buildQuadrantNotificationPlan,
+} from '@/lib/quadrantNotificationAssignments'
 import { autoAssign } from '@/services/autoAssign'
 import { buildLedger } from '@/services/workloadLedger'
 import { buildQuadrantSave } from '@/lib/quadrantsPost/buildQuadrantSave'
@@ -52,7 +56,6 @@ export type WritePhaseDocDeps = {
   remainingServiceJamoneroAssignments: { current: JamoneroAssignmentNormalized[] }
   remainingServiceEventGroups: { current: number }
   createdDocIds: string[]
-  savedDraftSnapshotByDocId: Map<string, QuadrantSave>
 }
 
 export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
@@ -71,7 +74,6 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
     remainingServiceJamoneroAssignments,
     remainingServiceEventGroups,
     createdDocIds,
-    savedDraftSnapshotByDocId,
   } = deps
 
   const normalizePerson = (value?: string | null) =>
@@ -333,7 +335,6 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
     if (!phaseFirestoreQueue || !phaseSkipHeavyPipeline) {
       await ensureNoOverlapForQuadrantSave(toSave, [docId])
     }
-    savedDraftSnapshotByDocId.set(docId, toSave)
     if (phaseFirestoreQueue && phaseSkipHeavyPipeline) {
       phaseFirestoreQueue.push({ docId, toSave })
     } else {
@@ -361,7 +362,6 @@ export type ProcessPhaseRequestsParams = {
   writePhaseDoc: ReturnType<typeof createWritePhaseDoc>
   ensureNoOverlapForQuadrantSave: (doc: QuadrantSave, excludeDocIds?: string[]) => Promise<void>
   createdDocIds: string[]
-  savedDraftSnapshotByDocId: Map<string, QuadrantSave>
 }
 
 export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
@@ -382,7 +382,6 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
     writePhaseDoc,
     ensureNoOverlapForQuadrantSave,
     createdDocIds,
-    savedDraftSnapshotByDocId,
   } = params
 
   const emptyPreferredResult: PreferredPhaseResult = {
@@ -625,19 +624,16 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
     }
     const uniqIds = Array.from(new Set(createdDocIds))
     const firstDocId = uniqIds[0]
-    const firstDraftRef = db.collection(collectionName).doc(firstDocId)
-    const reuseDraftSnapshot = savedDraftSnapshotByDocId.has(firstDocId)
-    const [stagePayload, fetchedSnapMaybe] = await Promise.all([
+    const [stagePayload, confirmationDocs] = await Promise.all([
       getStageVerdCached(canonicalEventId),
-      reuseDraftSnapshot
-        ? Promise.resolve<DocumentSnapshot | undefined>(undefined)
-        : firstDraftRef.get(),
+      Promise.all(uniqIds.map((docId) => db.collection(collectionName).doc(docId).get())),
     ])
-    const firstPrevInline: QuadrantConfirmDoc | null = reuseDraftSnapshot
-      ? (savedDraftSnapshotByDocId.get(firstDocId)! as unknown as QuadrantConfirmDoc)
-      : fetchedSnapMaybe?.exists
-        ? (fetchedSnapMaybe.data() as QuadrantConfirmDoc)
-        : null
+    const notificationDocs = confirmationDocs
+      .filter((snap) => snap.exists)
+      .map((snap) => ({ docId: snap.id, doc: snap.data() as QuadrantConfirmDoc }))
+    const notificationPlan = buildQuadrantNotificationPlan(notificationDocs)
+    const firstPrevInline: QuadrantConfirmDoc | null =
+      notificationDocs.find((entry) => entry.docId === firstDocId)?.doc || null
     const sdInline = stagePayload
     const confirmedAtIc = Timestamp.fromDate(new Date())
     const confirmedByIc =
@@ -651,6 +647,9 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
         confirmedBy: confirmedByIc,
         code: quadrantConfirmTrim(sdInline?.code ?? sdInline?.C_digo ?? ''),
       },
+      notificationAssignmentsByDocId: assignmentsByDocId(
+        notificationPlan.currentAssignments
+      ),
     })
     const assignedIc = extractAssignedNamesFromQuadrant(firstPrevInline)
     const diffIc = computeQuadrantProposalDiff({
@@ -669,6 +668,7 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
         stageData: sdInline,
         assigned: assignedIc,
         diff: diffIc,
+        notificationPlan,
       })
     })
     confirmInlineApplied = true
