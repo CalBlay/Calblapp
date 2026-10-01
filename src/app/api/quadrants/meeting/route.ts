@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
       const defaultScheduleEntries = [{
         id: 'event-start',
         time: event.horaInici,
-        label: 'Inici de l’esdeveniment',
+        label: 'Inici',
       }]
       const scheduleEntries = eventNote?.scheduleEntries.length
         ? eventNote.scheduleEntries

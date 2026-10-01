@@ -4,7 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
-import { ChevronDown, ChevronRight, Shield, Shirt } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronDown, ChevronRight, Shield, Shirt, Users } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole, type Role } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
@@ -409,6 +410,12 @@ export default function PermisosUserPage() {
         mainHref="/menu/settings"
         actions={
           <>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/menu/settings/permisos">
+                <Users className="h-4 w-4" aria-hidden />
+                Permisos en bloc
+              </Link>
+            </Button>
             <Button variant="outline" onClick={discardChanges} disabled={saving || isLoading}>
               Desfer canvis
             </Button>
@@ -418,6 +425,21 @@ export default function PermisosUserPage() {
           </>
         }
       />
+
+      <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Vols aplicar un permís a tot un departament?</p>
+          <p className="text-sm text-blue-800">
+            Ves a permisos en bloc, filtra el departament i selecciona tots els usuaris filtrats.
+          </p>
+        </div>
+        <Button asChild variant="primary" className="shrink-0 gap-2">
+          <Link href="/menu/settings/permisos">
+            <Users className="h-4 w-4" aria-hidden />
+            Gestiona permisos en bloc
+          </Link>
+        </Button>
+      </div>
 
       <div className="space-y-1">
         {isLoading ? (

@@ -60,6 +60,14 @@ const escapeHtml = (value: unknown) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;')
 
+const compactScheduleEntries = (entries: MeetingScheduleEntry[]) =>
+  entries.map((entry) => ({
+    ...entry,
+    label: /^Inici de l[’']esdeveniment$/iu.test(entry.label.trim())
+      ? 'Inici'
+      : entry.label,
+  }))
+
 function decisionLabel(row: WeeklyMeetingRow, department: MeetingDepartment) {
   const decision = row[department]
   if (!decision.required) return 'NO VA'
@@ -161,10 +169,10 @@ function ScheduleNotesCell({
   saving: boolean
   onSave: (entries: MeetingScheduleEntry[]) => void
 }) {
-  const [entries, setEntries] = useState(row.scheduleEntries)
+  const [entries, setEntries] = useState(() => compactScheduleEntries(row.scheduleEntries))
 
   useEffect(() => {
-    setEntries(row.scheduleEntries)
+    setEntries(compactScheduleEntries(row.scheduleEntries))
   }, [row.scheduleEntries])
 
   const updateEntry = (id: string, patch: Partial<MeetingScheduleEntry>) => {
@@ -188,7 +196,7 @@ function ScheduleNotesCell({
             aria-label={`Hora del servei ${index + 1}`}
             value={entry.time}
             onChange={(event) => updateEntry(entry.id, { time: event.target.value })}
-            className="w-[76px] rounded-lg border border-slate-300 bg-white px-1.5 py-1.5 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-[88px] shrink-0 rounded-lg border border-slate-300 bg-white px-1.5 py-1.5 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
           <input
             type="text"

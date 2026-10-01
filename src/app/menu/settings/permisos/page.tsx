@@ -640,6 +640,39 @@ export default function AdminPermisosPage() {
         {selectedPath ? (
           <div className="space-y-3">
             <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <div className="mb-4 flex flex-col gap-3 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">1. Tria els destinataris</p>
+                  <p className="text-xs text-muted-foreground">
+                    {departmentFilter !== '__all__'
+                      ? `${filteredAuditUserIds.length} usuaris del departament ${formatDepartmentLabel(departmentFilter)}`
+                      : `${filteredAuditUserIds.length} usuaris coincideixen amb els filtres actuals`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleAllFilteredUsers(true)}
+                    disabled={filteredAuditUserIds.length === 0 || allFilteredUsersSelected}
+                  >
+                    Selecciona els {filteredAuditUserIds.length} filtrats
+                  </Button>
+                  {selectedUserIds.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedUserIds([])}
+                    >
+                      Neteja selecció
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <p className="mb-2 text-sm font-medium">2. Tria què vols aplicar</p>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
                 <div className="min-w-0 flex-1 space-y-1">
                   <Label htmlFor="bulk-target">Que vols canviar?</Label>
@@ -690,12 +723,12 @@ export default function AdminPermisosPage() {
                   type="button"
                   onClick={() => void applyBulkPermission()}
                   disabled={bulkSaving || selectedUserIds.length === 0}
-                  className="shrink-0"
+                  className="shrink-0 gap-2"
                 >
                   <Users className="h-4 w-4" aria-hidden />
                   {bulkSaving
                     ? 'Aplicant...'
-                    : `Aplicar a ${selectedUserIds.length || 0} usuaris`}
+                    : `3. Aplicar a ${selectedUserIds.length || 0} usuaris`}
                 </Button>
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
