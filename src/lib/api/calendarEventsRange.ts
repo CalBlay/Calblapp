@@ -1,8 +1,13 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   isIsoDateDayParam,
+  queryStageCollectionDocsByDateFieldInRange,
   queryStageCollectionDocsInDateRange,
 } from '@/lib/firestoreStageRangeQuery'
+import {
+  buildMenuTastingOccurrence,
+  MENU_TASTING_CONFIGS,
+} from '@/lib/calendar/menuTastingOccurrences'
 
 const padHhMm = (raw: unknown): string | null => {
   if (raw == null || typeof raw !== 'string') return null
@@ -23,8 +28,26 @@ export async function computeCalendarEventsInRange(
   const startMs = new Date(`${start}T00:00:00.000Z`).getTime()
   const endMs = new Date(`${end}T23:59:59.999Z`).getTime()
 
-  for (const coll of collections) {
-    const docs = await queryStageCollectionDocsInDateRange(db, coll, start, end)
+  const docsByCollection = await Promise.all(
+    collections.map(async (coll) => ({
+      coll,
+      results: await Promise.all([
+        queryStageCollectionDocsInDateRange(db, coll, start, end),
+        ...MENU_TASTING_CONFIGS.map((config) =>
+          queryStageCollectionDocsByDateFieldInRange(
+            db,
+            coll,
+            config.dateField,
+            start,
+            end
+          )
+        ),
+      ]),
+    }))
+  )
+
+  for (const { coll, results } of docsByCollection) {
+    const [docs, ...tastingDocsByConfig] = results
 
     for (const doc of docs) {
       const d = doc.data() as FirebaseFirestore.DocumentData
@@ -38,11 +61,12 @@ export async function computeCalendarEventsInRange(
 
       if (!dateStart) continue
 
-      const tStart =
-        padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora) || '12:00'
-      const hasExplicitStart = Boolean(
-        padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora)
-      )
+      const mainTimeRaw =
+        d.HoraInici ??
+        d.horaInici ??
+        (d.origen === 'manual' ? d.Hora ?? d.hora : undefined)
+      const tStart = padHhMm(mainTimeRaw) || '12:00'
+      const hasExplicitStart = Boolean(padHhMm(mainTimeRaw))
       const tEnd =
         padHhMm(d.HoraFi ?? d.horaFi) ||
         (hasExplicitStart ? '23:59' : '12:00')
@@ -135,7 +159,7 @@ export async function computeCalendarEventsInRange(
           '',
 
         stageGroup: d.StageGroup || d.stageGroup || '',
-        HoraInici: d.HoraInici || d.horaInici || '',
+        HoraInici: hasExplicitStart ? tStart : '',
         HoraFi: d.HoraFi || d.horaFi || '',
         cancelled: d.cancelled === true,
         cancelledAt: typeof d.cancelledAt === 'string' ? d.cancelledAt : '',
@@ -147,6 +171,68 @@ export async function computeCalendarEventsInRange(
             : '',
       })
     }
+
+    tastingDocsByConfig.forEach((tastingDocs, configIndex) => {
+      const config = MENU_TASTING_CONFIGS[configIndex]
+      if (!config) return
+
+      for (const doc of tastingDocs) {
+        const d = doc.data() as FirebaseFirestore.DocumentData
+        const rawSummary =
+          typeof d.NomEvent === 'string' ? d.NomEvent : '(Sense titol)'
+        const summary = rawSummary.split('/')[0].trim()
+        const location = (typeof d.Ubicacio === 'string' ? d.Ubicacio : '')
+          .split('(')[0]
+          .split('/')[0]
+          .replace(/^ZZ\s*/i, '')
+          .trim()
+        const lnValue = typeof d.LN === 'string' ? d.LN : 'Altres'
+
+        const sourceEvent: Record<string, unknown> = {
+          collection: coll,
+          summary,
+          location,
+          lnKey: lnValue.toLowerCase(),
+          lnLabel: lnValue,
+          code: d.code || d.Code || d.codi || '',
+          codeConfirmed:
+            typeof d.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined,
+          codeMatchScore:
+            typeof d.codeMatchScore === 'number' ? d.codeMatchScore : undefined,
+          comercial: d.Comercial || d.comercial || '',
+          ComercialIntern:
+            d.ComercialIntern || d.comercialIntern || d.Comercial_Interna || '',
+          Responsable: d.Responsable || d.responsable || '',
+          servei: d.Servei || d.servei || '',
+          origen: d.origen || 'zoho',
+          ObservacionsZoho:
+            d.ObservacionsZoho ??
+            d.observacionsZoho ??
+            d.Observacions ??
+            d.observacions ??
+            '',
+          stageGroup: d.StageGroup || d.stageGroup || '',
+          cancelled: d.cancelled === true,
+          cancelledAt: typeof d.cancelledAt === 'string' ? d.cancelledAt : '',
+          cancelledByName:
+            typeof d.cancelledByName === 'string' ? d.cancelledByName : '',
+          cancellationNoticeSentAt:
+            typeof d.cancellationNoticeSentAt === 'string'
+              ? d.cancellationNoticeSentAt
+              : '',
+        }
+
+        const occurrence = buildMenuTastingOccurrence({
+          sourceEvent,
+          sourceData: d,
+          sourceEventId: doc.id,
+          config,
+          rangeStart: start,
+          rangeEnd: end,
+        })
+        if (occurrence) base.push(occurrence)
+      }
+    })
   }
 
   return { events: base }

@@ -35,6 +35,8 @@ export interface Deal {
   cancelledAt?: string
   cancelledByName?: string
   cancellationNoticeSentAt?: string
+  sourceEventId?: string
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2'
   files?: { key: string; url: string; name?: string; source?: string }[]
 }
 
@@ -134,8 +136,6 @@ export function useCalendarData(filters?: {
         const horaRaw =
           (ev.HoraInici ??
             ev.horaInici ??
-            ev.Hora ??
-            ev.hora ??
             '') as string
         const horaInici =
           typeof horaRaw === 'string' ? horaRaw.trim().slice(0, 5) : ''
@@ -199,6 +199,13 @@ export function useCalendarData(filters?: {
           cancellationNoticeSentAt:
             typeof ev.cancellationNoticeSentAt === 'string'
               ? ev.cancellationNoticeSentAt
+              : undefined,
+          sourceEventId:
+            typeof ev.sourceEventId === 'string' ? ev.sourceEventId : undefined,
+          calendarOccurrenceType:
+            ev.calendarOccurrenceType === 'menu_tasting_1' ||
+            ev.calendarOccurrenceType === 'menu_tasting_2'
+              ? ev.calendarOccurrenceType
               : undefined,
           origen: (ev.origen === 'manual' || ev.origen === 'firestore' || ev.origen === 'zoho'
             ? ev.origen

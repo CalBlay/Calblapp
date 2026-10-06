@@ -32,6 +32,11 @@ export interface ZohoDeal {
   Owner: ZohoOwner
   Responsable?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
   Comercial_Interna?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
+  Data_1_Prova_Men?: string | null
+  Comensals?: number | string | null
+  Data_2a_Part_Tast?: string | null
+  Hora?: string | null
+  Comensals_2a?: number | string | null
   Fecha_de_petici_n?: string | null
   Precio_Total?: number | string | null
   Amount?: number | string | null
@@ -53,6 +58,11 @@ export interface NormalizedDeal {
   Comercial: string
   ComercialIntern?: string
   Responsable: string
+  Data_1_Prova_Men?: string | null
+  Comensals?: number | string | null
+  Data_2a_Part_Tast?: string | null
+  Hora?: string | null
+  Comensals_2a?: number | string | null
   DataInici: string | null
   DataFi: string | null
   HoraInici?: string | null

@@ -73,3 +73,32 @@ export async function queryStageCollectionDocsInDateRange(
     return full.docs
   }
 }
+
+/** Consulta documents amb un camp de data simple dins [start,end]. */
+export async function queryStageCollectionDocsByDateFieldInRange(
+  db: Firestore,
+  collectionId: string,
+  fieldName: 'Data_1_Prova_Men' | 'Data_2a_Part_Tast',
+  rangeStart: string,
+  rangeEnd: string
+): Promise<QueryDocumentSnapshot[]> {
+  const s = clampISODate(rangeStart)
+  const e = clampISODate(rangeEnd)
+  if (!s || !e) {
+    throw new Error('Rang de dates invàlid (esperat YYYY-MM-DD)')
+  }
+
+  const col = db.collection(collectionId)
+
+  try {
+    const snap = await col.where(fieldName, '>=', s).where(fieldName, '<=', e).get()
+    return snap.docs
+  } catch (err) {
+    console.warn(
+      `[firestoreStageRangeQuery] Fallada consulta per rang a "${collectionId}.${fieldName}"; fallback .get() complet`,
+      err
+    )
+    const full = await col.get()
+    return full.docs
+  }
+}

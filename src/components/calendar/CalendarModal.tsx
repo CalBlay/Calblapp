@@ -121,7 +121,7 @@ export default function CalendarModal({
   deal,
   trigger,
   onSaved,
-  readonly,
+  readonly: readonlyProp,
   embedded = false,
   onEmbeddedClose,
   onRequestPanel,
@@ -129,6 +129,7 @@ export default function CalendarModal({
   backLabel = 'Tornar',
 }: Props) {
   const dealRecord = deal as CalendarDealRecord
+  const readonly = readonlyProp || Boolean(deal.calendarOccurrenceType)
   const { data: session } = useSession()
   const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)

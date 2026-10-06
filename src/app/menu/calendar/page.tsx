@@ -343,7 +343,7 @@ export default function CalendarPage() {
     }
 
     const counts = { confirmed: 0, review: 0, missing: 0 }
-    deals.filter(inMonth).forEach((d) => {
+    deals.filter(inMonth).filter((d) => !d.calendarOccurrenceType).forEach((d) => {
       const status = d.codeStatus
       if (status === 'review') counts.review += 1
       else if (status === 'confirmed') counts.confirmed += 1
@@ -361,12 +361,15 @@ export default function CalendarPage() {
 
   const periodStats = useMemo(() => {
     const stats = { confirmed: 0, review: 0, missing: 0 }
-    visibleDeals.forEach((deal) => {
+    const operationalDeals = visibleDeals.filter(
+      (deal) => !deal.calendarOccurrenceType
+    )
+    operationalDeals.forEach((deal) => {
       if (deal.codeStatus === 'review') stats.review += 1
       else if (deal.codeStatus === 'confirmed') stats.confirmed += 1
       else stats.missing += 1
     })
-    return { total: visibleDeals.length, codeCounts: stats }
+    return { total: operationalDeals.length, codeCounts: stats }
   }, [visibleDeals])
 
   /* UI */

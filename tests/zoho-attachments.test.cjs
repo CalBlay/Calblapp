@@ -146,6 +146,11 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   for (const field of [
     'Hora_Fi_Boda',
     'Hora_Fi_Evento',
+    'Data_1_Prova_Men',
+    'Comensals',
+    'Data_2a_Part_Tast',
+    'Hora',
+    'Comensals_2a',
     'Full_de_modificacions',
     'Full_modificacions',
   ]) {

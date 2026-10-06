@@ -4,6 +4,7 @@ import { subDays, isMonday } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { listWarehousePrepTasksForUser } from '@/lib/logistics/warehousePrepTasks.server'
 import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMagatzem'
+import { isPreparationPlanningDateInRange } from '@/lib/logistics/preparationRange'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
@@ -185,28 +186,12 @@ async function queryServiceRowsByPreparationRange(start: string, end: string) {
     .get()
 }
 
-async function loadStageVerdRange(start: string, end: string, filterByPreparation: boolean) {
-  if (filterByPreparation) {
-    const preparationSnap = await Promise.allSettled([queryByPreparationRange(start, end)])
-    const preparationDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
-
-    if (preparationSnap[0].status === 'fulfilled') {
-      preparationSnap[0].value.forEach((doc) => preparationDocs.set(doc.id, doc))
-    }
-
-    if (preparationDocs.size > 0) return Array.from(preparationDocs.values())
-
-    const fullSnap = await db.collection('stage_verd').get()
-    return fullSnap.docs.filter((doc) => {
-      const ev = doc.data() as RawEvent
-      return isPreparationDateInRange(ev.PreparacioData, start, end)
-    })
-  }
-
+async function loadStageVerdRange(start: string, end: string) {
   const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
-  const [stringSnap, dateSnap] = await Promise.allSettled([
+  const [stringSnap, dateSnap, preparationSnap] = await Promise.allSettled([
     queryByStringRange(start, end),
     queryByDateRange(start, end),
+    queryByPreparationRange(start, end),
   ])
 
   if (stringSnap.status === 'fulfilled') {
@@ -217,50 +202,53 @@ async function loadStageVerdRange(start: string, end: string, filterByPreparatio
     dateSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
+  if (preparationSnap.status === 'fulfilled') {
+    preparationSnap.value.forEach((doc) => docs.set(doc.id, doc))
+  }
+
   if (docs.size > 0) return Array.from(docs.values())
 
   const fullSnap = await db.collection('stage_verd').get()
   return fullSnap.docs.filter((doc) => {
     const ev = doc.data() as RawEvent
-    const iso = normalizeDataInici(ev.DataInici)
-    return Boolean(iso) && iso >= start && iso <= end
+    return isPreparationPlanningDateInRange(
+      ev.PreparacioData,
+      normalizeDataInici(ev.DataInici),
+      start,
+      end
+    )
   })
 }
 
-async function loadServiceRange(start: string, end: string, filterByPreparation: boolean) {
-  if (filterByPreparation) {
-    const preparationSnap = await Promise.allSettled([queryServiceRowsByPreparationRange(start, end)])
-    const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+async function loadServiceRange(start: string, end: string) {
+  const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+  const [stringSnap, preparationSnap] = await Promise.allSettled([
+    queryServiceRowsByStringRange(start, end),
+    queryServiceRowsByPreparationRange(start, end),
+  ])
 
-    if (preparationSnap[0].status === 'fulfilled') {
-      preparationSnap[0].value.forEach((doc) => docs.set(doc.id, doc))
-    }
-
-    if (docs.size > 0) return Array.from(docs.values())
-
-    const fullSnap = await db.collection('logistics_preparation_services').get()
-    return fullSnap.docs.filter((doc) => {
-      const row = doc.data() as RawEvent
-      return isPreparationDateInRange(row.PreparacioData, start, end)
-    })
+  if (stringSnap.status === 'fulfilled') {
+    stringSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
-  const stringSnap = await Promise.allSettled([queryServiceRowsByStringRange(start, end)])
-  if (stringSnap[0].status === 'fulfilled' && stringSnap[0].value.size > 0) {
-    return stringSnap[0].value.docs
+  if (preparationSnap.status === 'fulfilled') {
+    preparationSnap.value.forEach((doc) => docs.set(doc.id, doc))
+  }
+
+  if (docs.size > 0) {
+    return Array.from(docs.values())
   }
 
   const fullSnap = await db.collection('logistics_preparation_services').get()
   return fullSnap.docs.filter((doc) => {
     const row = doc.data() as RawEvent
-    const iso = normalizeDataInici(row.DataInici)
-    return Boolean(iso) && iso >= start && iso <= end
+    return isPreparationPlanningDateInRange(
+      row.PreparacioData,
+      normalizeDataInici(row.ServiceDate ?? row.DataInici),
+      start,
+      end
+    )
   })
-}
-
-function isPreparationDateInRange(preparacioData: string | undefined, start: string, end: string) {
-  const value = String(preparacioData ?? '').trim()
-  return Boolean(value) && isIsoDate(value) && value >= start && value <= end
 }
 
 export async function GET(req: NextRequest) {
@@ -271,8 +259,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const start = searchParams.get('start')
     const end = searchParams.get('end')
-    const filterByPreparation = searchParams.get('filterByPreparation') === '1'
-
     if (!isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json(
         { ok: false, error: 'Cal indicar start i end en format YYYY-MM-DD' },
@@ -283,8 +269,8 @@ export async function GET(req: NextRequest) {
     const startStr = String(start)
     const endStr = String(end)
     const [stageDocs, serviceDocs] = await Promise.all([
-      loadStageVerdRange(startStr, endStr, filterByPreparation),
-      loadServiceRange(startStr, endStr, filterByPreparation),
+      loadStageVerdRange(startStr, endStr),
+      loadServiceRange(startStr, endStr),
     ])
     const events: LogisticsEvent[] = []
     const codesWithServices = new Set<string>()
@@ -301,10 +287,14 @@ export async function GET(req: NextRequest) {
       if (!eventCode) return
 
       const dataIniciIso = normalizeDataInici(row.ServiceDate ?? row.DataInici)
-      const preparationMatches = isPreparationDateInRange(row.PreparacioData, startStr, endStr)
-      if (filterByPreparation) {
-        if (!preparationMatches) return
-      } else if (!dataIniciIso || dataIniciIso < startStr || dataIniciIso > endStr) {
+      if (
+        !isPreparationPlanningDateInRange(
+          row.PreparacioData,
+          dataIniciIso,
+          startStr,
+          endStr
+        )
+      ) {
         return
       }
 
@@ -348,11 +338,14 @@ export async function GET(req: NextRequest) {
       if (codesWithServices.has(eventCode)) return
 
       const dataIniciIso = normalizeDataInici(ev.DataInici)
-      const preparationMatches = isPreparationDateInRange(ev.PreparacioData, startStr, endStr)
-
-      if (filterByPreparation) {
-        if (!preparationMatches) return
-      } else if (!dataIniciIso || dataIniciIso < startStr || dataIniciIso > endStr) {
+      if (
+        !isPreparationPlanningDateInRange(
+          ev.PreparacioData,
+          dataIniciIso,
+          startStr,
+          endStr
+        )
+      ) {
         return
       }
 

@@ -15,13 +15,6 @@ export function useLogisticsData(
   options?: { preparerMode?: boolean }
 ) {
   const preparerMode = Boolean(options?.preparerMode)
-  const isSingleDayFilter = Boolean(
-    dateRange?.start &&
-    dateRange?.end &&
-    dateRange.start === dateRange.end
-  )
-  const filterByPreparation = preparerMode || isSingleDayFilter
-
   const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
   const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,8 +51,7 @@ export function useLogisticsData(
         return
       }
 
-      const prepQuery = filterByPreparation ? '&filterByPreparation=1' : ''
-      const url = `/api/logistics?start=${dateRange.start}&end=${dateRange.end}${prepQuery}`
+      const url = `/api/logistics?start=${dateRange.start}&end=${dateRange.end}`
       const res = await fetch(url, { cache: 'no-store', signal: controller.signal })
 
       if (requestId !== requestIdRef.current) return
@@ -126,7 +118,7 @@ export function useLogisticsData(
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [dateRange?.start, dateRange?.end, filterByPreparation, preparerMode])
+  }, [dateRange?.start, dateRange?.end, preparerMode])
 
   useEffect(() => {
     loadData()
