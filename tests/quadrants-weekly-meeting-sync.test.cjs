@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   buildWeeklyMeetingArrivalPatch,
   isWeeklyMeetingEventPhase,
+  matchesWeeklyMeetingQuadrantDay,
 } = require('../src/lib/quadrantsWeeklyMeetingSync.ts')
 
 test('weekly meeting identifies current and legacy event phase labels', () => {
@@ -57,4 +58,60 @@ test('NO VA records the decision without overwriting logistics arrival times', (
     weeklyMeetingRequired: false,
     weeklyMeetingUpdatedAt: '2026-09-28T10:00:00.000Z',
   })
+})
+
+test('weekly meeting matches every quadrant phase for the selected event and day', () => {
+  const rows = [
+    {
+      id: 'event-1__event__2026-10-06__group',
+      eventId: 'event-1',
+      phaseType: 'event',
+      startDate: '2026-10-06',
+      endDate: '2026-10-06',
+    },
+    {
+      id: 'event-1__entrega__2026-10-06__group',
+      eventId: 'event-1',
+      phaseType: 'entrega',
+      phaseDate: '2026-10-06',
+    },
+    {
+      id: 'event-1__event__2026-10-07__group',
+      eventId: 'event-1',
+      phaseType: 'event',
+      startDate: '2026-10-07',
+      endDate: '2026-10-07',
+    },
+    {
+      id: 'event-2__event__2026-10-06__group',
+      eventId: 'event-2',
+      eventCode: 'E2',
+      phaseType: 'event',
+      startDate: '2026-10-06',
+      endDate: '2026-10-06',
+    },
+  ]
+
+  const matches = rows.filter((row) =>
+    matchesWeeklyMeetingQuadrantDay(row, 'event-1', 'E1', '2026-10-06')
+  )
+
+  assert.deepEqual(matches.map((row) => row.phaseType), ['event', 'entrega'])
+})
+
+test('weekly meeting can match legacy quadrant documents by event code', () => {
+  assert.equal(
+    matchesWeeklyMeetingQuadrantDay(
+      {
+        eventId: 'legacy-id',
+        code: 'E2600594',
+        startDate: '2026-10-06',
+        endDate: '2026-10-06',
+      },
+      'current-id',
+      'E2600594',
+      '2026-10-06'
+    ),
+    true
+  )
 })

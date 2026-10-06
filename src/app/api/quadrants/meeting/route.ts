@@ -25,6 +25,7 @@ import {
 import {
   buildWeeklyMeetingArrivalPatch,
   isWeeklyMeetingEventPhase,
+  matchesWeeklyMeetingQuadrantDay,
 } from '@/lib/quadrantsWeeklyMeetingSync'
 
 export const runtime = 'nodejs'
@@ -57,22 +58,6 @@ function entriesToText(entries: Array<{ time: string; label: string }>) {
     .map((entry) => [entry.time, entry.label].filter(Boolean).join(' '))
     .filter(Boolean)
     .join('\n')
-}
-
-function quadrantMatches(
-  quadrant: Record<string, unknown>,
-  eventId: string,
-  eventCode: string,
-  eventDay: string
-) {
-  const quadrantId = normalizeEventId(quadrant.eventId)
-  const quadrantCode = String(quadrant.code || quadrant.eventCode || '')
-  if (quadrantId !== normalizeEventId(eventId) && (!eventCode || quadrantCode !== eventCode)) {
-    return false
-  }
-  const start = String(quadrant.startDate || quadrant.phaseDate || '').slice(0, 10)
-  const end = String(quadrant.endDate || quadrant.phaseDate || start).slice(0, 10)
-  return (!start || start <= eventDay) && (!end || end >= eventDay)
 }
 
 function personName(value: unknown): string {
@@ -156,7 +141,7 @@ export async function GET(req: NextRequest) {
       const eventId = normalizeEventId(event.id)
       const eventDay = event.day
       const matches = (quadrant: Record<string, unknown>) =>
-        quadrantMatches(quadrant, eventId, event.code, eventDay)
+        matchesWeeklyMeetingQuadrantDay(quadrant, eventId, event.code, eventDay)
       const serviceQuadrants = servicesResult.quadrants.filter(matches)
       const logisticsQuadrants = logisticsResult.quadrants.filter(matches)
       const kitchenQuadrants = kitchenResult.quadrants.filter(matches)
@@ -332,25 +317,34 @@ export async function PATCH(req: NextRequest) {
       updatedById: auth.user.id,
       updatedByName: String(auth.user.name || auth.user.email || ''),
     }
-    await firestoreAdmin
+    const existing = await computeQuadrantsGet(eventDay, eventDay, department)
+    const matchingDayQuadrants = existing.quadrants.filter((quadrant) =>
+      matchesWeeklyMeetingQuadrantDay(quadrant, eventId, eventCode, eventDay)
+    )
+    const quadrantsToMutate = required
+      ? matchingDayQuadrants.filter(isWeeklyMeetingEventPhase)
+      : matchingDayQuadrants
+    let deletedQuadrants = 0
+    const batch = firestoreAdmin.batch()
+    const decisionRef = firestoreAdmin
       .collection(QUADRANTS_MEETING_DECISIONS_COLLECTION)
       .doc(docId)
-      .set(payload, { merge: true })
+    batch.set(decisionRef, payload, { merge: true })
 
-    const existing = await computeQuadrantsGet(eventDay, eventDay, department)
-    const matching = existing.quadrants.filter((quadrant) => {
-      if (!quadrantMatches(quadrant, eventId, eventCode, eventDay)) return false
-      return isWeeklyMeetingEventPhase(quadrant)
-    })
-    if (matching.length > 0) {
+    if (quadrantsToMutate.length > 0) {
       const collection = await resolveQuadrantCollection(department, { prefer: 'singular' })
-      const batch = firestoreAdmin.batch()
       const snapshots = await Promise.all(
-        matching.map((quadrant) =>
+        quadrantsToMutate.map((quadrant) =>
           firestoreAdmin.collection(collection).doc(String(quadrant.id)).get()
         )
       )
       snapshots.forEach((rawSnap) => {
+        if (!rawSnap.exists) return
+        if (!required) {
+          batch.delete(rawSnap.ref)
+          deletedQuadrants += 1
+          return
+        }
         const raw = (rawSnap.data() || {}) as Record<string, unknown>
         const patch = buildWeeklyMeetingArrivalPatch({
           raw,
@@ -360,11 +354,14 @@ export async function PATCH(req: NextRequest) {
         })
         batch.update(rawSnap.ref, patch)
       })
-      await batch.commit()
-      revalidateQuadrantsListCache()
     }
+    await batch.commit()
+    if (quadrantsToMutate.length > 0) revalidateQuadrantsListCache()
 
-    return NextResponse.json({ decision: { ...payload, id: docId } })
+    return NextResponse.json({
+      decision: { ...payload, id: docId },
+      deletedQuadrants,
+    })
   } catch (error) {
     console.error('[quadrants/meeting PATCH]', error)
     return NextResponse.json({ error: 'No s’ha pogut desar la decisió' }, { status: 500 })

@@ -7,6 +7,31 @@ const normalizePhase = (value: unknown) =>
     .trim()
     .toLowerCase()
 
+const normalizeEventId = (value: unknown) =>
+  String(value || '').trim().split('__')[0].trim()
+
+/**
+ * Comprova si un document de quadrant pertany a la fila (esdeveniment + dia)
+ * que s'està decidint a la reunió setmanal.
+ */
+export function matchesWeeklyMeetingQuadrantDay(
+  quadrant: Record<string, unknown>,
+  eventId: string,
+  eventCode: string,
+  eventDay: string
+): boolean {
+  const quadrantId = normalizeEventId(quadrant.eventId)
+  const quadrantCode = String(quadrant.code || quadrant.eventCode || '')
+  const sameEvent =
+    quadrantId === normalizeEventId(eventId) ||
+    (!!eventCode && quadrantCode === eventCode)
+  if (!sameEvent) return false
+
+  const start = String(quadrant.startDate || quadrant.phaseDate || '').slice(0, 10)
+  const end = String(quadrant.endDate || quadrant.phaseDate || start).slice(0, 10)
+  return (!start || start <= eventDay) && (!end || end >= eventDay)
+}
+
 export function isWeeklyMeetingEventPhase(
   quadrant: Record<string, unknown>
 ): boolean {
