@@ -7,6 +7,7 @@ export type InformesDataSourceKind = 'app' | 'mcp_file' | 'erp' | 'hybrid'
 
 export type InformesDomainId =
   | 'rrhh'
+  | 'audits'
   | 'transports'
   | 'maintenance'
   | 'finances'

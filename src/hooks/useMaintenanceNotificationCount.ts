@@ -10,3 +10,12 @@ export function useMaintenanceNotificationCount() {
     error,
   }
 }
+
+export function useDecoNotificationCount() {
+  const { summary, loading, error } = useNotificationSummaryContext()
+  return {
+    count: summary.deco,
+    loading,
+    error,
+  }
+}

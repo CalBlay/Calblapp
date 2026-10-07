@@ -21,6 +21,13 @@ const RrhhInformesPanel = dynamic(
   () => import('./domains/RrhhInformesPanel').then((mod) => ({ default: mod.RrhhInformesPanel })),
   { loading: panelLoadingFallback }
 )
+const AuditInformesPanel = dynamic(
+  () =>
+    import('./domains/AuditInformesPanel').then((mod) => ({
+      default: mod.AuditInformesPanel,
+    })),
+  { loading: panelLoadingFallback }
+)
 const TransportsInformesPanel = dynamic(
   () =>
     import('./domains/TransportsInformesPanel').then((mod) => ({
@@ -125,6 +132,7 @@ export function InformesModule() {
           </div>
         ) : null}
         {permissionsReady && active === 'rrhh' && enabledDomains.some((d) => d.id === 'rrhh') ? <RrhhInformesPanel /> : null}
+        {permissionsReady && active === 'audits' && enabledDomains.some((d) => d.id === 'audits') ? <AuditInformesPanel /> : null}
         {permissionsReady && active === 'transports' && enabledDomains.some((d) => d.id === 'transports') ? <TransportsInformesPanel /> : null}
         {permissionsReady && active === 'maintenance' && enabledDomains.some((d) => d.id === 'maintenance') ? <MaintenanceInformesPanel /> : null}
         {permissionsReady && active === 'events' && enabledDomains.some((d) => d.id === 'events') ? <EventsWorkersInformesPanel /> : null}

@@ -1,17 +1,22 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { CheckCheck } from 'lucide-react'
+import { toast } from 'sonner'
 import { getAblyClient } from '@/lib/ablyClient'
 import ModuleNotificationsBell, {
   useCloseModuleNotificationsBell,
 } from '@/components/layout/ModuleNotificationsBell'
 import NotificationListItem from '@/components/layout/NotificationListItem'
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
+import {
+  useDecoNotificationCount,
+  useMaintenanceNotificationCount,
+} from '@/hooks/useMaintenanceNotificationCount'
 
 type MaintenanceNotification = {
   id: string
@@ -243,6 +248,9 @@ export default function MaintenanceNotificationsBell({
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
   const { data, mutate } = useSWR(userId ? '/api/notifications?mode=list' : null, fetcher)
+  const { count: maintenanceCount } = useMaintenanceNotificationCount()
+  const { count: decoCount } = useDecoNotificationCount()
+  const [markingAll, setMarkingAll] = useState(false)
 
   useEffect(() => {
     if (!userId) return
@@ -271,31 +279,42 @@ export default function MaintenanceNotificationsBell({
   )
 
   const dismiss = async (notificationId: string) => {
-    await markNotificationRead(notificationId)
-    await mutate()
+    try {
+      await markNotificationRead(notificationId)
+      await mutate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No s'ha pogut eliminar l'avís")
+    }
   }
 
   const markAll = async () => {
-    for (const type of notificationTypes) {
-      await markAllNotificationsRead(type)
+    if (markingAll) return
+    setMarkingAll(true)
+    try {
+      await markAllNotificationsRead(notificationTypes)
+      await mutate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No s'han pogut eliminar els avisos")
+    } finally {
+      setMarkingAll(false)
     }
-    await mutate()
   }
 
   return (
     <ModuleNotificationsBell
       title={module === 'deco' ? 'Avisos d’Imatge-Deco' : 'Avisos de manteniment'}
-      count={notifications.length}
+      count={module === 'deco' ? decoCount : maintenanceCount}
       showWhenEmpty={showWhenEmpty}
       emptyMessage={module === 'deco' ? 'Cap avís d’Imatge-Deco pendent' : 'Cap avís de manteniment pendent'}
       headerActions={
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+          disabled={markingAll}
           onClick={() => void markAll()}
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          Marcar tot
+          {markingAll ? 'Eliminant...' : 'Marcar tot'}
         </button>
       }
     >

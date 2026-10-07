@@ -21,6 +21,7 @@ export type NotificationSummaryPayload = {
   projects: number
   logistics: number
   maintenance: number
+  deco: number
   incidents: number
   events: number
   surveys: number
@@ -57,6 +58,7 @@ export async function GET() {
     const projects = buckets.projects
     const logistics = buckets.logistics
     const maintenance = buckets.maintenance
+    const deco = buckets.deco
     const incidents = buckets.incidents
     const events = buckets.events
 
@@ -67,6 +69,7 @@ export async function GET() {
       projects,
       logistics,
       maintenance,
+      deco,
       incidents,
       events,
       surveys,

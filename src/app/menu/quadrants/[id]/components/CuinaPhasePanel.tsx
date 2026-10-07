@@ -37,6 +37,8 @@ type Props = {
   availableTreballadors?: Array<{ id: string; name: string; status?: string; reason?: string }>
   availableVehicles: AvailableVehicle[]
   availableVehicleCount: number
+  department?: string
+  excludeEventId?: string
   isVehicleIdAssigned: (vehicleId: string, groupId: string, slotId: string) => boolean
   addGroup: () => void
   removeGroup: (id: string) => void
@@ -58,6 +60,8 @@ export default function CuinaPhasePanel({
   availableTreballadors = [],
   availableVehicles,
   availableVehicleCount,
+  department,
+  excludeEventId,
   isVehicleIdAssigned: _isVehicleIdAssigned,
   addGroup,
   removeGroup,
@@ -296,6 +300,8 @@ export default function CuinaPhasePanel({
                           conductors={availableConductors}
                           treballadors={availableTreballadors}
                           reservedPersonIds={reservedForLine}
+                          department={department}
+                          excludeEventId={excludeEventId}
                           availableVehicles={availableVehicles}
                           assignedVehicleIds={assignedVehicleIds}
                           canRemove={roleLines.length > 1}

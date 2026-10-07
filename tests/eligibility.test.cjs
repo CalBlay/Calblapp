@@ -47,6 +47,43 @@ test('evaluateRangeEligibility enforces rest gap between non-overlapping service
   assert.deepEqual(result, { eligible: false, reason: 'rest_violation' })
 })
 
+test('allows same-day non-overlapping services with zero rest in either creation order', () => {
+  const ctx = { restHours: 0, allowMultipleEventsSameDay: true }
+  const morning = {
+    start: d('2026-10-06T11:00:00'),
+    end: d('2026-10-06T15:00:00'),
+  }
+  const evening = {
+    start: d('2026-10-06T19:30:00'),
+    end: d('2026-10-06T23:00:00'),
+  }
+
+  assert.deepEqual(
+    evaluateRangeEligibility({
+      reqStart: morning.start,
+      reqEnd: morning.end,
+      reqStartDate: '2026-10-06',
+      busyStart: evening.start,
+      busyEnd: evening.end,
+      busyStartDate: '2026-10-06',
+      ctx,
+    }),
+    { eligible: true }
+  )
+  assert.deepEqual(
+    evaluateRangeEligibility({
+      reqStart: evening.start,
+      reqEnd: evening.end,
+      reqStartDate: '2026-10-06',
+      busyStart: morning.start,
+      busyEnd: morning.end,
+      busyStartDate: '2026-10-06',
+      ctx,
+    }),
+    { eligible: true }
+  )
+})
+
 test('evaluateRangeEligibility wraps overnight end<=start before overlap checks', () => {
   const result = evaluateRangeEligibility({
     reqStart: d('2026-08-11T22:00:00'),

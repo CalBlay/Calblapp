@@ -19,12 +19,12 @@ export async function countUnreadNotifications(
   userId: string,
   options?: { type?: string }
 ): Promise<number> {
-  const docs = await fetchUnreadNotificationDocs(userId)
   const typeFilter = options?.type ? String(options.type).trim() : ''
-  return docs.filter((doc) => {
-    if (!typeFilter) return true
-    return String((doc.data() as { type?: string }).type || '').trim() === typeFilter
-  }).length
+  const notificationsRef = await userNotificationsCollectionByAuthId(userId)
+  let query = notificationsRef.where('read', '==', false)
+  if (typeFilter) query = query.where('type', '==', typeFilter)
+  const snap = await query.count().get()
+  return snap.data().count
 }
 
 export async function countUnreadNotificationsByTypes(
@@ -34,8 +34,8 @@ export async function countUnreadNotificationsByTypes(
   const uniqueTypes = new Set(types.map((t) => t.trim()).filter(Boolean))
   if (uniqueTypes.size === 0) return 0
 
-  const docs = await fetchUnreadNotificationDocs(userId)
-  return docs.filter((doc) =>
-    uniqueTypes.has(String((doc.data() as { type?: string }).type || '').trim())
-  ).length
+  const counts = await Promise.all(
+    [...uniqueTypes].map((type) => countUnreadNotifications(userId, { type }))
+  )
+  return counts.reduce((sum, count) => sum + count, 0)
 }

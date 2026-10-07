@@ -9,6 +9,12 @@ export const INFORMES_DOMAINS: InformesDomainMeta[] = [
     comingSoon: false,
   },
   {
+    id: 'audits',
+    label: 'Auditories',
+    sources: ['app'],
+    comingSoon: false,
+  },
+  {
     id: 'transports',
     label: 'Transports',
     sources: ['app'],

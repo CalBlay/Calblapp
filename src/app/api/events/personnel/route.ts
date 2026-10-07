@@ -6,6 +6,7 @@ import type { AccessUser } from '@/lib/accessControl'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import { eventPersonnelIdentityKey } from '@/lib/eventPersonnelIdentity'
 
 export const runtime = 'nodejs'
 
@@ -57,6 +58,7 @@ type QRow = {
     vehiclePlate?: string
   }>
   treballadors?: Array<{
+    id?: string
     name?: string
     meetingPoint?: string
     time?: string
@@ -68,6 +70,7 @@ type QRow = {
     leftEarly?: boolean
   }>
   workers?: Array<{
+    id?: string
     name?: string
     meetingPoint?: string
     time?: string
@@ -89,6 +92,7 @@ type PersonnelDoc = {
 }
 
 type QuadrantLinePerson = {
+  id?: string
   name?: string
   meetingPoint?: string
   time?: string
@@ -104,6 +108,7 @@ type QuadrantLinePerson = {
 }
 
 type PersonnelListEntry = {
+  id?: string
   name: string
   role: string
   department?: string
@@ -317,6 +322,7 @@ export async function GET(req: NextRequest) {
               ? String(p.plate || p.matricula || p.vehiclePlate || '')
               : ''
           people.push({
+            id: p.id,
             name,
             role,
             department: dept,
@@ -340,7 +346,7 @@ export async function GET(req: NextRequest) {
 
     const dedupMap = new Map<string, PersonnelListEntry>()
     people.forEach((person) => {
-      const key = `${norm(person.department)}|${norm(person.name)}`
+      const key = eventPersonnelIdentityKey(person)
       const existing = dedupMap.get(key)
       if (!existing) {
         dedupMap.set(key, person)

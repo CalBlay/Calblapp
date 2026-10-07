@@ -695,6 +695,12 @@ export function QuadrantEditor({
               availableTreballadors={availableTreballadors}
               availableVehicles={cuinaAvailableVehicles}
               availableVehicleCount={cuinaAvailableVehicleCount}
+              department={department}
+              excludeEventId={
+                String(existingDraft?.id || '').trim() ||
+                String(event.id || '').trim().split('__')[0] ||
+                undefined
+              }
               isVehicleIdAssigned={isCuinaVehicleIdAssigned}
               addGroup={addCuinaGroup}
               removeGroup={removeCuinaGroup}
@@ -739,6 +745,12 @@ export function QuadrantEditor({
               availableJamoneros={availableJamoneros}
               availableTreballadors={availableTreballadors}
               driverCrews={driverCrews}
+              department={department}
+              excludeEventId={
+                String(existingDraft?.id || '').trim() ||
+                String(event.id || '').trim().split('__')[0] ||
+                undefined
+              }
               jamoneroAssignments={serviceJamoneroAssignments}
               setJamoneroCount={setServiceJamoneroCount}
               updateJamoneroAssignment={updateServiceJamoneroAssignment}

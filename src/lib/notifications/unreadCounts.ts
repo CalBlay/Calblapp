@@ -1,9 +1,9 @@
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { fetchUnreadNotificationDocs } from '@/lib/notifications/firestoreCounts'
+import { countUnreadNotificationsByTypes } from '@/lib/notifications/firestoreCounts'
 import { userDocRefByAuthId } from '@/lib/notifications/userNotificationsRef'
 
-export const UNREAD_COUNTS_VERSION = 2
+export const UNREAD_COUNTS_VERSION = 3
 
 export type NotificationUnreadBuckets = {
   user_request: number
@@ -12,6 +12,7 @@ export type NotificationUnreadBuckets = {
   projects: number
   logistics: number
   maintenance: number
+  deco: number
   incidents: number
   events: number
   version: number
@@ -19,6 +20,39 @@ export type NotificationUnreadBuckets = {
 }
 
 type BucketKey = keyof Omit<NotificationUnreadBuckets, 'version' | 'syncedAt'>
+
+const NOTIFICATION_TYPES_BY_BUCKET: Record<BucketKey, readonly string[]> = {
+  user_request: ['user_request'],
+  user_request_result: ['user_request_result'],
+  torn: ['torn', 'NEW_SHIFTS'],
+  projects: [
+    'project_assignment',
+    'project_block_assignment',
+    'project_task_assignment',
+    'project_task_dependency_unlocked',
+  ],
+  logistics: ['commercial_vehicle_request', 'commercial_vehicle_validation'],
+  maintenance: [
+    'maintenance_ticket_new',
+    'maintenance_ticket_assigned',
+    'maintenance_ticket_resolved',
+    'maintenance_ticket_pending_cap_validation',
+    'maintenance_ticket_validated',
+    'maintenance_ticket_reopened',
+    'maintenance_ticket_stale',
+    'maintenance_ticket_external_stale',
+  ],
+  deco: [
+    'deco_ticket_new',
+    'deco_ticket_assigned',
+    'deco_ticket_resolved',
+    'deco_ticket_pending_cap_validation',
+    'deco_ticket_validated',
+    'deco_ticket_reopened',
+  ],
+  incidents: ['incident_marketing_9xx_new', 'incident_action_assigned'],
+  events: ['event_comanda_warehouse', 'event_comanda_batch_sent'],
+}
 
 export async function setUserUnreadBucketCount(
   userId: string,
@@ -31,7 +65,6 @@ export async function setUserUnreadBucketCount(
     {
       notificationUnread: {
         [bucket]: Math.max(0, Math.floor(count)),
-        version: UNREAD_COUNTS_VERSION,
         syncedAt: Date.now(),
       },
     },
@@ -67,14 +100,18 @@ export function bucketForNotificationType(type: string): BucketKey | null {
     normalized === 'maintenance_ticket_reopened' ||
     normalized === 'maintenance_ticket_stale' ||
     normalized === 'maintenance_ticket_external_stale'
-    || normalized === 'deco_ticket_new'
-    || normalized === 'deco_ticket_assigned'
-    || normalized === 'deco_ticket_resolved'
-    || normalized === 'deco_ticket_pending_cap_validation'
-    || normalized === 'deco_ticket_validated'
-    || normalized === 'deco_ticket_reopened'
   ) {
     return 'maintenance'
+  }
+  if (
+    normalized === 'deco_ticket_new' ||
+    normalized === 'deco_ticket_assigned' ||
+    normalized === 'deco_ticket_resolved' ||
+    normalized === 'deco_ticket_pending_cap_validation' ||
+    normalized === 'deco_ticket_validated' ||
+    normalized === 'deco_ticket_reopened'
+  ) {
+    return 'deco'
   }
   if (normalized === 'incident_marketing_9xx_new' || normalized === 'incident_action_assigned') {
     return 'incidents'
@@ -94,7 +131,6 @@ export async function incrementUserUnreadCount(
     {
       notificationUnread: {
         [bucket]: FieldValue.increment(delta),
-        version: UNREAD_COUNTS_VERSION,
         syncedAt: Date.now(),
       },
     },
@@ -121,7 +157,6 @@ export async function incrementUserUnreadCounts(
       {
         notificationUnread: {
           [bucket]: FieldValue.increment(delta),
-          version: UNREAD_COUNTS_VERSION,
           syncedAt: now,
         },
       },
@@ -154,6 +189,7 @@ export async function readUserUnreadBuckets(userId: string): Promise<Notificatio
     projects: Math.max(0, Number(raw.projects || 0)),
     logistics: Math.max(0, Number(raw.logistics || 0)),
     maintenance: Math.max(0, Number(raw.maintenance || 0)),
+    deco: Math.max(0, Number(raw.deco || 0)),
     incidents: Math.max(0, Number(raw.incidents || 0)),
     events: Math.max(0, Number(raw.events || 0)),
     version: UNREAD_COUNTS_VERSION,
@@ -162,25 +198,20 @@ export async function readUserUnreadBuckets(userId: string): Promise<Notificatio
 }
 
 export async function syncUserUnreadBuckets(userId: string): Promise<NotificationUnreadBuckets> {
-  const docs = await fetchUnreadNotificationDocs(userId)
-  const typeCounts = countNotificationTypes(docs)
+  const bucketKeys = Object.keys(NOTIFICATION_TYPES_BY_BUCKET) as BucketKey[]
+  const counts = await Promise.all(
+    bucketKeys.map((bucket) =>
+      countUnreadNotificationsByTypes(userId, [...NOTIFICATION_TYPES_BY_BUCKET[bucket]])
+    )
+  )
+  const counted = Object.fromEntries(
+    bucketKeys.map((bucket, index) => [bucket, counts[index]])
+  ) as Record<BucketKey, number>
 
   const buckets: NotificationUnreadBuckets = {
-    user_request: 0,
-    user_request_result: 0,
-    torn: 0,
-    projects: 0,
-    logistics: 0,
-    maintenance: 0,
-    incidents: 0,
-    events: 0,
+    ...counted,
     version: UNREAD_COUNTS_VERSION,
     syncedAt: Date.now(),
-  }
-
-  for (const [type, count] of typeCounts) {
-    const bucket = bucketForNotificationType(type)
-    if (bucket) buckets[bucket] += count
   }
 
   const ref = await userDocRefByAuthId(userId)
@@ -195,6 +226,7 @@ const EMPTY_BUCKETS = (): NotificationUnreadBuckets => ({
   projects: 0,
   logistics: 0,
   maintenance: 0,
+  deco: 0,
   incidents: 0,
   events: 0,
   version: UNREAD_COUNTS_VERSION,
@@ -241,7 +273,6 @@ export async function decrementUnreadFromNotificationDocs(
   if (bucketDeltas.size === 0) return
 
   const notificationUnread: Record<string, unknown> = {
-    version: UNREAD_COUNTS_VERSION,
     syncedAt: Date.now(),
   }
   for (const [bucket, delta] of bucketDeltas) {

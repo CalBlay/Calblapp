@@ -5,6 +5,7 @@ export const REPORTS_UI_PATH = '/menu/reports'
 
 export const REPORTS_DOMAIN_ACTION = {
   rrhh: 'tab:rrhh',
+  audits: 'tab:audits',
   transports: 'tab:transports',
   maintenance: 'tab:maintenance',
   events: 'tab:events',
@@ -14,6 +15,7 @@ export type ReportsPermissionDomain = keyof typeof REPORTS_DOMAIN_ACTION
 
 export const REPORTS_DOMAIN_PERMISSIONS: Record<ReportsPermissionDomain, string> = {
   rrhh: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.rrhh),
+  audits: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.audits),
   transports: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.transports),
   maintenance: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.maintenance),
   events: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.events),

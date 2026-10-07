@@ -60,6 +60,8 @@ type Props = {
   availableJamoneros: Array<{ id: string; name: string }>
   availableTreballadors?: Array<{ id: string; name: string }>
   driverCrews?: DriverCrewPremise[]
+  department?: string
+  excludeEventId?: string
   jamoneroAssignments: ServiceJamoneroAssignment[]
   setJamoneroCount: (count: number) => void
   updateJamoneroAssignment: (id: string, patch: Partial<ServiceJamoneroAssignment>) => void
@@ -98,6 +100,8 @@ export default function ServicePhasePanel({
   availableJamoneros,
   availableTreballadors = [],
   driverCrews = [],
+  department,
+  excludeEventId,
   jamoneroAssignments,
   setJamoneroCount: _setJamoneroCount,
   updateJamoneroAssignment,
@@ -304,6 +308,8 @@ export default function ServicePhasePanel({
                                 treballadors={treballadorOptions}
                                 crewMembers={crewMembers}
                                 reservedPersonIds={reservedForLine}
+                                department={department}
+                                excludeEventId={excludeEventId}
                                 canRemove={roleLines.length > 1}
                                 onPatch={(patch) =>
                                   updateGroup(

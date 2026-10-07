@@ -40,9 +40,9 @@ test('bucketForNotificationType maps known notification families', () => {
   assert.equal(bucketForNotificationType('event_comanda_warehouse'), 'events')
   assert.equal(bucketForNotificationType('event_comanda_batch_sent'), 'events')
   assert.equal(bucketForNotificationType('maintenance_ticket_assigned'), 'maintenance')
-  assert.equal(bucketForNotificationType('deco_ticket_assigned'), 'maintenance')
+  assert.equal(bucketForNotificationType('deco_ticket_assigned'), 'deco')
   assert.equal(bucketForNotificationType('maintenance_ticket_reopened'), 'maintenance')
-  assert.equal(bucketForNotificationType('deco_ticket_reopened'), 'maintenance')
+  assert.equal(bucketForNotificationType('deco_ticket_reopened'), 'deco')
   assert.equal(bucketForNotificationType('incident_action_assigned'), 'incidents')
 })
 
@@ -50,5 +50,5 @@ test('bucketForNotificationType ignores blank and unknown types', () => {
   assert.equal(bucketForNotificationType(''), null)
   assert.equal(bucketForNotificationType('   '), null)
   assert.equal(bucketForNotificationType('unknown_type'), null)
-  assert.equal(UNREAD_COUNTS_VERSION, 2)
+  assert.equal(UNREAD_COUNTS_VERSION, 3)
 })

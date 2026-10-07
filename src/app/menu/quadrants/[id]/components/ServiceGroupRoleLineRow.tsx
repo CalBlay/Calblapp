@@ -14,6 +14,7 @@ import {
   type CrewMemberRef,
 } from '@/lib/driverCrewUtils'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   isPersonReservedForRoleLine,
   normalizeRoleLinePersonKey,
@@ -37,6 +38,8 @@ type Props = {
   treballadors: PersonOption[]
   crewMembers?: CrewMemberRef[]
   reservedPersonIds: Set<string>
+  department?: string
+  excludeEventId?: string
   onPatch: (patch: Partial<ServeiGroupRoleLine>) => void
   onRemove: () => void
   canRemove: boolean
@@ -102,6 +105,8 @@ export default function ServiceGroupRoleLineRow({
   treballadors,
   crewMembers = [],
   reservedPersonIds,
+  department,
+  excludeEventId,
   onPatch,
   onRemove,
   canRemove,
@@ -111,7 +116,28 @@ export default function ServiceGroupRoleLineRow({
   const [personPickerOpen, setPersonPickerOpen] = useState(false)
   const [personSearch, setPersonSearch] = useState('')
   const normalize = normalizeRoleLinePersonKey
-  const basePeople = peopleForRole(line.role, responsables, conductors, treballadors).filter((person) => {
+  const rowAvailabilityEnabled = Boolean(
+    department && line.serviceDate && line.startTime && line.endTime
+  )
+  const rowAvailability = useAvailablePersonnel({
+    departament: department || '',
+    startDate: line.serviceDate,
+    endDate: line.serviceDate,
+    startTime: line.startTime,
+    endTime: line.endTime,
+    excludeEventId,
+    includeConflicts: true,
+    enabled: rowAvailabilityEnabled,
+  })
+  const rowResponsables = rowAvailabilityEnabled ? rowAvailability.responsables : responsables
+  const rowConductors = rowAvailabilityEnabled ? rowAvailability.conductors : conductors
+  const rowTreballadors = rowAvailabilityEnabled ? rowAvailability.treballadors : treballadors
+  const basePeople = peopleForRole(
+    line.role,
+    rowResponsables,
+    rowConductors,
+    rowTreballadors
+  ).filter((person) => {
     const pid = normalize(person.id)
     if (!pid) return false
     if (normalize(line.personId) === pid) return true

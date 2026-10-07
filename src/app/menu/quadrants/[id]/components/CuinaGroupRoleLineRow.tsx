@@ -11,6 +11,7 @@ import {
 } from '@/lib/transportTypes'
 import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   getExternalWorkerBaseLabel,
   normalizeExternalWorkerName,
@@ -41,6 +42,8 @@ type Props = {
   conductors: PersonOption[]
   treballadors: PersonOption[]
   reservedPersonIds: Set<string>
+  department?: string
+  excludeEventId?: string
   availableVehicles: AvailableVehicle[]
   assignedVehicleIds: Set<string>
   canRemove: boolean
@@ -66,6 +69,8 @@ export default function CuinaGroupRoleLineRow({
   conductors,
   treballadors,
   reservedPersonIds,
+  department,
+  excludeEventId,
   availableVehicles,
   assignedVehicleIds,
   canRemove,
@@ -80,17 +85,33 @@ export default function CuinaGroupRoleLineRow({
   const isResponsable = line.role === 'responsable'
   const isCenterExternalExtra = isCuinaCenterExternalExtraLine(line)
   const fieldClass = compact ? 'h-8 text-xs' : 'h-9 text-sm'
+  const rowAvailabilityEnabled = Boolean(
+    department && line.serviceDate && line.startTime && line.endTime
+  )
+  const rowAvailability = useAvailablePersonnel({
+    departament: department || '',
+    startDate: line.serviceDate,
+    endDate: line.serviceDate,
+    startTime: line.startTime,
+    endTime: line.endTime,
+    excludeEventId,
+    includeConflicts: true,
+    enabled: rowAvailabilityEnabled,
+  })
+  const rowResponsables = rowAvailabilityEnabled ? rowAvailability.responsables : responsables
+  const rowConductors = rowAvailabilityEnabled ? rowAvailability.conductors : conductors
+  const rowTreballadors = rowAvailabilityEnabled ? rowAvailability.treballadors : treballadors
 
   const peoplePool = useMemo(() => {
     const base = isConductor
-      ? conductors.filter(
+      ? rowConductors.filter(
           (person) =>
             person.id === line.personId ||
             canDriverHandleVehicleType(person as DriverCapability, vehicleTypeNorm || undefined)
         )
       : isResponsable
-        ? responsables.filter((person) => isResponsiblePerson(person))
-        : treballadors
+        ? rowResponsables.filter((person) => isResponsiblePerson(person))
+        : rowTreballadors
 
     return base.filter((person) => {
       const pid = normalize(person.id)
@@ -106,15 +127,15 @@ export default function CuinaGroupRoleLineRow({
       return !isPersonReservedForRoleLine(person, reservedPersonIds)
     })
   }, [
-    conductors,
     isConductor,
     isResponsable,
     line.personId,
     line.personName,
     normalize,
     reservedPersonIds,
-    responsables,
-    treballadors,
+    rowConductors,
+    rowResponsables,
+    rowTreballadors,
     vehicleTypeNorm,
   ])
 

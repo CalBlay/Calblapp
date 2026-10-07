@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import type { Query } from 'firebase-admin/firestore'
+import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
-import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
+import {
+  decrementUnreadFromNotificationDocs,
+  syncUserUnreadBuckets,
+} from '@/lib/notifications/unreadCounts'
 import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
 import { PROJECT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTypes'
 import { pruneDeletedProjectNotifications } from '@/lib/notifications/projectNotificationCount.server'
@@ -26,6 +29,18 @@ type NotificationFirestoreDoc = Record<string, unknown> & {
 }
 
 type NotificationListItem = { id: string } & NotificationFirestoreDoc
+
+const FIRESTORE_BATCH_DELETE_LIMIT = 450
+
+async function deleteNotificationDocs(docs: QueryDocumentSnapshot[]): Promise<void> {
+  for (let index = 0; index < docs.length; index += FIRESTORE_BATCH_DELETE_LIMIT) {
+    const batch = db.batch()
+    docs
+      .slice(index, index + FIRESTORE_BATCH_DELETE_LIMIT)
+      .forEach((doc) => batch.delete(doc.ref))
+    await batch.commit()
+  }
+}
 
 const PROJECT_NOTIFICATION_TYPE_SET = new Set<string>(PROJECT_NOTIFICATION_TYPES)
 
@@ -159,30 +174,44 @@ export async function PATCH(req: Request) {
     const body = (await req.json()) as {
       action?: string
       type?: string
+      types?: string[]
       notificationId?: string
       requestId?: string
       deliveryId?: string
     }
     const action = body.action || ''
     const type = (body.type || '').trim()
+    const types = [
+      ...new Set([
+        type,
+        ...(Array.isArray(body.types) ? body.types : []),
+      ].map((value) => String(value || '').trim()).filter(Boolean)),
+    ]
     const notificationId = (body.notificationId || '').trim()
     const requestId = (body.requestId || '').trim()
     const deliveryId = (body.deliveryId || '').trim()
 
     const notificationsRef = await userNotificationsCollectionByAuthId(userId)
-    let baseRef: Query = notificationsRef
-
-    if (type) {
-      baseRef = baseRef.where('type', '==', type)
-    }
-
     if (action === 'markAllRead') {
-      const snap = await baseRef.where('read', '==', false).get()
-      const batch = db.batch()
-      snap.docs.forEach(d => batch.update(d.ref, { read: true }))
-      await batch.commit()
-      await decrementUnreadFromNotificationDocs(userId, snap.docs)
-      return NextResponse.json({ success: true })
+      const snapshots = types.length > 0
+        ? await Promise.all(
+            types.map((notificationType) =>
+              notificationsRef
+                .where('type', '==', notificationType)
+                .where('read', '==', false)
+                .get()
+            )
+          )
+        : [await notificationsRef.where('read', '==', false).get()]
+      const docsByPath = new Map<string, QueryDocumentSnapshot>()
+      snapshots.forEach((snapshot) => {
+        snapshot.docs.forEach((doc) => docsByPath.set(doc.ref.path, doc))
+      })
+      const docs = [...docsByPath.values()]
+
+      await deleteNotificationDocs(docs)
+      await syncUserUnreadBuckets(userId)
+      return NextResponse.json({ success: true, deleted: docs.length })
     }
 
     if (action === 'markRead') {

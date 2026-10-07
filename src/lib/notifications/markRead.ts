@@ -10,28 +10,37 @@ async function refreshNotificationCaches() {
   ])
 }
 
+async function ensureSuccessfulResponse(response: Response) {
+  if (response.ok) return
+  const payload = await response.json().catch(() => null)
+  throw new Error(payload?.error || `No s'han pogut actualitzar els avisos (${response.status})`)
+}
+
 export async function markNotificationRead(notificationId: string) {
   const id = String(notificationId || '').trim()
   if (!id) return
 
-  await fetch('/api/notifications', {
+  const response = await fetch('/api/notifications', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'markRead', notificationId: id }),
   })
+  await ensureSuccessfulResponse(response)
 
   await refreshNotificationCaches()
 }
 
-export async function markAllNotificationsRead(type: string) {
-  const normalizedType = String(type || '').trim()
-  if (!normalizedType) return
+export async function markAllNotificationsRead(type: string | Iterable<string>) {
+  const rawTypes = typeof type === 'string' ? [type] : [...type]
+  const types = [...new Set(rawTypes.map((value) => String(value || '').trim()).filter(Boolean))]
+  if (types.length === 0) return
 
-  await fetch('/api/notifications', {
+  const response = await fetch('/api/notifications', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'markAllRead', type: normalizedType }),
+    body: JSON.stringify({ action: 'markAllRead', types }),
   })
+  await ensureSuccessfulResponse(response)
 
   await refreshNotificationCaches()
 }

@@ -17,6 +17,7 @@ const EMPTY_SUMMARY: NotificationSummaryPayload = {
   projects: 0,
   logistics: 0,
   maintenance: 0,
+  deco: 0,
   incidents: 0,
   events: 0,
   surveys: 0,

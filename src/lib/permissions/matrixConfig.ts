@@ -104,6 +104,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     defaultAllowed: true,
     actions: [
       { key: REPORTS_DOMAIN_PERMISSIONS.rrhh, label: 'RRHH' },
+      { key: REPORTS_DOMAIN_PERMISSIONS.audits, label: 'Auditories' },
       { key: REPORTS_DOMAIN_PERMISSIONS.transports, label: 'Transports' },
       { key: REPORTS_DOMAIN_PERMISSIONS.maintenance, label: 'Manteniment' },
       { key: REPORTS_DOMAIN_PERMISSIONS.events, label: 'Esdeveniments' },

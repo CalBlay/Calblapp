@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { mutate as mutateCache } from 'swr'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -59,6 +59,7 @@ export default function MissatgeriaPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const messagesCache = useRef<Map<string, Message[]>>(new Map())
   const typingThrottleRef = useRef<number>(0)
+  const channelReadQueueRef = useRef<Map<string, Promise<void>>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const lastEventIdRef = useRef<string | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
@@ -89,7 +90,57 @@ export default function MissatgeriaPage() {
   const { data: channelsData, mutate: refreshChannels } = useSWR(
     '/api/messaging/channels?scope=mine',
     fetcher,
-    { refreshInterval: 0 }
+    { refreshInterval: 10_000 }
+  )
+
+  const markChannelRead = useCallback(
+    (channelId: string) => {
+      const normalizedId = String(channelId || '').trim()
+      if (!normalizedId) return Promise.resolve()
+
+      void refreshChannels(
+        (current) => {
+          if (!current || !Array.isArray(current.channels)) return current
+          return {
+            ...current,
+            channels: current.channels.map((channel: Channel) =>
+              channel.id === normalizedId ? { ...channel, unreadCount: 0 } : channel
+            ),
+          }
+        },
+        { revalidate: false }
+      )
+
+      const previous = channelReadQueueRef.current.get(normalizedId) || Promise.resolve()
+      const request = previous
+        .catch(() => {})
+        .then(async () => {
+          const response = await fetch(`/api/messaging/channels/${encodeURIComponent(normalizedId)}/read`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+          })
+          if (!response.ok) {
+            throw new Error(`No s'ha pogut marcar el canal com a llegit (${response.status})`)
+          }
+          await Promise.all([
+            refreshChannels(),
+            mutateCache('/api/notifications/summary'),
+          ])
+        })
+        .catch(async (error) => {
+          await refreshChannels()
+          throw error
+        })
+        .finally(() => {
+          if (channelReadQueueRef.current.get(normalizedId) === request) {
+            channelReadQueueRef.current.delete(normalizedId)
+          }
+        })
+
+      channelReadQueueRef.current.set(normalizedId, request)
+      return request
+    },
+    [refreshChannels]
   )
 
   const channels = useMemo<Channel[]>(
@@ -282,7 +333,7 @@ export default function MissatgeriaPage() {
       ? `/api/messaging/channels/${selectedChannelId}/messages?limit=15`
       : null,
     fetcher,
-    { refreshInterval: 0 }
+    { refreshInterval: selectedChannelId ? 4_000 : 0 }
   )
 
   const messages = useMemo<Message[]>(
@@ -414,10 +465,19 @@ export default function MissatgeriaPage() {
   }
 
   useEffect(() => {
-    setMessagesState(messages)
-    if (selectedChannelId) {
-      messagesCache.current.set(selectedChannelId, messages)
+    if (!selectedChannelId) {
+      setMessagesState(messages)
+      return
     }
+    const pending = (messagesCache.current.get(selectedChannelId) || []).filter((message) =>
+      message.id.startsWith('pending-')
+    )
+    const next = Array.from(
+      new Map([...pending, ...messages].map((message) => [message.id, message])).values()
+    )
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+    setMessagesState(next)
+    messagesCache.current.set(selectedChannelId, next)
   }, [messages, selectedChannelId])
 
   useEffect(() => {
@@ -444,11 +504,8 @@ export default function MissatgeriaPage() {
 
   useEffect(() => {
     if (!selectedChannelId) return
-    fetch(`/api/messaging/channels/${selectedChannelId}/read`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-    }).then(() => refreshChannels())
-  }, [selectedChannelId, refreshChannels])
+    void markChannelRead(selectedChannelId).catch(() => {})
+  }, [selectedChannelId, markChannelRead])
 
   useEffect(() => {
     if (!userId) return
@@ -458,11 +515,18 @@ export default function MissatgeriaPage() {
       subscriptions: [
         {
           eventName: 'updated',
-          handler: () => refreshChannels(),
+          handler: (message) => {
+            const data = message?.data as { channelId?: string } | undefined
+            if (data?.channelId && data.channelId === selectedChannelId) {
+              void markChannelRead(data.channelId).catch(() => {})
+              return
+            }
+            void refreshChannels()
+          },
         },
       ],
     })
-  }, [userId, refreshChannels])
+  }, [userId, selectedChannelId, markChannelRead, refreshChannels])
 
   useEffect(() => {
     if (!selectedChannelId) return
@@ -472,6 +536,7 @@ export default function MissatgeriaPage() {
       if (!data) return
       if (data.channelId !== selectedChannelId) return
       syncMessagesLocal((current) => [data, ...current.filter((item) => item.id !== data.id)])
+      void markChannelRead(selectedChannelId).catch(() => {})
     }
 
     const handleTyping = (msg: { data?: unknown }) => {
@@ -505,7 +570,7 @@ export default function MissatgeriaPage() {
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [selectedChannelId, userId, syncMessagesLocal])
+  }, [selectedChannelId, userId, syncMessagesLocal, markChannelRead])
 
   const loadMore = async () => {
     if (!selectedChannelId || messagesState.length === 0) return
@@ -528,15 +593,21 @@ export default function MissatgeriaPage() {
   }
 
   const sendMessage = async () => {
-    const hasText = !!messageText.trim()
-    const hasImage = !!pendingImage?.url
-    const hasFile = !!pendingFile
+    const draftText = messageText.trim()
+    const draftImage = pendingImage
+    const draftFile = pendingFile
+    const draftMentionTarget = mentionTarget
+    const hasText = !!draftText
+    const hasImage = !!draftImage?.url
+    const hasFile = !!draftFile
     if (!selectedChannelId || (!hasText && !hasImage && !hasFile)) return
-    const directTarget = mentionTarget?.userId || ''
+    const directTarget = draftMentionTarget?.userId || ''
     const finalVisibility = directTarget ? 'direct' : 'channel'
+    let optimisticId = ''
 
     try {
       setLoadingSend(true)
+      setImageError(null)
       let filePayload:
         | {
             fileUrl?: string
@@ -546,9 +617,9 @@ export default function MissatgeriaPage() {
           }
         | undefined
 
-      if (pendingFile && selectedChannel?.source === 'projects') {
+      if (draftFile && selectedChannel?.source === 'projects') {
         const form = new FormData()
-        form.append('file', pendingFile)
+        form.append('file', draftFile)
         form.append('channelId', selectedChannelId)
         const uploadRes = await fetch('/api/messaging/upload-file', {
           method: 'POST',
@@ -570,16 +641,42 @@ export default function MissatgeriaPage() {
       }
 
       const createdAt = Date.now()
+      optimisticId = `pending-${crypto.randomUUID()}`
+      const optimisticMessage: Message = {
+        id: optimisticId,
+        channelId: selectedChannelId,
+        senderId: userId || '',
+        senderName: String(sessionUser.name || ''),
+        body: hasText ? draftText : '',
+        createdAt,
+        visibility: finalVisibility,
+        targetUserIds: finalVisibility === 'direct' && directTarget ? [directTarget] : [],
+        imageUrl: draftImage?.url || null,
+        imagePath: draftImage?.path || null,
+        imageMeta: draftImage?.meta || null,
+        fileUrl: filePayload?.fileUrl || null,
+        filePath: filePayload?.filePath || null,
+        fileName: filePayload?.fileName || null,
+        fileMeta: filePayload?.fileMeta || null,
+      }
+      syncMessagesLocal((current) => [optimisticMessage, ...current])
+      setMessageText('')
+      setPendingImage(null)
+      setPendingFile(null)
+      setMentionTarget(null)
+      setMentionQuery('')
+      setMentionOpen(false)
+
       const sendRes = await fetch(`/api/messaging/channels/${selectedChannelId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: hasText ? messageText.trim() : '',
+          text: hasText ? draftText : '',
           visibility: finalVisibility,
           targetUserId: finalVisibility === 'direct' ? directTarget : undefined,
-          imageUrl: pendingImage?.url || undefined,
-          imagePath: pendingImage?.path || undefined,
-          imageMeta: pendingImage?.meta || undefined,
+          imageUrl: draftImage?.url || undefined,
+          imagePath: draftImage?.path || undefined,
+          imageMeta: draftImage?.meta || undefined,
           fileUrl: filePayload?.fileUrl,
           filePath: filePayload?.filePath,
           fileName: filePayload?.fileName,
@@ -590,31 +687,25 @@ export default function MissatgeriaPage() {
       if (!sendRes.ok || !sendData?.messageId) {
         throw new Error(sendData?.error || 'No s ha pogut enviar el missatge')
       }
-      const optimisticMessage: Message = {
-        id: String(sendData.messageId),
-        channelId: selectedChannelId,
-        senderId: userId || '',
-        senderName: String(sessionUser.name || ''),
-        body: hasText ? messageText.trim() : '',
-        createdAt,
-        visibility: finalVisibility,
-        targetUserIds: finalVisibility === 'direct' && directTarget ? [directTarget] : [],
-        imageUrl: pendingImage?.url || null,
-        imagePath: pendingImage?.path || null,
-        imageMeta: pendingImage?.meta || null,
-        fileUrl: filePayload?.fileUrl || null,
-        filePath: filePayload?.filePath || null,
-        fileName: filePayload?.fileName || null,
-        fileMeta: filePayload?.fileMeta || null,
+      const messageId = String(sendData.messageId)
+      syncMessagesLocal((current) => {
+        if (current.some((message) => message.id === messageId)) {
+          return current.filter((message) => message.id !== optimisticId)
+        }
+        return current.map((message) =>
+          message.id === optimisticId ? { ...message, id: messageId } : message
+        )
+      })
+      void refreshChannels()
+    } catch (error) {
+      if (optimisticId) {
+        syncMessagesLocal((current) => current.filter((message) => message.id !== optimisticId))
+        setMessageText((current) => current || draftText)
+        setPendingImage((current) => current || draftImage)
+        setPendingFile((current) => current || draftFile)
+        setMentionTarget((current) => current || draftMentionTarget)
       }
-      syncMessagesLocal((current) => [optimisticMessage, ...current.filter((item) => item.id !== optimisticMessage.id)])
-      setMessageText('')
-      setPendingImage(null)
-      setPendingFile(null)
-      setMentionTarget(null)
-      setMentionQuery('')
-      setMentionOpen(false)
-      refreshChannels()
+      setImageError(error instanceof Error ? error.message : "No s'ha pogut enviar el missatge")
     } finally {
       setLoadingSend(false)
     }
