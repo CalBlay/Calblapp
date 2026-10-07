@@ -66,6 +66,11 @@ import {
   DECO_TICKETS_INBOX_PERM,
   DECO_TICKETS_MANAGE_PERM,
 } from '@/lib/decoTicketsPermissions'
+import {
+  CUINA_CENTRAL_MAINTENANCE_PATH,
+  CUINA_CENTRAL_MAINTENANCE_PLANNER_PATH,
+  CUINA_CENTRAL_MAINTENANCE_TICKETS_PATH,
+} from '@/lib/cuinaCentralMaintenancePermissions'
 
 const opsRoomsFetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -136,24 +141,43 @@ function TicketWorkspace() {
   const { setContent } = useFilters()
   const { isPathAllowed, hasAction, canEditPath } = useUiPermissions()
   const isDeco = pathname.startsWith('/menu/deco/tickets')
+  const isCuinaCentral = pathname.startsWith('/menu/cuina-central/manteniment')
+  const scope = isCuinaCentral ? 'cuina_central' as const : undefined
   const ticketType: TicketType = isDeco ? 'deco' : 'maquinaria'
-  const title = isDeco ? 'Imatge-Deco' : 'Manteniment'
-  const mainHref = isDeco ? '/menu/deco' : '/menu/manteniment'
-  const permissionPath = isDeco ? '/menu/deco/tickets' : '/menu/manteniment/tickets'
+  const title = isDeco ? 'Imatge-Deco' : isCuinaCentral ? 'Manteniment de Cuina Central' : 'Manteniment'
+  const mainHref = isDeco ? '/menu/deco' : isCuinaCentral ? '/menu/cuina-central' : '/menu/manteniment'
+  const permissionPath = isDeco
+    ? '/menu/deco/tickets'
+    : isCuinaCentral
+      ? CUINA_CENTRAL_MAINTENANCE_PATH
+      : '/menu/manteniment/tickets'
   const canEditCurrentTickets = canEditPath(permissionPath)
-  const plannerPath = isDeco ? DECO_PLANNER_UI_PATH : MAINTENANCE_PLANNER_PATH
-  const canViewPlanner = isPathAllowed(plannerPath)
+  const plannerPath = isDeco
+    ? DECO_PLANNER_UI_PATH
+    : isCuinaCentral
+      ? CUINA_CENTRAL_MAINTENANCE_PLANNER_PATH
+      : MAINTENANCE_PLANNER_PATH
+  const canViewPlanner = isCuinaCentral ? isPathAllowed(CUINA_CENTRAL_MAINTENANCE_PATH) : isPathAllowed(plannerPath)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
-  const isOwnTicketsOnly = !isDeco && isMaintenanceTicketCreatorOnlyUser(sessionUser)
+  const isOwnTicketsOnly = !isDeco && !isCuinaCentral && isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const isQualitatViewer = !isDeco && isQualitatCuinaCentralTicketViewer(sessionUser)
-  const canCreateNewTicket = isDeco ? canEditCurrentTickets : canCreateMaintenanceTicketsAsReporter(sessionUser)
-  const canManageInbox = hasAction(isDeco ? DECO_TICKETS_INBOX_PERM : MAINTENANCE_TICKETS_INBOX_PERM)
+  const canCreateNewTicket = isCuinaCentral
+    ? canEditCurrentTickets
+    : isDeco
+      ? canEditCurrentTickets
+      : canCreateMaintenanceTicketsAsReporter(sessionUser)
+  const canManageInbox = isCuinaCentral
+    ? canEditCurrentTickets
+    : hasAction(isDeco ? DECO_TICKETS_INBOX_PERM : MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(isDeco ? DECO_TICKETS_DELETE_PERM : MAINTENANCE_TICKETS_DELETE_PERM)
-  const canManageAllTickets = hasAction(isDeco ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM)
+  const canManageAllTickets = isCuinaCentral
+    ? canEditCurrentTickets
+    : hasAction(isDeco ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM)
   const canManageMaintenanceOpsByRole = !isDeco && canManageMaintenanceTickets(sessionUser)
   const canSeeMaintenanceBell =
-    !isDeco && (canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets'))
+    !isDeco &&
+    (canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets'))
   const canSeeDecoBell = isDeco && isPathAllowed('/menu/deco/tickets')
   const canManageInboxTickets = canManageInbox
 
@@ -279,7 +303,11 @@ function TicketWorkspace() {
     ticketSummary,
     externalReporterSummary,
     ticketScopeSummary,
-  } = useMaintenanceTickets({ ticketType })
+  } = useMaintenanceTickets({
+    ticketType,
+    scope,
+    canManageScope: isCuinaCentral && canEditCurrentTickets,
+  })
 
   const toggleExternalBucket = useCallback(
     (bucket: keyof typeof EXTERNAL_BUCKET_LABELS) => {
@@ -438,21 +466,23 @@ function TicketWorkspace() {
                 <option value="baixa">{PRIORITY_LABELS.baixa}</option>
               </select>
             </label>
-            <label className="space-y-2 text-sm text-slate-700">
-              <span className="font-medium">Origen</span>
-              <select
-                value={filters.ticketScope ?? '__all__'}
-                onChange={(e) => setFilters((prev) => ({ ...prev, ticketScope: e.target.value }))}
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-              >
-                <option value="__all__">Tots</option>
-                {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => (
-                  <option key={scope} value={scope}>
-                    {TICKET_SCOPE_LABELS[scope]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!isCuinaCentral ? (
+              <label className="space-y-2 text-sm text-slate-700">
+                <span className="font-medium">Origen</span>
+                <select
+                  value={filters.ticketScope ?? '__all__'}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, ticketScope: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                >
+                  <option value="__all__">Tots</option>
+                  {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => (
+                    <option key={scope} value={scope}>
+                      {TICKET_SCOPE_LABELS[scope]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="space-y-2 text-sm text-slate-700">
               <span className="font-medium">Centre</span>
               <select
@@ -547,6 +577,7 @@ function TicketWorkspace() {
     filterZones,
     filters,
     isExternalReporter,
+    isCuinaCentral,
     setContent,
     setFilters,
   ])
@@ -576,7 +607,12 @@ function TicketWorkspace() {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('ticketId')
     const nextQuery = params.toString()
-    router.replace(nextQuery ? `/menu/manteniment/tickets?${nextQuery}` : '/menu/manteniment/tickets')
+    const basePath = isCuinaCentral
+      ? CUINA_CENTRAL_MAINTENANCE_TICKETS_PATH
+      : isDeco
+        ? '/menu/deco/tickets'
+        : '/menu/manteniment/tickets'
+    router.replace(nextQuery ? `${basePath}?${nextQuery}` : basePath)
   }
 
   useEffect(() => {
@@ -645,12 +681,13 @@ function TicketWorkspace() {
 
   const canShowTicketOps = useCallback(
     (ticket: Ticket) => {
+      if (isCuinaCentral) return false
       if (!isTicketOpsActive(ticket)) return false
       if (canManageAllTickets || canManageInboxTickets || canManageMaintenanceOpsByRole) return true
       if (userId && ticket.createdById === userId) return true
       return false
     },
-    [canManageAllTickets, canManageInboxTickets, canManageMaintenanceOpsByRole, userId]
+    [canManageAllTickets, canManageInboxTickets, canManageMaintenanceOpsByRole, isCuinaCentral, userId]
   )
 
   const openTicketOps = useCallback((ticket: Ticket) => {
@@ -685,7 +722,13 @@ function TicketWorkspace() {
           actions={
             canViewPlanner || (canManageAllTickets || canCreateNewTicket) || canSeeMaintenanceBell || canSeeDecoBell ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
+                {canSeeMaintenanceBell ? (
+                  <MaintenanceNotificationsBell
+                    ticketBasePath={
+                      isCuinaCentral ? CUINA_CENTRAL_MAINTENANCE_TICKETS_PATH : undefined
+                    }
+                  />
+                ) : null}
                 {canSeeDecoBell ? <MaintenanceNotificationsBell module="deco" /> : null}
                 {canViewPlanner ? (
                   <Link
@@ -754,7 +797,7 @@ function TicketWorkspace() {
             onOpenFilters={() => undefined}
             bottomSlot={
               <div className="flex flex-col gap-3">
-                {!isExternalReporter ? (
+                {!isExternalReporter && !isCuinaCentral ? (
                   <div className="flex flex-wrap gap-2">
                     {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => {
                       const active = (filters.ticketScope ?? '__all__') === scope

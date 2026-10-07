@@ -44,6 +44,7 @@ import {
   matchesMaintenanceSiteFilters,
   resolveMaintenanceTicketCenter,
 } from '@/lib/maintenanceLocationCatalog'
+import { CUINA_CENTRAL_TICKET_ROUTING } from '@/lib/cuina-central/maintenanceTicket'
 
 type SessionUser = {
   id?: string
@@ -130,7 +131,13 @@ function classifyInternalTicketBucket(ticket: Ticket): InternalTicketBucket | nu
   return null
 }
 
-export function useMaintenanceTickets(options: { ticketType?: TicketType } = {}) {
+export function useMaintenanceTickets(
+  options: {
+    ticketType?: TicketType
+    scope?: 'cuina_central'
+    canManageScope?: boolean
+  } = {}
+) {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const role = normalizeRole(sessionUser.role || '')
@@ -138,19 +145,22 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
   const userId = sessionUser.id || ''
   const { hasAction } = useUiPermissions()
   const ticketType = options.ticketType || 'maquinaria'
+  const isCuinaCentralScope = options.scope === 'cuina_central'
 
   const canManageDeco =
     ticketType === 'deco' &&
     (hasAction(DECO_TICKETS_MANAGE_PERM) || hasAction(DECO_TICKETS_INBOX_PERM))
-  const isExternalReporter = ticketType === 'deco'
-    ? !canManageDeco
-    : isExternalMaintenanceTicketReporter({ role, department })
-  const canValidate = hasAction(
-    ticketType === 'deco' ? DECO_TICKETS_VALIDATE_PERM : MAINTENANCE_TICKETS_VALIDATE_PERM
-  )
-  const canReopen = hasAction(
-    ticketType === 'deco' ? DECO_TICKETS_REOPEN_PERM : MAINTENANCE_TICKETS_REOPEN_PERM
-  )
+  const isExternalReporter = isCuinaCentralScope
+    ? false
+    : ticketType === 'deco'
+      ? !canManageDeco
+      : isExternalMaintenanceTicketReporter({ role, department })
+  const canValidate = Boolean(options.canManageScope) || hasAction(
+      ticketType === 'deco' ? DECO_TICKETS_VALIDATE_PERM : MAINTENANCE_TICKETS_VALIDATE_PERM
+    )
+  const canReopen = Boolean(options.canManageScope) || hasAction(
+      ticketType === 'deco' ? DECO_TICKETS_REOPEN_PERM : MAINTENANCE_TICKETS_REOPEN_PERM
+    )
   const canCapValidateTicket = useCallback(
     (_ticket: Ticket) => canValidate,
     [canValidate]
@@ -163,9 +173,9 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
     (ticket: Ticket) => canCreatorRejectMaintenanceTicket(ticket, userId),
     [userId]
   )
-  const canExternalize = hasAction(
-    ticketType === 'deco' ? DECO_TICKETS_EXTERNALIZE_PERM : MAINTENANCE_TICKETS_EXTERNALIZE_PERM
-  )
+  const canExternalize = Boolean(options.canManageScope) || hasAction(
+      ticketType === 'deco' ? DECO_TICKETS_EXTERNALIZE_PERM : MAINTENANCE_TICKETS_EXTERNALIZE_PERM
+    )
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)
@@ -186,9 +196,9 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
       location: '__all__',
       zone: '__all__',
       ticketBucket: '__all__',
-      ticketScope: '__all__',
+      ticketScope: isCuinaCentralScope ? 'cuina_central' : '__all__',
     }
-  }, [])
+  }, [isCuinaCentralScope])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
   const statusFilter = filters.status ?? '__all__'
@@ -198,7 +208,9 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
   const zoneFilter = filters.zone ?? '__all__'
   const dateModeFilter = (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode
   const ticketBucketFilter = filters.ticketBucket ?? '__all__'
-  const ticketScopeFilter = filters.ticketScope ?? '__all__'
+  const ticketScopeFilter = isCuinaCentralScope
+    ? 'cuina_central'
+    : filters.ticketScope ?? '__all__'
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -230,9 +242,10 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
     return resolveDefaultTicketCenterFromUserName(sessionUser.name, centerNames) || ''
   }, [centers, sessionUser.name])
   const defaultCreateWorkerName = useMemo(() => {
+    if (isCuinaCentralScope) return String(sessionUser.name || '').trim()
     if (defaultCreateCenter) return ''
     return String(sessionUser.name || '').trim()
-  }, [defaultCreateCenter, sessionUser.name])
+  }, [defaultCreateCenter, isCuinaCentralScope, sessionUser.name])
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
@@ -253,6 +266,7 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
           'ticketType',
           ticketType === 'maquinaria' && isExternalReporter ? 'all' : ticketType
         )
+        if (isCuinaCentralScope) params.set('scope', 'cuina_central')
         if (statusFilter !== '__all__') params.set('status', statusFilter)
         if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
         if (dateModeFilter === 'planned') {
@@ -296,6 +310,7 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
       filters.end,
       filters.start,
       isExternalReporter,
+      isCuinaCentralScope,
       priorityFilter,
       statusFilter,
       ticketType,
@@ -353,11 +368,12 @@ export function useMaintenanceTickets(options: { ticketType?: TicketType } = {})
     openCreate,
   } = useMaintenanceTicketComposer({
     refreshTickets: () => fetchTickets(),
-    defaultCenter: defaultCreateCenter,
+    defaultCenter: isCuinaCentralScope ? 'Cuina Central' : defaultCreateCenter,
     defaultWorkerName: defaultCreateWorkerName,
     defaultLocation: defaultCreateLocation,
     ticketType,
     allowTicketTypeSelection: ticketType === 'maquinaria' && isExternalReporter,
+    routingOverride: isCuinaCentralScope ? CUINA_CENTRAL_TICKET_ROUTING : undefined,
   })
 
   useEffect(() => {

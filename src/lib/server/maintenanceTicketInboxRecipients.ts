@@ -5,6 +5,10 @@ import {
 } from '@/lib/maintenanceTicketsPermissions'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
 import { DECO_TICKETS_INBOX_PERM } from '@/lib/decoTicketsPermissions'
+import {
+  CUINA_CENTRAL_MAINTENANCE_EDIT_PERM,
+  CUINA_CENTRAL_MAINTENANCE_VIEW_PERM,
+} from '@/lib/cuinaCentralMaintenancePermissions'
 
 function userDocToAccessUser(id: string, data: Record<string, unknown>): AccessUser & { id: string } {
   return {
@@ -72,4 +76,12 @@ export async function listDecoTicketInboxRecipientIds(): Promise<string[]> {
     })
   )
   return Array.from(new Set(recipients.filter(Boolean)))
+}
+
+export async function listCuinaCentralMaintenanceRecipientIds(): Promise<string[]> {
+  const [viewIds, editIds] = await Promise.all([
+    explicitAllowUserIds(CUINA_CENTRAL_MAINTENANCE_VIEW_PERM),
+    explicitAllowUserIds(CUINA_CENTRAL_MAINTENANCE_EDIT_PERM),
+  ])
+  return Array.from(new Set([...viewIds, ...editIds]))
 }

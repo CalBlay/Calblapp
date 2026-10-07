@@ -10,6 +10,7 @@ import {
   ROLES_MAINTENANCE_TEMPLATES_READ,
   ROLES_MAINTENANCE_TEMPLATES_WRITE,
 } from '@/lib/server/maintenanceTemplatesAccess'
+import { canViewCuinaCentralMaintenanceTickets } from '@/lib/server/maintenanceTicketsAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,7 +63,7 @@ export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
   const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_READ)
-  if (denied) return denied.res
+  if (denied && !(await canViewCuinaCentralMaintenanceTickets(auth.user))) return denied.res
 
   try {
     const snap = await db.collection('maintenancePreventiusTemplates').get()

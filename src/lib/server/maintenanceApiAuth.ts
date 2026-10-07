@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
 import { canCreateMaintenanceTicketWithUiAccess } from '@/lib/maintenanceTicketCreators'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
+import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
 
 export const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
@@ -13,6 +14,7 @@ const MAINTENANCE_TICKET_API_VIEW_PATHS = [
   '/menu/manteniment/seguiment',
   '/menu/deco/tickets',
   '/menu/deco/planificador',
+  CUINA_CENTRAL_MAINTENANCE_PATH,
 ] as const
 
 export async function canUseMaintenanceTicketApi(
@@ -88,6 +90,7 @@ export async function requireMaintenanceDataAccess(
           await Promise.all([
             canViewUiPath({ user: auth.user, path: '/menu/manteniment/dades' }),
             canViewUiPath({ user: auth.user, path: '/menu/deco/tickets' }),
+            canViewUiPath({ user: auth.user, path: CUINA_CENTRAL_MAINTENANCE_PATH }),
           ])
         ).some(Boolean)
 

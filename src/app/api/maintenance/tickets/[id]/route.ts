@@ -4,6 +4,8 @@ import {
   canDeleteMaintenanceTickets,
   canManageAllMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canManageCuinaCentralMaintenanceTickets,
+  canViewCuinaCentralMaintenanceTickets,
   canReopenMaintenanceTickets,
   canValidateMaintenanceTickets,
   canViewQualitatCuinaCentralMaintenanceTickets,
@@ -59,6 +61,7 @@ import {
   type MaintenanceTicketOutlookEventRef,
 } from '@/lib/maintenanceTicketOutlook'
 import admin from 'firebase-admin'
+import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
 
 export const runtime = 'nodejs'
 
@@ -268,6 +271,43 @@ async function findMaintenanceTicketAssigneeConflict(params: {
     }
   }
 
+  const plannedDate = new Date(plannedStart)
+  const dateKey = `${plannedDate.getFullYear()}-${String(plannedDate.getMonth() + 1).padStart(2, '0')}-${String(plannedDate.getDate()).padStart(2, '0')}`
+  const preventiusSnap = await db
+    .collection('maintenancePreventiusPlanned')
+    .where('date', '==', dateKey)
+    .get()
+
+  for (const doc of preventiusSnap.docs) {
+    const data = doc.data() as {
+      startTime?: string
+      endTime?: string
+      workerIds?: unknown
+      workerNames?: unknown
+      title?: string
+    }
+    const workerIds = normalizeAssignedIds(data.workerIds)
+    if (!workerIds.some((id) => assignedToIds.includes(id))) continue
+    const startTime = String(data.startTime || '').trim()
+    const endTime = String(data.endTime || '').trim()
+    if (!startTime || !endTime) continue
+    const preventiveStart = new Date(`${dateKey}T${startTime}:00`).getTime()
+    const preventiveEnd = new Date(`${dateKey}T${endTime}:00`).getTime()
+    if (!rangesOverlap(plannedStart, plannedEnd, preventiveStart, preventiveEnd)) continue
+
+    const conflictId = workerIds.find((id) => assignedToIds.includes(id)) || ''
+    const workerNames = Array.isArray(data.workerNames) ? data.workerNames.map(String) : []
+    const conflictName = String(workerNames[workerIds.indexOf(conflictId)] || '').trim()
+    return {
+      conflictingTicketId: doc.id,
+      conflictingTicketCode: String(data.title || 'Manteniment preventiu').trim(),
+      conflictingPersonId: conflictId,
+      conflictingPersonName: conflictName,
+      conflictingStart: preventiveStart,
+      conflictingEnd: preventiveEnd,
+    }
+  }
+
   return null
 }
 
@@ -293,6 +333,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           (await canUseDecoTicketPermission(user, 'inbox'))
         : (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
     const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
+    const canViewCuinaCentralScope =
+      isCuinaCentralMaintenanceTicket(data) &&
+      (await canViewCuinaCentralMaintenanceTickets(user))
     const cuinaCentralUserIds = canViewQualitatCuinaCentral
       ? new Set(await getCuinaCentralUserIds())
       : null
@@ -313,6 +356,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
     if (
       !canViewAllTickets &&
+      !canViewCuinaCentralScope &&
       data.createdById !== user.id &&
       !canViewAssignedTicket &&
       !canViewQualitatTicket
@@ -355,6 +399,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     const current = snap.data() as MaintenanceTicketRecord
     const isDecoTicket = String(current.ticketType || 'maquinaria').toLowerCase() === 'deco'
+    const canManageCuinaCentralScope =
+      !isDecoTicket &&
+      isCuinaCentralMaintenanceTicket(current) &&
+      (await canManageCuinaCentralMaintenanceTickets(user))
+    if (canManageCuinaCentralScope) {
+      canManageTickets = true
+      canManageInbox = true
+      canValidate = true
+      canReopen = true
+    }
     if (isDecoTicket) {
       ;[canManageTickets, canManageInbox, canValidate, canReopen] = await Promise.all([
         canUseDecoTicketPermission(user, 'manage'),

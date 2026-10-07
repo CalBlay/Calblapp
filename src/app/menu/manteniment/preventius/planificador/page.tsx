@@ -48,6 +48,10 @@ import {
   DECO_TICKETS_MANAGE_PERM,
   DECO_TICKETS_UI_PATH,
 } from '@/lib/decoTicketsPermissions'
+import {
+  CUINA_CENTRAL_MAINTENANCE_PATH,
+  CUINA_CENTRAL_MAINTENANCE_TICKETS_PATH,
+} from '@/lib/cuinaCentralMaintenancePermissions'
 
 const ROW_HEIGHT = 40
 const GRID_GAP = 1
@@ -198,12 +202,21 @@ const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 export default function PreventiusPlanificadorPage() {
   const pathname = usePathname() || ''
   const isDecoPlanner = pathname.startsWith(DECO_PLANNER_UI_PATH)
-  const { isPathAllowed, hasAction } = useUiPermissions()
-  const ticketsPath = isDecoPlanner ? DECO_TICKETS_UI_PATH : MAINTENANCE_TICKETS_PATH
-  const canViewTickets = isPathAllowed(ticketsPath)
-  const canManagePlannerTickets = hasAction(
-    isDecoPlanner ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM
-  )
+  const isCuinaCentralPlanner = pathname.startsWith('/menu/cuina-central/manteniment')
+  const scope = isCuinaCentralPlanner ? 'cuina_central' as const : undefined
+  const { isPathAllowed, hasAction, canEditPath } = useUiPermissions()
+  const ticketsPath = isDecoPlanner
+    ? DECO_TICKETS_UI_PATH
+    : isCuinaCentralPlanner
+      ? CUINA_CENTRAL_MAINTENANCE_TICKETS_PATH
+      : MAINTENANCE_TICKETS_PATH
+  const canViewTickets = isCuinaCentralPlanner
+    ? isPathAllowed(CUINA_CENTRAL_MAINTENANCE_PATH)
+    : isPathAllowed(ticketsPath)
+  const canManagePlannerTickets = isCuinaCentralPlanner
+    ? canEditPath(CUINA_CENTRAL_MAINTENANCE_PATH)
+    : hasAction(isDecoPlanner ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM)
+  const canManagePreventius = !isCuinaCentralPlanner
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -304,6 +317,7 @@ export default function PreventiusPlanificadorPage() {
     tab,
     preventiusFilter,
     ticketsAgeFilter,
+    scope,
   })
 
   const workerOptions = useMemo(
@@ -486,6 +500,20 @@ export default function PreventiusPlanificadorPage() {
     return [...scheduledItems, ...ticketFallbacks]
   }, [fallbackTicketScheduledItems, scheduledItems])
 
+  const scopeSafeScheduledItems = useMemo(() => {
+    if (!isCuinaCentralPlanner) return mergedScheduledItems
+    return mergedScheduledItems.map((item) => {
+      if (item.kind !== 'preventiu') return item
+      if (normalizeName(String(item.location || '')).includes('cuina central')) return item
+      return {
+        ...item,
+        title: 'Ocupat · Manteniment',
+        location: '',
+        machine: '',
+      }
+    })
+  }, [isCuinaCentralPlanner, mergedScheduledItems])
+
   const hasPlannerTypeFilter = effectivePlannerViewFilters.length > 0
   const showsTicketContent =
     tab === 'tickets' ||
@@ -494,8 +522,8 @@ export default function PreventiusPlanificadorPage() {
     effectivePlannerViewFilters.includes('externalized')
 
   const kindFilteredScheduledItems = useMemo(() => {
-    if (!hasPlannerTypeFilter) return mergedScheduledItems
-    return mergedScheduledItems.filter((item) => {
+    if (!hasPlannerTypeFilter) return scopeSafeScheduledItems
+    return scopeSafeScheduledItems.filter((item) => {
       const isExternalizedTicket = item.kind === 'ticket' && item.workflowStage === 'externalized'
       const matchesPreventius =
         effectivePlannerViewFilters.includes('preventius') && item.kind === 'preventiu'
@@ -507,7 +535,7 @@ export default function PreventiusPlanificadorPage() {
         effectivePlannerViewFilters.includes('externalized') && isExternalizedTicket
       return matchesPreventius || matchesTickets || matchesExternalized
     })
-  }, [effectivePlannerViewFilters, hasPlannerTypeFilter, mergedScheduledItems])
+  }, [effectivePlannerViewFilters, hasPlannerTypeFilter, scopeSafeScheduledItems])
 
   const ticketStatusFilteredScheduledItems = useMemo(() => {
     if (!showsTicketContent || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
@@ -704,6 +732,7 @@ export default function PreventiusPlanificadorPage() {
       if (payload.type === 'scheduled') {
         const target = scheduledItems.find((i) => i.id === payload.id)
         if (!target) return
+        if (target.kind === 'preventiu' && !canManagePreventius) return
         const duration = minutesFromTime(target.end) - minutesFromTime(target.start)
         const newStart = startTime
         const newEnd = timeFromMinutes(minutesFromTime(newStart) + Math.max(30, duration))
@@ -771,6 +800,7 @@ export default function PreventiusPlanificadorPage() {
         )
         if (alreadyPlanned) return
       } else {
+        if (!canManagePreventius) return
         if (isPreventiuScheduledInWeek(payload.templateId, payload.title, scheduledItems)) return
       }
 
@@ -839,6 +869,7 @@ export default function PreventiusPlanificadorPage() {
   }
 
   const handleEdit = (item: ScheduledItem) => {
+    if (item.kind === 'preventiu' && !canManagePreventius) return
     const duration = minutesFromTime(item.end) - minutesFromTime(item.start)
     openModal({
       id: item.id,
@@ -864,7 +895,7 @@ export default function PreventiusPlanificadorPage() {
   }
 
   const handleCreateEmpty = (dayIndex: number, startTime: string) => {
-    if (isDecoPlanner || tab !== 'preventius') return
+    if (isDecoPlanner || !canManagePreventius || tab !== 'preventius') return
     openModal({
       kind: 'preventiu',
       templateId: null,
@@ -910,6 +941,7 @@ export default function PreventiusPlanificadorPage() {
           createdAt?: string | number | null
         }
   ) => {
+    if (item.kind === 'preventiu' && !canManagePreventius) return
     openModal({
       kind: item.kind,
       source: 'pending',
@@ -939,6 +971,7 @@ export default function PreventiusPlanificadorPage() {
       if (!target) return
 
       if (target.kind === 'preventiu') {
+        if (!canManagePreventius) return
         const status = normalizePlannerTicketStatus(target.status)
         if (!['nou', 'assignat', 'reassignat', 'no_fet'].includes(status)) {
           window.alert('Només pots tornar a pendents preventius en estat Nou, Assignat o No fet.')
@@ -1054,9 +1087,21 @@ export default function PreventiusPlanificadorPage() {
   return (
       <div className="w-full max-w-none mx-auto p-4 space-y-4">
         <ModuleHeader
-          title={isDecoPlanner ? 'Imatge-Deco' : 'Manteniment'}
+          title={
+            isDecoPlanner
+              ? 'Imatge-Deco'
+              : isCuinaCentralPlanner
+                ? 'Manteniment de Cuina Central'
+                : 'Manteniment'
+          }
           subtitle="Planificador"
-          mainHref={isDecoPlanner ? '/menu/deco' : '/menu/manteniment'}
+          mainHref={
+            isDecoPlanner
+              ? '/menu/deco'
+              : isCuinaCentralPlanner
+                ? '/menu/cuina-central'
+                : '/menu/manteniment'
+          }
           actions={
             canViewTickets ? (
               <Link
@@ -1069,6 +1114,13 @@ export default function PreventiusPlanificadorPage() {
             ) : undefined
           }
         />
+
+        {isCuinaCentralPlanner ? (
+          <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
+            Pots planificar els tiquets de Cuina Central. Els preventius i la resta
+            d&apos;ocupacions es mostren per consultar la disponibilitat i evitar solapaments.
+          </div>
+        ) : null}
 
         <FiltersBar
           filters={filters}

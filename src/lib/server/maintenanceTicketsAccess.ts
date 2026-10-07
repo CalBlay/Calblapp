@@ -18,6 +18,8 @@ import {
   DECO_TICKETS_REOPEN_PERM,
   DECO_TICKETS_VALIDATE_PERM,
 } from '@/lib/decoTicketsPermissions'
+import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
+import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 
 export type DecoTicketPermission =
   | 'inbox'
@@ -114,6 +116,22 @@ export async function canExternalizeMaintenanceTickets(
     user: accessUser,
     permission: MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
   })
+}
+
+export async function canViewCuinaCentralMaintenanceTickets(
+  user: Parameters<typeof accessUserFromAuth>[0]
+): Promise<boolean> {
+  const accessUser = accessUserFromAuth(user)
+  if (!accessUser.id) return false
+  return canViewUiPath({ user: accessUser, path: CUINA_CENTRAL_MAINTENANCE_PATH })
+}
+
+export async function canManageCuinaCentralMaintenanceTickets(
+  user: Parameters<typeof accessUserFromAuth>[0]
+): Promise<boolean> {
+  const accessUser = accessUserFromAuth(user)
+  if (!accessUser.id) return false
+  return canEditUiPath({ user: accessUser, path: CUINA_CENTRAL_MAINTENANCE_PATH })
 }
 
 /** Qualitat: pot consultar tickets de manteniment de Cuina Central (sense gestionar la safata). */

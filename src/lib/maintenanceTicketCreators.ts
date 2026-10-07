@@ -118,10 +118,12 @@ export function isQualitatDepartment(raw?: string | null) {
 }
 
 export function isCuinaCentralMaintenanceTicket(ticket: {
+  center?: string | null
   location?: string | null
   source?: string | null
   intakeChannel?: string | null
 }) {
+  if (isCuinaCentralLocation(ticket.center)) return true
   if (isCuinaCentralLocation(ticket.location)) return true
   const source = String(ticket.source || '').trim()
   const intake = String(ticket.intakeChannel || '').trim()

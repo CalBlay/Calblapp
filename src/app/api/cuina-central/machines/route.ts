@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { requireCuinaCentralAdmin } from '@/lib/cuina-central/auth'
+import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
+import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
 import { CUINA_CENTRAL_COLLECTIONS } from '@/lib/cuina-central/collections'
 import { mapMachine } from '@/lib/cuina-central/firestoreMappers'
 import { cleanText, slugDocId, toCustomFields } from '@/lib/cuina-central/utils'
@@ -11,7 +13,7 @@ export const dynamic = 'force-dynamic'
 const COL = CUINA_CENTRAL_COLLECTIONS.machines
 
 export async function GET() {
-  const auth = await requireCuinaCentralAdmin()
+  const auth = await requireMaintenanceTicketApiView([CUINA_CENTRAL_MAINTENANCE_PATH])
   if (!auth.ok) return auth.res
   const snap = await db.collection(COL).orderBy('name', 'asc').get()
   const machines = snap.docs.map((doc) => mapMachine(doc.id, doc.data() as Record<string, unknown>))

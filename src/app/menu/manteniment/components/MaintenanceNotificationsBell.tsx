@@ -25,6 +25,7 @@ type MaintenanceNotification = {
   location?: string | null
   plannedId?: string
   recordId?: string
+  url?: string
 }
 
 type TicketStatusHistoryItem = {
@@ -123,16 +124,24 @@ function MaintenanceNotificationItems({
   notifications,
   onDismiss,
   module,
+  ticketBasePath,
 }: {
   notifications: MaintenanceNotification[]
   onDismiss: (notificationId: string) => Promise<void>
   module: NotificationModule
+  ticketBasePath?: string
 }) {
   const router = useRouter()
   const closeBell = useCloseModuleNotificationsBell()
 
   const openNotification = async (notification: MaintenanceNotification) => {
     closeBell?.()
+
+    const explicitUrl = String(notification.url || '').trim()
+    if (explicitUrl.startsWith('/')) {
+      router.push(explicitUrl)
+      return
+    }
 
     if (notification.plannedId) {
       const params = new URLSearchParams()
@@ -149,6 +158,12 @@ function MaintenanceNotificationItems({
     if (module === 'deco') {
       const query = ticketId ? `?ticketId=${encodeURIComponent(ticketId)}` : ''
       router.push(`/menu/deco/tickets${query}`)
+      return
+    }
+
+    if (ticketBasePath) {
+      const query = ticketId ? `?ticketId=${encodeURIComponent(ticketId)}` : ''
+      router.push(`${ticketBasePath}${query}`)
       return
     }
 
@@ -218,10 +233,12 @@ function MaintenanceNotificationItems({
 export default function MaintenanceNotificationsBell({
   showWhenEmpty = true,
   module = 'maintenance',
+  ticketBasePath,
 }: {
   /** Mantenir visible la campaneta encara sense avisos pendents (creadors de tickets). */
   showWhenEmpty?: boolean
   module?: NotificationModule
+  ticketBasePath?: string
 }) {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
@@ -282,7 +299,12 @@ export default function MaintenanceNotificationsBell({
         </button>
       }
     >
-      <MaintenanceNotificationItems notifications={notifications} onDismiss={dismiss} module={module} />
+      <MaintenanceNotificationItems
+        notifications={notifications}
+        onDismiss={dismiss}
+        module={module}
+        ticketBasePath={ticketBasePath}
+      />
     </ModuleNotificationsBell>
   )
 }

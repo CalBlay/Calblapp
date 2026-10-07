@@ -4,8 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { CuinaCentralMaintenanceTicketButton } from './CuinaCentralMaintenanceTicket'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 const LINKS = [
+  { href: '/menu/cuina-central/manteniment', label: 'Manteniment' },
   { href: '/menu/cuina-central/dades', label: 'Dades' },
   { href: '/menu/cuina-central/produccio', label: 'Producció' },
   { href: '/menu/cuina-central/decisions', label: 'Decisions diàries' },
@@ -15,10 +17,12 @@ const LINKS = [
 
 export default function CuinaCentralSubnav() {
   const pathname = usePathname()
+  const { isPathAllowed } = useUiPermissions()
+  const visibleLinks = LINKS.filter((link) => isPathAllowed(link.href))
   return (
     <nav className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
       <div className="flex flex-wrap gap-2">
-      {LINKS.map((link) => {
+      {visibleLinks.map((link) => {
         const active =
           pathname === link.href || (pathname?.startsWith(`${link.href}/`) ?? false)
         return (
@@ -37,7 +41,9 @@ export default function CuinaCentralSubnav() {
         )
       })}
       </div>
-      <CuinaCentralMaintenanceTicketButton />
+      {isPathAllowed('/menu/cuina-central/manteniment') ? (
+        <CuinaCentralMaintenanceTicketButton />
+      ) : null}
     </nav>
   )
 }

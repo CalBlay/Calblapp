@@ -15,6 +15,7 @@ const PERSONNEL_UI_PATH = '/menu/personnel'
 import { canRequestMaintenancePersonnelByQuery, normalizeDept } from '@/lib/accessControl'
 import { isDecoDepartment, isDecoDepartmentHead } from '@/lib/decoTicketsPermissions'
 import { normalizeRole } from '@/lib/roles'
+import { canViewCuinaCentralMaintenanceTickets } from '@/lib/server/maintenanceTicketsAccess'
 
 interface FirestorePersonnelDoc {
   id?: string
@@ -101,8 +102,16 @@ export async function GET(request: NextRequest) {
   const isPriv = roleNorm === 'admin' || roleNorm === 'direccio'
   const sessionDept = (session.user as { department?: string })?.department || ''
   const deptParamNorm = deptParam ? normalizeDept(deptParam) : ''
+  const canUseCuinaCentralMaintenance = await canViewCuinaCentralMaintenanceTickets(
+    {
+      id: String((session.user as { id?: string })?.id || ''),
+      role: roleRaw,
+      department: sessionDept,
+    }
+  )
   const allowMaintenanceDeptQuery =
-    canRequestMaintenancePersonnelByQuery({ role: roleRaw, department: sessionDept }) &&
+    (canUseCuinaCentralMaintenance ||
+      canRequestMaintenancePersonnelByQuery({ role: roleRaw, department: sessionDept })) &&
     deptParamNorm === 'manteniment'
   const rawDept = isPriv
     ? deptParam

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 import {
   canExternalizeMaintenanceTickets,
+  canManageCuinaCentralMaintenanceTickets,
   canManageMaintenanceTicketInbox,
   canUseDecoTicketPermission,
 } from '@/lib/server/maintenanceTicketsAccess'
@@ -9,6 +10,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
 import { clearExternalStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
+import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
 
 export const runtime = 'nodejs'
 
@@ -128,10 +130,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const current = snap.data() as MaintenanceTicketExternalizeRecord
     const isDecoTicket = String(current.ticketType || 'maquinaria').toLowerCase() === 'deco'
+    const canExternalizeCuinaCentral =
+      !isDecoTicket &&
+      isCuinaCentralMaintenanceTicket(current) &&
+      (await canManageCuinaCentralMaintenanceTickets(user))
     const canExternalizeCurrent = isDecoTicket
       ? (await canUseDecoTicketPermission(user, 'externalize')) ||
         (await canUseDecoTicketPermission(user, 'inbox'))
-      : canExternalize || logisticsTicketsManager
+      : canExternalize || logisticsTicketsManager || canExternalizeCuinaCentral
     if (!canExternalizeCurrent) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

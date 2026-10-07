@@ -5,7 +5,9 @@ import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import {
   listDecoTicketInboxRecipientIds,
   listMaintenanceTicketInboxRecipientIds,
+  listCuinaCentralMaintenanceRecipientIds,
 } from '@/lib/server/maintenanceTicketInboxRecipients'
+import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
 import {
   defaultPushUrlForNotificationType,
   sendPushToUsers,
@@ -47,6 +49,7 @@ type NotificationPayload = {
   machine?: string | null
   source?: string | null
   workflowStage?: string | null
+  url?: string
 }
 
 type TicketWorkflowStage = 'tickets_inbox' | 'planner_queue'
@@ -101,6 +104,20 @@ async function notifyLogisticsTicketUsers(params: {
   await createNotifications(targets, payload)
 }
 
+async function notifyCuinaCentralTicketManagers(params: {
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  const targets = (await listCuinaCentralMaintenanceRecipientIds()).filter(
+    (id) => !params.excludeIds?.includes(id)
+  )
+  const ticketId = encodeURIComponent(params.payload.ticketId)
+  await createNotifications(targets, {
+    ...params.payload,
+    url: `/menu/cuina-central/manteniment/tickets?ticketId=${ticketId}`,
+  })
+}
+
 /** Notifica segons el mòdul on entra el ticket (inbox logística vs cua del planificador). */
 export async function notifyForNewMaintenanceTicket(params: {
   workflowStage: string
@@ -111,7 +128,13 @@ export async function notifyForNewMaintenanceTicket(params: {
   const payload = { ...params.payload, workflowStage: stage }
 
   if (stage === 'planner_queue') {
-    await notifyMaintenanceManagers({ payload, excludeIds: params.excludeIds })
+    const tasks: Promise<void>[] = [
+      notifyMaintenanceManagers({ payload, excludeIds: params.excludeIds }),
+    ]
+    if (isCuinaCentralMaintenanceTicket(payload)) {
+      tasks.push(notifyCuinaCentralTicketManagers({ payload, excludeIds: params.excludeIds }))
+    }
+    await Promise.all(tasks)
     return
   }
 
@@ -169,7 +192,11 @@ export async function notifyTicketResolvedForCreator(params: {
   payload: NotificationPayload
   excludeIds?: string[]
 }) {
-  await notifyTicketCreator(params)
+  const tasks: Promise<void>[] = [notifyTicketCreator(params)]
+  if (isCuinaCentralMaintenanceTicket(params.payload)) {
+    tasks.push(notifyCuinaCentralTicketManagers(params))
+  }
+  await Promise.all(tasks)
 }
 
 /** Avisa els responsables del departament d'un canvi que han de conèixer. */
@@ -234,7 +261,9 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
   await sendPushToUsers(uids, {
     title: payload.title,
     body: payload.body,
-    url: defaultPushUrlForNotificationType(payload.type, { ticketId: payload.ticketId }),
+    url:
+      payload.url ||
+      defaultPushUrlForNotificationType(payload.type, { ticketId: payload.ticketId }),
   })
 }
 

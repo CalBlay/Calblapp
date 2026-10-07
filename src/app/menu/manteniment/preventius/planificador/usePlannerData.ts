@@ -31,6 +31,7 @@ type UsePlannerDataArgs = {
   tab: 'preventius' | 'tickets' | 'externalized'
   preventiusFilter: 'due' | 'overdue' | null
   ticketsAgeFilter: 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
+  scope?: 'cuina_central'
 }
 
 type PlannerTicketLike = Partial<Ticket> & {
@@ -373,6 +374,7 @@ export default function usePlannerData({
   tab,
   preventiusFilter,
   ticketsAgeFilter,
+  scope,
 }: UsePlannerDataArgs) {
   const isLoadingWeekRef = useRef(false)
   const pendingReloadRef = useRef(false)
@@ -398,13 +400,14 @@ export default function usePlannerData({
         externalized: [] as TicketCard[],
       }
     }
+    const scopeParam = scope === 'cuina_central' ? '&scope=cuina_central' : ''
     const requests: Promise<Response>[] = [
-      fetch(`/api/maintenance/tickets?ticketType=${ticketType}&limit=1000`, { cache: 'no-store' }),
+      fetch(`/api/maintenance/tickets?ticketType=${ticketType}&limit=1000${scopeParam}`, { cache: 'no-store' }),
     ]
     if (weekRange?.start && weekRange?.end) {
       requests.push(
         fetch(
-          `/api/maintenance/tickets?ticketType=${ticketType}&start=${encodeURIComponent(weekRange.start)}&end=${encodeURIComponent(weekRange.end)}&dateMode=planned&limit=500`,
+          `/api/maintenance/tickets?ticketType=${ticketType}&start=${encodeURIComponent(weekRange.start)}&end=${encodeURIComponent(weekRange.end)}&dateMode=planned&limit=500${scopeParam}`,
           { cache: 'no-store' }
         )
       )
@@ -424,7 +427,7 @@ export default function usePlannerData({
       pending: mapPendingTickets(list),
       externalized: mapExternalizedTickets(list),
     }
-  }, [canViewTickets, ticketType])
+  }, [canViewTickets, scope, ticketType])
 
   const dueTemplates = useMemo<DueTemplate[]>(() => {
     const weekEnd = addDays(weekStart, dayCount - 1)
@@ -464,9 +467,14 @@ export default function usePlannerData({
   }, [templates, weekStart, dayCount])
 
   const filteredDueTemplates = useMemo(() => {
-    if (preventiusFilter == null) return dueTemplates
-    return dueTemplates.filter((t) => t.dueState === preventiusFilter)
-  }, [dueTemplates, preventiusFilter])
+    const scoped = scope === 'cuina_central'
+      ? dueTemplates.filter((template) =>
+          normalizeName(String(template.location || '')).includes('cuina central')
+        )
+      : dueTemplates
+    if (preventiusFilter == null) return scoped
+    return scoped.filter((t) => t.dueState === preventiusFilter)
+  }, [dueTemplates, preventiusFilter, scope])
 
   const filteredRealTickets = useMemo(() => {
     const base = [...realTickets].sort((a, b) => {
@@ -725,6 +733,7 @@ export default function usePlannerData({
       setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
 
       for (let index = 0; index < workingPreventius.length; index += 1) {
+        if (scope === 'cuina_central') break
         if (requestedScheduleSeqRef.current !== requestId) return
         const item = workingPreventius[index]
         if (!item.templateId || item.workers.length > 0) continue
@@ -783,6 +792,7 @@ export default function usePlannerData({
       }
 
       for (const template of dueTemplates) {
+        if (scope === 'cuina_central') break
         if (requestedScheduleSeqRef.current !== requestId) return
         if (alreadyPlannedTemplateIds.has(template.id)) continue
         if ((template.autoPlanExcludedWeeks || []).includes(format(weekStart, "yyyy-'W'II"))) continue
@@ -860,7 +870,7 @@ export default function usePlannerData({
         void latestLoadWeekScheduleRef.current?.()
       }
     }
-  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, ticketType, users, weekStart])
+  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, scope, templates, ticketType, users, weekStart])
 
   useEffect(() => {
     latestLoadWeekScheduleRef.current = loadWeekSchedule

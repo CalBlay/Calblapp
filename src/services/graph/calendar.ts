@@ -1193,7 +1193,8 @@ export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplie
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()
   const subject = String(input.subject || '').trim()
-  const adminlogEmail = 'adminlog@calblay.com'
+  const maintenanceResponsibleEmail =
+    String(process.env.MAINTENANCE_RESPONSIBLE_EMAIL || '').trim() || 'adminlog@calblay.com'
   if (!recipientEmail || !senderEmail || !subject) return
 
   const attachments = await buildMailAttachments(input.attachments || [])
@@ -1225,8 +1226,8 @@ export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplie
           ccRecipients: [
             {
               emailAddress: {
-                address: adminlogEmail,
-                name: adminlogEmail,
+                address: maintenanceResponsibleEmail,
+                name: maintenanceResponsibleEmail,
               },
             },
           ],

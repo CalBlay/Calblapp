@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   canManageAllMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canViewCuinaCentralMaintenanceTickets,
   canUseDecoTicketPermission,
   canViewQualitatCuinaCentralMaintenanceTickets,
 } from '@/lib/server/maintenanceTicketsAccess'
@@ -18,7 +19,10 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
-import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
+import {
+  isCuinaCentralMaintenanceTicket,
+  resolveManualTicketRouting,
+} from '@/lib/maintenanceTicketCreators'
 import {
   fetchQualitatCuinaCentralTicketDocs,
   getCuinaCentralUserIds,
@@ -26,6 +30,7 @@ import {
 } from '@/lib/server/qualitatCuinaCentralTickets'
 import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 import { DECO_TICKETS_UI_PATH } from '@/lib/decoTicketsPermissions'
+import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -272,6 +277,7 @@ export async function GET(req: Request) {
   const location = (searchParams.get('location') || '').trim()
   const assignedToId = (searchParams.get('assignedToId') || '').trim()
   const ticketType = (searchParams.get('ticketType') || 'all').toLowerCase()
+  const requestedScope = (searchParams.get('scope') || '').trim().toLowerCase()
   const code = (searchParams.get('code') || '').trim().toUpperCase()
   const start = (searchParams.get('start') || '').trim()
   const end = (searchParams.get('end') || '').trim()
@@ -290,6 +296,7 @@ export async function GET(req: Request) {
         (await canUseDecoTicketPermission(user, 'inbox'))
       : (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
   const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
+  const canViewCuinaCentral = await canViewCuinaCentralMaintenanceTickets(user)
   const cuinaCentralUserIds = canViewQualitatCuinaCentral
     ? new Set(await getCuinaCentralUserIds())
     : null
@@ -308,7 +315,13 @@ export async function GET(req: Request) {
 
     if (assignedToId && canViewAllTickets) {
       ref = ref.where('assignedToIds', 'array-contains', assignedToId)
-    } else if (!qualitatScopedQuery && !canViewAllTickets && !assignedToId && user.id) {
+    } else if (
+      !qualitatScopedQuery &&
+      !canViewAllTickets &&
+      !canViewCuinaCentral &&
+      !assignedToId &&
+      user.id
+    ) {
       ref = ref.where('createdById', '==', user.id)
     }
 
@@ -358,10 +371,14 @@ export async function GET(req: Request) {
         }
       })
     } else {
+      const queryLimit =
+        requestedScope === 'cuina_central' || (canViewCuinaCentral && !canViewAllTickets)
+          ? Math.max(limit + 1, 500)
+          : Math.max(limit + 1, 100)
       try {
         let orderedRef = ref.orderBy('createdAt', 'desc')
         if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
-        const snap = await orderedRef.limit(Math.max(limit + 1, 100)).get()
+        const snap = await orderedRef.limit(queryLimit).get()
         rawTickets = mapTickets(snap)
       } catch (queryErr: unknown) {
         const message = queryErr instanceof Error ? queryErr.message : ''
@@ -380,6 +397,10 @@ export async function GET(req: Request) {
       tickets = tickets.filter((ticket) =>
         isQualitatVisibleCuinaCentralTicket(ticket, cuinaCentralUserIds, user.id)
       )
+    }
+
+    if (requestedScope === 'cuina_central' || (canViewCuinaCentral && !canViewAllTickets)) {
+      tickets = tickets.filter((ticket) => isCuinaCentralMaintenanceTicket(ticket))
     }
 
     if (code) {
@@ -471,8 +492,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Cos de la petició no vàlid' }, { status: 400 })
   }
 
+  const isCuinaCentralRequest =
+    body.source === 'manual_cuina_central' ||
+    body.intakeChannel === 'manual_cuina_central' ||
+    String(body.center || body.location || '').trim().toLowerCase() === 'cuina central'
   let auth = await requireMaintenanceTicketApiCreate(
-    body.ticketType === 'deco' ? DECO_TICKETS_UI_PATH : MAINTENANCE_TICKETS_PATH
+    body.ticketType === 'deco'
+      ? DECO_TICKETS_UI_PATH
+      : isCuinaCentralRequest
+        ? CUINA_CENTRAL_MAINTENANCE_PATH
+        : MAINTENANCE_TICKETS_PATH
   )
   if (!auth.ok && body.ticketType === 'deco') {
     auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)

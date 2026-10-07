@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { canViewCuinaCentralMaintenanceTickets } from '@/lib/server/maintenanceTicketsAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,7 +63,7 @@ export async function GET(req: Request) {
 
   const user = session.user as SessionUser
   const role = normalizeRole(user.role || '')
-  if (!canRead(role)) {
+  if (!canRead(role) && !(await canViewCuinaCentralMaintenanceTickets(user))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
