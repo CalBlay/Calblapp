@@ -1,5 +1,4 @@
 import type { CuinaCentralMachine } from './types'
-import type { MachineItem } from '@/app/menu/manteniment/tickets/types'
 import type { ManualTicketRouting } from '@/lib/maintenanceTicketCreators'
 
 /** Ubicació estàndard per tickets des del mòdul Cuina central. */
@@ -16,29 +15,4 @@ export function machineLabel(machine: Pick<CuinaCentralMachine, 'code' | 'name'>
   const name = String(machine.name || '').trim()
   if (code && name) return `${code} · ${name}`
   return code || name
-}
-
-export function cuinaCentralMachineToTicketItem(
-  machine: CuinaCentralMachine
-): MachineItem {
-  const code = String(machine.code || '').trim()
-  const name = String(machine.name || '').trim()
-  const label = machineLabel(machine)
-  return { code, name, label, location: String(machine.location || '').trim() || CUINA_CENTRAL_TICKET_LOCATION }
-}
-
-export function mergeTicketMachines(
-  maintenance: MachineItem[],
-  cuinaCentral: CuinaCentralMachine[]
-): MachineItem[] {
-  const byLabel = new Map<string, MachineItem>()
-  for (const item of maintenance) {
-    const label = String(item.label || '').trim()
-    if (label) byLabel.set(label.toLowerCase(), item)
-  }
-  for (const machine of cuinaCentral) {
-    const item = cuinaCentralMachineToTicketItem(machine)
-    if (item.label) byLabel.set(item.label.toLowerCase(), item)
-  }
-  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'ca'))
 }

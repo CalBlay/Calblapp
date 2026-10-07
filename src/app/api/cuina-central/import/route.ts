@@ -38,7 +38,9 @@ export async function POST(req: Request) {
     if (mode === 'replace') {
       const snap = await db.collection(col).get()
       const batch = db.batch()
-      snap.docs.forEach((d) => batch.delete(d.ref))
+      snap.docs
+        .filter((d) => cleanText(d.data().center).toLowerCase() === 'cuina central')
+        .forEach((d) => batch.delete(d.ref))
       await batch.commit()
     }
     for (let i = 0; i < rows.length; i++) {
@@ -56,6 +58,8 @@ export async function POST(req: Request) {
         {
           code,
           name,
+          label: `${code} · ${name}`,
+          center: 'Cuina Central',
           unit: pickCell(row, ['unitat', 'unit']) || 'kg',
           packagingLabel: pickCell(row, ['embalatge', 'packaging']),
           packagingQty: Number(pickCell(row, ['qty_embalatge', 'packagingqty'])) || null,
@@ -71,7 +75,7 @@ export async function POST(req: Request) {
       else created++
     }
   } else if (entity === 'machines') {
-    const col = CUINA_CENTRAL_COLLECTIONS.machines
+    const col = 'maintenanceMachines'
     if (mode === 'replace') {
       const snap = await db.collection(col).get()
       const batch = db.batch()
@@ -146,7 +150,7 @@ export async function POST(req: Request) {
     }
   } else if (entity === 'rates') {
     const articlesSnap = await db.collection(CUINA_CENTRAL_COLLECTIONS.articles).get()
-    const machinesSnap = await db.collection(CUINA_CENTRAL_COLLECTIONS.machines).get()
+    const machinesSnap = await db.collection('maintenanceMachines').get()
     const articleByCode = new Map(
       articlesSnap.docs.map((d) => [cleanText(d.data().code).toLowerCase(), d])
     )

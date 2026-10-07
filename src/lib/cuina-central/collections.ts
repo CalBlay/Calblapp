@@ -1,7 +1,6 @@
 /** Col·leccions Firestore del mòdul Cuina central (prefix únic, escalable). */
 export const CUINA_CENTRAL_COLLECTIONS = {
   articles: 'cuinaCentral_articles',
-  machines: 'cuinaCentral_machines',
   shifts: 'cuinaCentral_shifts',
   machineArticleRates: 'cuinaCentral_machineArticleRates',
   productionLogs: 'cuinaCentral_productionLogs',

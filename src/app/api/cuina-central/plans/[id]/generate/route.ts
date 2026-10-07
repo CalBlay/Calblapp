@@ -30,7 +30,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   const [articlesSnap, machinesSnap, shiftsSnap, ratesSnap, logsSnap, modelStates] =
     await Promise.all([
       db.collection(CUINA_CENTRAL_COLLECTIONS.articles).get(),
-      db.collection(CUINA_CENTRAL_COLLECTIONS.machines).get(),
+      db.collection('maintenanceMachines').get(),
       db.collection(CUINA_CENTRAL_COLLECTIONS.shifts).get(),
       db.collection(CUINA_CENTRAL_COLLECTIONS.machineArticleRates).get(),
       db.collection(CUINA_CENTRAL_COLLECTIONS.productionLogs).orderBy('endedAt', 'desc').limit(1500).get(),

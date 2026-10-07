@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { requireCuinaCentralAdmin } from '@/lib/cuina-central/auth'
-import { CUINA_CENTRAL_COLLECTIONS } from '@/lib/cuina-central/collections'
 import { cleanText, toCustomFields } from '@/lib/cuina-central/utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const COL = CUINA_CENTRAL_COLLECTIONS.machines
+const COL = 'maintenanceMachines'
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireCuinaCentralAdmin()

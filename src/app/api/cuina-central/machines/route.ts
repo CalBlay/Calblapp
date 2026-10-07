@@ -3,14 +3,13 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { requireCuinaCentralAdmin } from '@/lib/cuina-central/auth'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
-import { CUINA_CENTRAL_COLLECTIONS } from '@/lib/cuina-central/collections'
 import { mapMachine } from '@/lib/cuina-central/firestoreMappers'
 import { cleanText, slugDocId, toCustomFields } from '@/lib/cuina-central/utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const COL = CUINA_CENTRAL_COLLECTIONS.machines
+const COL = 'maintenanceMachines'
 
 export async function GET() {
   const auth = await requireMaintenanceTicketApiView([CUINA_CENTRAL_MAINTENANCE_PATH])
@@ -34,6 +33,8 @@ export async function POST(req: Request) {
   const payload = {
     code,
     name,
+    label: code && name ? `${code} · ${name}` : code || name,
+    center: 'Cuina Central',
     location: cleanText(body?.location),
     zone: cleanText(body?.zone),
     mapX: body?.mapX == null ? null : Number(body.mapX),

@@ -33,15 +33,24 @@ export async function computeCalendarEventsInRange(
       coll,
       results: await Promise.all([
         queryStageCollectionDocsInDateRange(db, coll, start, end),
-        ...MENU_TASTING_CONFIGS.map((config) =>
-          queryStageCollectionDocsByDateFieldInRange(
-            db,
-            coll,
-            config.dateField,
-            start,
-            end
+        ...MENU_TASTING_CONFIGS.map(async (config) => {
+          const docsByDateField = await Promise.all(
+            config.dateFields.map((field) =>
+              queryStageCollectionDocsByDateFieldInRange(
+                db,
+                coll,
+                field,
+                start,
+                end
+              )
+            )
           )
-        ),
+          return Array.from(
+            new Map(
+              docsByDateField.flat().map((doc) => [doc.id, doc] as const)
+            ).values()
+          )
+        }),
       ]),
     }))
   )

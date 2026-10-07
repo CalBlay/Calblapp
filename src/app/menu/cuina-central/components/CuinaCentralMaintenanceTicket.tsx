@@ -21,7 +21,6 @@ import type { CuinaCentralMachine } from '@/lib/cuina-central/types'
 import {
   CUINA_CENTRAL_TICKET_ROUTING,
   machineLabel,
-  mergeTicketMachines,
 } from '@/lib/cuina-central/maintenanceTicket'
 import { normalizeMaintenanceLocationKey } from '@/lib/maintenanceCenterTravel'
 
@@ -49,16 +48,7 @@ export function useCuinaCentralMaintenanceTicket() {
   return ctx
 }
 
-type ProviderProps = {
-  children: ReactNode
-  /** Màquines del mòdul (per autocompletar al modal). */
-  cuinaCentralMachines?: CuinaCentralMachine[]
-}
-
-export function CuinaCentralMaintenanceTicketProvider({
-  children,
-  cuinaCentralMachines = [],
-}: ProviderProps) {
+export function CuinaCentralMaintenanceTicketProvider({ children }: { children: ReactNode }) {
   const { machines: maintenanceMachines } =
     useMaintenanceTicketCatalog()
   const [centers, setCenters] = useState<CenterRow[]>([])
@@ -85,11 +75,6 @@ export function CuinaCentralMaintenanceTicketProvider({
     }
   }, [])
 
-  const machines = useMemo(
-    () => mergeTicketMachines(maintenanceMachines, cuinaCentralMachines),
-    [maintenanceMachines, cuinaCentralMachines]
-  )
-
   const cuinaCentralCenters = useMemo(() => {
     const targetKey = normalizeMaintenanceLocationKey('Cuina Central')
     return centers.filter(
@@ -110,13 +95,15 @@ export function CuinaCentralMaintenanceTicketProvider({
 
   const openForMachine = useCallback(
     (machine: Pick<CuinaCentralMachine, 'code' | 'name'>) => {
-      const full = cuinaCentralMachines.find((item) => item.code === machine.code && item.name === machine.name)
+      const full = maintenanceMachines.find(
+        (item) => item.code === machine.code && item.name === machine.name
+      )
       openCreateTicket({
         location: String(full?.location || '').trim(),
         machine: machineLabel(machine),
       })
     },
-    [cuinaCentralMachines, openCreateTicket]
+    [maintenanceMachines, openCreateTicket]
   )
 
   const attachmentPreviews = composer.createAttachments.map((item) => ({
@@ -130,7 +117,7 @@ export function CuinaCentralMaintenanceTicketProvider({
       {composer.showCreate ? (
         <CreateTicketModal
           centers={cuinaCentralCenters}
-          machines={machines}
+          machines={maintenanceMachines}
           createPriority={composer.createPriority}
           setCreatePriority={composer.setCreatePriority}
           centerQuery={composer.centerQuery}
@@ -217,24 +204,8 @@ export function MachineMaintenanceTicketButton({
   )
 }
 
-/**
- * Carrega màquines de cuina central i envolta el layout amb el provider de tickets.
- */
 export function CuinaCentralMaintenanceTicketShell({ children }: { children: ReactNode }) {
-  const [machines, setMachines] = useState<CuinaCentralMachine[]>([])
-
-  useEffect(() => {
-    fetch('/api/cuina-central/machines', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((json) => setMachines(Array.isArray(json?.machines) ? json.machines : []))
-      .catch(() => setMachines([]))
-  }, [])
-
-  return (
-    <CuinaCentralMaintenanceTicketProvider cuinaCentralMachines={machines}>
-      {children}
-    </CuinaCentralMaintenanceTicketProvider>
-  )
+  return <CuinaCentralMaintenanceTicketProvider>{children}</CuinaCentralMaintenanceTicketProvider>
 }
 
 export function CuinaCentralMaintenanceTicketSuccessLink({

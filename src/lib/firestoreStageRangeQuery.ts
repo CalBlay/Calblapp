@@ -12,6 +12,7 @@ import type {
   QueryDocumentSnapshot,
   QuerySnapshot,
 } from 'firebase-admin/firestore'
+import type { MenuTastingDateField } from '@/lib/calendar/menuTastingOccurrences'
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -78,7 +79,7 @@ export async function queryStageCollectionDocsInDateRange(
 export async function queryStageCollectionDocsByDateFieldInRange(
   db: Firestore,
   collectionId: string,
-  fieldName: 'Data_1_Prova_Men' | 'Data_2a_Part_Tast',
+  fieldName: MenuTastingDateField,
   rangeStart: string,
   rangeEnd: string
 ): Promise<QueryDocumentSnapshot[]> {

@@ -138,6 +138,10 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     path.join(__dirname, '../src/services/zoho/sync.ts'),
     'utf8'
   )
+  const normalizationSource = fs.readFileSync(
+    path.join(__dirname, '../src/services/zoho/sync-normalization.ts'),
+    'utf8'
+  )
 
   assert.match(routeSource, /const forceFullSync = url\.searchParams\.get\('full'\) === '1'/)
   assert.doesNotMatch(routeSource, /forceFullSync:\s*true/)
@@ -147,13 +151,62 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     'Hora_Fi_Boda',
     'Hora_Fi_Evento',
     'Data_1_Prova_Men',
+    'Auto_data_1a_part',
+    'Otros',
+    'Data_enviament_Forms',
+    'Formulari_Enviat',
+    'Formulari_Respost1',
     'Comensals',
+    'Al_l_rgies',
     'Data_2a_Part_Tast',
+    'Auto_Data_2a_Part',
     'Hora',
+    'Otros_2a_Part',
+    'Enviament_Forms',
+    'Forms_Enviat',
+    'Al_l_rgies_2a_Part',
+    'Observacions_2a_Part',
     'Comensals_2a',
+    'Deco',
+    'Postres',
+    'Celler_Vi_Blanc',
+    'Celler_Vi_Negre',
+    'Celler_Cava',
+    'Celler_Extra',
     'Full_de_modificacions',
     'Full_modificacions',
   ]) {
     assert.match(syncSource, new RegExp(`baseFields[\\s\\S]*${field}`))
+  }
+
+  for (const field of [
+    'Data_1_Prova_Men',
+    'Auto_data_1a_part',
+    'Otros',
+    'Data_enviament_Forms',
+    'Formulari_Enviat',
+    'Formulari_Respost1',
+    'Comensals',
+    'Al_l_rgies',
+    'Data_2a_Part_Tast',
+    'Auto_Data_2a_Part',
+    'Hora',
+    'Otros_2a_Part',
+    'Enviament_Forms',
+    'Forms_Enviat',
+    'Al_l_rgies_2a_Part',
+    'Observacions_2a_Part',
+    'Comensals_2a',
+    'Deco',
+    'Postres',
+    'Celler_Vi_Blanc',
+    'Celler_Vi_Negre',
+    'Celler_Cava',
+    'Celler_Extra',
+  ]) {
+    assert.match(
+      normalizationSource,
+      new RegExp(`${field}:\\s*deal\\.${field}`)
+    )
   }
 })
