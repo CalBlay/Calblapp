@@ -505,6 +505,10 @@ export async function POST(req: Request) {
   )
   if (!auth.ok && body.ticketType === 'deco') {
     auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)
+  } else if (!auth.ok && isCuinaCentralRequest) {
+    // Keep the existing Maintenance composer working for reporters who do not
+    // have access to the dedicated Cuina Central workspace.
+    auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)
   }
   if (!auth.ok) return auth.res
 
