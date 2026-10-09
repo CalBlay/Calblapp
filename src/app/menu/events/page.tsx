@@ -589,7 +589,6 @@ export default function EventsPage() {
       location: undefined,
     })
     setFilterResetSignal((value) => value + 1)
-    setCommercialFilterInitialized(false)
     setPreparerHistoryMode(false)
     const params = new URLSearchParams(searchParams?.toString() ?? '')
     params.delete('history')
