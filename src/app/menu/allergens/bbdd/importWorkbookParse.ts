@@ -56,14 +56,68 @@ export const findColumnIndexIncludes = (headers: string[], needles: string[]) =>
   return idx >= 0 ? idx : -1
 }
 
+export const resolveHeaderCells = (rows: string[][], headerRowIndex: number) => {
+  const currentRow = rows[headerRowIndex] || []
+  const previousRow = headerRowIndex > 0 ? rows[headerRowIndex - 1] || [] : []
+  const columnCount = Math.max(currentRow.length, previousRow.length)
+
+  return Array.from({ length: columnCount }, (_, index) => {
+    const current = String(currentRow[index] || '').trim()
+    const previous = String(previousRow[index] || '').trim()
+    return normalize(current || previous)
+  })
+}
+
+const looksLikeProductCode = (value: string) => {
+  const raw = value.trim()
+  if (!raw || !/\d/.test(raw)) return false
+  return /^[a-z0-9][a-z0-9.'/_-]{4,}$/i.test(raw)
+}
+
+export const resolveCodeColumn = (
+  rows: string[][],
+  headerRowIndex: number,
+  headers = (rows[headerRowIndex] || []).map(cell => normalize(String(cell || '')))
+) => {
+  const explicitColumn = findColumnIndex(headers, ['num codi', 'codi'])
+  if (explicitColumn >= 0) return explicitColumn
+
+  // Some supplier sheets leave the code header blank (for example PLATS BANQUET),
+  // while the adjacent name column is correctly labelled. In that layout, infer
+  // the code column from code-shaped values immediately below the header.
+  const nameColumn = findColumnIndex(headers, ['referencies', 'articles', 'article'])
+  if (nameColumn <= 0) return -1
+
+  let bestColumn = -1
+  let bestMatches = 0
+  const lastRow = Math.min(rows.length, headerRowIndex + 26)
+
+  for (let column = 0; column < nameColumn; column++) {
+    let nonEmpty = 0
+    let matches = 0
+
+    for (let rowIndex = headerRowIndex + 1; rowIndex < lastRow; rowIndex++) {
+      const value = String(rows[rowIndex]?.[column] || '').trim()
+      if (!value) continue
+      nonEmpty++
+      if (looksLikeProductCode(value)) matches++
+    }
+
+    if (matches > 0 && matches / nonEmpty >= 0.7 && matches > bestMatches) {
+      bestColumn = column
+      bestMatches = matches
+    }
+  }
+
+  return bestColumn
+}
+
 export const inferHeaderRowIndex = (rows: string[][]) =>
-  rows.findIndex(row => {
-    const normalizedRow = row.map(cell => normalize(String(cell || '')))
-    const allergenCount = normalizedRow.filter(cell => IMPORT_ALLERGEN_HEADERS[cell]).length
-    const hasCode = normalizedRow.some(
-      cell => cell === 'num codi' || cell === 'codi' || cell.startsWith('num codi')
-    )
-    const hasName = normalizedRow.some(cell =>
+  rows.findIndex((_row, rowIndex) => {
+    const headers = resolveHeaderCells(rows, rowIndex)
+    const allergenCount = headers.filter(cell => IMPORT_ALLERGEN_HEADERS[cell]).length
+    const hasCode = resolveCodeColumn(rows, rowIndex, headers) >= 0
+    const hasName = headers.some(cell =>
       ['referencies', 'articles', 'article'].some(candidate => cell.startsWith(candidate))
     )
     return allergenCount >= 4 && hasCode && hasName

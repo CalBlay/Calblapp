@@ -58,7 +58,15 @@ export const parseMenus = (value: string) => {
   return Array.from(menus)
 }
 
-export const normalizeMenuId = (value: string) => value.trim()
+/**
+ * Firestore document IDs cannot contain `/`. Keep existing menu IDs unchanged
+ * when they are already valid, and encode labels that would otherwise be
+ * interpreted as document paths.
+ */
+export const normalizeMenuId = (value: string) => {
+  const trimmed = value.trim()
+  return trimmed.includes('/') ? encodeURIComponent(trimmed) : trimmed
+}
 
 export const formatMenuLabel = (value: string) => value.trim()
 

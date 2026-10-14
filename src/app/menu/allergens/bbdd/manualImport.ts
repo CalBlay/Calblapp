@@ -5,7 +5,6 @@ import {
   getGroupLabelForSheet,
   inferHeaderRowIndex,
   isMarkedMenuCell,
-  normalize,
   normalizeTypeLabel,
   parseAllergenImportValue,
   parseAptImport,
@@ -14,8 +13,10 @@ import {
   findColumnIndex,
   findOnEstanColumn,
   parseMenusFromRawText,
+  resolveCodeColumn,
+  resolveHeaderCells,
 } from './importWorkbookParse'
-import { slugify } from './utils'
+import { normalizeMenuId, slugify } from './utils'
 
 export async function parseImportWorkbook(file: File) {
   const XLSX = await loadXlsx()
@@ -39,10 +40,10 @@ export async function parseImportWorkbook(file: File) {
     const headerRowIndex = inferHeaderRowIndex(rows)
     if (headerRowIndex === -1) continue
 
-    const headers = (rows[headerRowIndex] || []).map(cell => normalize(String(cell || '')))
+    const headers = resolveHeaderCells(rows, headerRowIndex)
     const translationCols = resolveTranslationColumns(rows, headerRowIndex)
     const cols = {
-      code: findColumnIndex(headers, ['num codi', 'codi']),
+      code: resolveCodeColumn(rows, headerRowIndex, headers),
       nameCa: findColumnIndex(headers, ['referencies', 'articles', 'article']),
       type: findColumnIndex(headers, ['tipus']),
       vegetarian: findColumnIndex(headers, ['vegetaria']),
@@ -83,8 +84,12 @@ export async function parseImportWorkbook(file: File) {
         .map(({ label }) => label)
       const menuText = onEstanCol >= 0 ? String(row[onEstanCol] || '').trim() : ''
       const menusFromText = parseMenusFromRawText(menuText)
-      const menus = Array.from(new Set([...menusFromMarks, ...menusFromText]))
-      menus.forEach(menu => menuMap.set(menu, menu))
+      const menuLabels = Array.from(new Set([...menusFromMarks, ...menusFromText]))
+      const menus = menuLabels.map(normalizeMenuId).filter(Boolean)
+      menuLabels.forEach(label => {
+        const id = normalizeMenuId(label)
+        if (id) menuMap.set(id, label)
+      })
 
       const allergens: Record<string, string | null> = {}
       Object.entries(allergenCols).forEach(([key, index]) => {

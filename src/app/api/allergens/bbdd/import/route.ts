@@ -9,6 +9,7 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { canEditUiPath, canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 import type { AccessUser } from '@/lib/accessControl'
 import type { ImportConflictItem, ManualImportRequest, ParsedImportRow } from '@/app/menu/allergens/bbdd/types'
+import { normalizeMenuId } from '@/app/menu/allergens/bbdd/utils'
 import { DEFAULT_ALLERGENS } from '@/data/allergens'
 
 const ALLERGENS_BBDD_PATH = '/menu/allergens/bbdd'
@@ -96,6 +97,35 @@ function conflictIds(conflicts: ImportConflictItem[]): Set<string> {
       .map((conflict) => String(conflict.id || '').trim())
       .filter((id) => id.length > 0)
   )
+}
+
+function normalizeMenuEntries(entries: Array<[string, string]>): Array<[string, string]> {
+  const normalized = new Map<string, string>()
+
+  for (const entry of entries) {
+    if (!Array.isArray(entry)) continue
+    const label = String(entry[1] || '').trim()
+    const id = normalizeMenuId(String(entry[0] || label))
+    if (id) normalized.set(id, label || String(entry[0] || '').trim())
+  }
+
+  return Array.from(normalized.entries())
+}
+
+function normalizeRowMenuIds(rows: ParsedImportRow[]): ParsedImportRow[] {
+  return rows.map((row) => ({
+    ...row,
+    data: {
+      ...row.data,
+      menus: Array.from(
+        new Set(
+          (Array.isArray(row.data?.menus) ? row.data.menus : [])
+            .map((menu) => normalizeMenuId(String(menu || '')))
+            .filter(Boolean)
+        )
+      ),
+    },
+  }))
 }
 
 async function deleteStaleReplaceDocs({
@@ -291,10 +321,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
     }
 
-    const rowsToImport = Array.isArray(body?.rowsToImport) ? body.rowsToImport : []
+    const rowsToImport = normalizeRowMenuIds(
+      Array.isArray(body?.rowsToImport) ? body.rowsToImport : []
+    )
     const categoryEntries = Array.isArray(body?.categoryEntries) ? body.categoryEntries : []
     const familyEntries = Array.isArray(body?.familyEntries) ? body.familyEntries : []
-    const menuEntries = Array.isArray(body?.menuEntries) ? body.menuEntries : []
+    const menuEntries = normalizeMenuEntries(
+      Array.isArray(body?.menuEntries) ? body.menuEntries : []
+    )
     const duplicateConflicts = Array.isArray(body?.duplicateConflicts) ? body.duplicateConflicts : []
     const existingConflicts = Array.isArray(body?.existingConflicts) ? body.existingConflicts : []
     const source = String(body?.source || '').trim() || 'manual-import.xlsx'
