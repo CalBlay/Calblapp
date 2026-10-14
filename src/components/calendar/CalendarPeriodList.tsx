@@ -1,9 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Input } from '@/components/ui/input'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
 import { CALENDAR_EVENT_TEXT } from '@/lib/calendarTypography'
@@ -38,31 +37,13 @@ export default function CalendarPeriodList({
   selectedDealId,
   onSelectDeal,
 }: Props) {
-  const [query, setQuery] = useState('')
-
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const sorted = [...deals].sort((a, b) => {
+    return [...deals].sort((a, b) => {
       const da = a.DataInici || ''
       const db = b.DataInici || ''
       return da.localeCompare(db) || (a.NomEvent || '').localeCompare(b.NomEvent || '', 'ca')
     })
-    if (!q) return sorted
-    return sorted.filter((d) => {
-      const haystack = [
-        d.NomEvent,
-        d.Comercial,
-        d.LN,
-        d.Servei,
-        d.Ubicacio,
-        d.code,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(q)
-    })
-  }, [deals, query])
+  }, [deals])
 
   const formatDate = (iso?: string) => {
     if (!iso) return '—'
@@ -90,12 +71,6 @@ export default function CalendarPeriodList({
   return (
     <div className="flex h-auto min-h-0 flex-col md:h-full">
       <div className="shrink-0 border-b bg-slate-50 px-3 py-2">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cercar per nom, comercial, LN..."
-          className="h-11 bg-white text-base sm:h-9 sm:text-sm"
-        />
         <p className="mt-1.5 text-xs text-gray-500">
           {rows.length} esdeveniment{rows.length === 1 ? '' : 's'}
         </p>

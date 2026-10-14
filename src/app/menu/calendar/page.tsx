@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useDeferredValue, useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
   RefreshCw,
@@ -9,7 +9,9 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Search,
   Users,
+  X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -39,6 +41,12 @@ import {
   filterCalendarDealsByLocations,
 } from '@/lib/calendar/calendarLocationFilter'
 import { calendarPeriodForYear } from '@/lib/calendar/calendarYearNavigation'
+import {
+  CALENDAR_SEARCH_MIN_LENGTH,
+  filterCalendarDealsBySearch,
+  isCalendarSearchActive,
+  normalizeCalendarSearch,
+} from '@/lib/calendar/calendarSearch'
 
 import {
   addMonths,
@@ -352,12 +360,20 @@ export default function CalendarPage() {
     return counts
   }, [deals, start])
 
-  const visibleDeals = useMemo(() => {
+  const filteredDeals = useMemo(() => {
     const filteredDeals = filterCalendarDealsByLocations(deals, location)
 
     if (!canManageCodes || codeStatus === 'all') return filteredDeals
     return filteredDeals.filter((deal) => deal.codeStatus === codeStatus)
   }, [deals, location, codeStatus, canManageCodes])
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const searchActive = isCalendarSearchActive(deferredSearchQuery)
+  const visibleDeals = useMemo(
+    () => filterCalendarDealsBySearch(filteredDeals, deferredSearchQuery),
+    [filteredDeals, deferredSearchQuery]
+  )
 
   const periodStats = useMemo(() => {
     const stats = { confirmed: 0, review: 0, missing: 0 }
@@ -867,6 +883,45 @@ export default function CalendarPage() {
             </Button>
           ) : null}
         </div>
+      </div>
+
+      {/* CERCA GLOBAL */}
+      <div className="mb-3 shrink-0 print:hidden">
+        <label htmlFor="calendar-search" className="sr-only">
+          Cerca intel·ligent d’esdeveniments
+        </label>
+        <div className="relative max-w-2xl">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            id="calendar-search"
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Cerca per esdeveniment, comercial, ubicació, codi..."
+            autoComplete="off"
+            className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-10 text-base text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:h-10 sm:text-sm"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Netejar la cerca"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-1.5 text-xs text-slate-500" aria-live="polite">
+          {searchActive
+            ? `${visibleDeals.length} de ${filteredDeals.length} esdeveniments`
+            : normalizeCalendarSearch(searchQuery).length === 1
+              ? 'Escriu un caràcter més per cercar.'
+              : `La cerca s’activa a partir de ${CALENDAR_SEARCH_MIN_LENGTH} caràcters i ignora els accents.`}
+        </p>
       </div>
 
       {/* LLEGENDA */}
