@@ -5,20 +5,24 @@ import { History } from 'lucide-react'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import {
-  CorporateFilterBadgeGroup,
   CorporateFilterSelect,
   CorporateFiltersShell,
 } from '@/components/layout/corporate-filters'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { colorByLN } from '@/lib/colors'
-import { corporateFilterChipClass } from '@/lib/corporate-filters'
+import { corporateFilterBadgeClass, corporateFilterChipClass } from '@/lib/corporate-filters'
+import { toggleEventLnSelection } from '@/lib/events/eventsLnFilter'
 import { cn } from '@/lib/utils'
 
-type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+export type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+
+export type EventsFiltersState = Omit<FiltersState, 'ln'> & {
+  ln?: LnKey[]
+}
 
 type Props = {
-  filters: FiltersState
-  setFilters: (next: Partial<FiltersState>) => void
+  filters: EventsFiltersState
+  setFilters: (next: Partial<EventsFiltersState>) => void
   onReset: () => void
   resetSignal: number
   lnOptions: LnKey[]
@@ -55,7 +59,7 @@ export default function EventsFiltersBar({
   onHistoryModeChange,
 }: Props) {
   const handleSmartFiltersChange = (change: SmartFiltersChange) => {
-    const next: Partial<FiltersState> = {}
+    const next: Partial<EventsFiltersState> = {}
     if (change.start) next.start = change.start
     if (change.end) next.end = change.end
     if (change.mode === 'week' || change.mode === 'day' || change.mode === 'range') {
@@ -73,6 +77,7 @@ export default function EventsFiltersBar({
       })),
     [lnOptions]
   )
+  const selectedLns = filters.ln ?? []
 
   return (
     <CorporateFiltersShell
@@ -125,16 +130,39 @@ export default function EventsFiltersBar({
         {!minimal && lnBadgeOptions.length > 0 ? (
           <>
             <FilterDivider />
-            <div className="min-w-0 shrink overflow-x-auto">
-              <CorporateFilterBadgeGroup
-                label="LN"
-                value={filters.ln || ALL}
-                onChange={(value) => setFilters({ ln: value })}
-                allLabel="Totes"
-                allValue={ALL}
-                options={lnBadgeOptions}
-                className="flex-nowrap"
-              />
+            <div className="flex min-w-0 shrink flex-nowrap items-center gap-2 overflow-x-auto">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                LN
+              </span>
+              <button
+                type="button"
+                aria-pressed={selectedLns.length === 0}
+                onClick={() => setFilters({ ln: [] })}
+                className={corporateFilterBadgeClass(selectedLns.length === 0)}
+              >
+                Totes
+              </button>
+              {lnBadgeOptions.map((option) => {
+                const active = selectedLns.includes(option.value)
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setFilters({
+                        ln: toggleEventLnSelection(selectedLns, option.value),
+                      })
+                    }
+                    className={corporateFilterBadgeClass(
+                      active,
+                      active ? option.className : undefined
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
             </div>
           </>
         ) : null}

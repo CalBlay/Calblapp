@@ -47,8 +47,11 @@ const EventAuditExecutionModal = dynamic(
     ),
   }
 )
-import EventsFiltersBar from '@/components/events/EventsFiltersBar'
-import type { FiltersState } from '@/components/layout/FiltersBar'
+import EventsFiltersBar, {
+  type EventsFiltersState,
+  type LnKey,
+} from '@/components/events/EventsFiltersBar'
+import { filterEventsByLns } from '@/lib/events/eventsLnFilter'
 
 const normalize = (s?: string | null) =>
   (s || '')
@@ -88,8 +91,6 @@ type SessionUser = {
   name?: string
   commercialName?: string
 }
-
-type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
 
 type EventMenuData = {
   id: string
@@ -157,13 +158,17 @@ export default function EventsPage() {
   const canViewDocuments =
     !permsReady || hasAction(PERM.action('/menu/events', 'docs:view'))
 
-  const initial: FiltersState = useMemo(() => {
+  const initial: EventsFiltersState = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })
     const e = endOfWeek(new Date(), { weekStartsOn: 1 })
-    return { start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd'), ln: defaultLn }
+    return {
+      start: format(s, 'yyyy-MM-dd'),
+      end: format(e, 'yyyy-MM-dd'),
+      ln: defaultLn ? [defaultLn] : [],
+    }
   }, [defaultLn])
 
-  const [filters, setFilters] = useState<FiltersState>(initial)
+  const [filters, setFilters] = useState<EventsFiltersState>(initial)
   const [filterResetSignal, setFilterResetSignal] = useState(0)
   const [departmentFilterInitialized, setDepartmentFilterInitialized] = useState(false)
   const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
@@ -173,7 +178,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     if (departmentFilterInitialized || sessionStatus === 'loading') return
-    setFilters((prev) => ({ ...prev, ln: defaultLn }))
+    setFilters((prev) => ({ ...prev, ln: defaultLn ? [defaultLn] : [] }))
     setDepartmentFilterInitialized(true)
   }, [defaultLn, departmentFilterInitialized, sessionStatus])
 
@@ -243,11 +248,7 @@ export default function EventsPage() {
     initialChannelId?: string | null
   } | null>(null)
 
-  let filteredEvents = events
-
-  if (filters.ln && filters.ln !== '__all__') {
-    filteredEvents = filteredEvents.filter(ev => ev.lnKey === filters.ln)
-  }
+  let filteredEvents = filterEventsByLns(events, filters.ln)
 
   if (filters.responsable && filters.responsable !== '__all__') {
     filteredEvents = filteredEvents.filter(ev => {
@@ -583,7 +584,7 @@ export default function EventsPage() {
       start: format(s, 'yyyy-MM-dd'),
       end: format(e, 'yyyy-MM-dd'),
       mode: 'week',
-      ln: defaultLn,
+      ln: defaultLn ? [defaultLn] : [],
       responsable: undefined,
       commercial: undefined,
       location: undefined,
