@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { firestoreAdmin } from "@/lib/firebaseAdmin"
 import { registerFinquesProduccioImagesInIndex } from "@/lib/media/storageMediaIndex"
 import { requireAuth } from "@/lib/server/apiAuth"
+import { requireSpacesBbddMutation } from "@/lib/server/spacesApiAuth"
 
 export const runtime = "nodejs"
 
@@ -16,6 +17,13 @@ export async function PATCH(
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
+    const canUpdate = await requireSpacesBbddMutation(auth, "update")
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "No tens permisos per editar espais." },
+        { status: 403 }
+      )
+    }
 
     const id = context.params.id
     const incoming = await req.json()
