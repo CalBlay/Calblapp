@@ -1,5 +1,26 @@
 const assert = require('node:assert/strict')
-const { test } = require('node:test')
+const Module = require('node:module')
+const { after, test } = require('node:test')
+
+function isFirebaseAdminModule(request) {
+  return (
+    request === '@/lib/firebaseAdmin' ||
+    /[\\/]src[\\/]lib[\\/]firebaseAdmin\.(ts|js|cjs|mjs)$/.test(request)
+  )
+}
+
+const originalLoad = Module._load
+Module._load = function loadWithStubs(request, parent, isMain) {
+  if (request === 'server-only') return {}
+  if (isFirebaseAdminModule(request)) {
+    return { firestoreAdmin: { collection: () => ({}), doc: () => ({}) } }
+  }
+  return originalLoad.call(this, request, parent, isMain)
+}
+
+after(() => {
+  Module._load = originalLoad
+})
 
 const { splitServiceTypeLabels, allServiceTypesInCatalog } = require('../src/lib/serveis/utils')
 const {
