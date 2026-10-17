@@ -5,6 +5,7 @@ import { isUiPermissionGranted } from '@/lib/server/permissions'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 import { accessUserFromSession } from '@/lib/calendar/calendarApiAuth'
 import { isAllowedCalendarManualCollection } from '@/lib/calendar/calendarManualCollection'
+import { calendarCancelledFromRequest } from '@/lib/calendar/calendarCancellation'
 
 export const runtime = 'nodejs'
 
@@ -35,7 +36,7 @@ export async function POST(
       return NextResponse.json({ error: 'Esdeveniment no trobat' }, { status: 404 })
     }
 
-    const cancelled = body.cancelled !== false
+    const cancelled = calendarCancelledFromRequest(body.cancelled)
     const now = new Date().toISOString()
     await docRef.set(
       cancelled

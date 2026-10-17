@@ -29,6 +29,59 @@ test('indirect personnel is unavailable when Opsia does not provide the LN total
   )
 })
 
+test('residual indirect personnel floors at zero instead of going negative', () => {
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: 100,
+      fixedDirect: 80,
+      logisticsKitchen: 50,
+    }),
+    0
+  )
+})
+
+test('residual indirect personnel is unavailable without the LN total and the direct base', () => {
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: 100,
+      fixedDirect: null,
+      logisticsKitchen: 10,
+    }),
+    null
+  )
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: Number.NaN,
+      fixedDirect: 10,
+      logisticsKitchen: 10,
+    }),
+    null
+  )
+})
+
+test('FIX_DEPARTAMENTS without a configured amount is unavailable and negatives clamp to 0', () => {
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: 999,
+      fixedDirect: 10,
+      logisticsKitchen: 10,
+      mode: 'FIX_DEPARTAMENTS',
+      configuredFixed: null,
+    }),
+    null
+  )
+  assert.equal(
+    calculateIndirectPersonnelPool({
+      personalTotalLn: 999,
+      fixedDirect: 10,
+      logisticsKitchen: 10,
+      mode: 'FIX_DEPARTAMENTS',
+      configuredFixed: -25,
+    }),
+    0
+  )
+})
+
 test('configured monthly fixed amounts from Opsia are exported unchanged', () => {
   for (const configuredFixed of [20000, 15000, 5000]) {
     assert.equal(
@@ -42,6 +95,29 @@ test('configured monthly fixed amounts from Opsia are exported unchanged', () =>
       configuredFixed
     )
   }
+})
+
+test('cost pool remainder stays on the last eligible row and ineligible drivers get 0', () => {
+  const events = [
+    { id: 'skip', billing: 0 },
+    { id: 'a', billing: 1 },
+    { id: 'b', billing: 1 },
+    { id: 'c', billing: 1 },
+  ]
+  const result = allocateCostPool(events, 10, (row) => row.billing)
+
+  assert.equal(result.get(events[0]), 0)
+  assert.equal(result.get(events[1]), 3.33)
+  assert.equal(result.get(events[2]), 3.33)
+  assert.equal(result.get(events[3]), 3.34)
+  assert.equal([...result.values()].reduce((sum, value) => sum + value, 0), 10)
+})
+
+test('empty or non-positive pools allocate zero to every row', () => {
+  const events = [{ id: 'a', billing: 10 }]
+  assert.equal(allocateCostPool(events, 0, (row) => row.billing).get(events[0]), 0)
+  assert.equal(allocateCostPool(events, -50, (row) => row.billing).get(events[0]), 0)
+  assert.equal(allocateCostPool([], 100, () => 1).size, 0)
 })
 
 test('indirect pool is shared by every event, including zero billing', () => {
