@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
+import {
+  normalizeSyntheticDismissalIds,
+  type SyntheticDismissalScope,
+} from '@/lib/notifications/syntheticDismissals'
 
-export type SyntheticDismissalScope = 'incidents' | 'roba_personal'
+export type { SyntheticDismissalScope }
 
 const LEGACY_STORAGE_KEYS: Record<SyntheticDismissalScope, string> = {
   incidents: 'incident-dismissed-synthetic-notifications',
@@ -11,11 +15,6 @@ const LEGACY_STORAGE_KEYS: Record<SyntheticDismissalScope, string> = {
 }
 
 type DismissalsPayload = { ids?: string[] }
-
-const normalizeIds = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? [...new Set(value.map((id) => String(id || '').trim()).filter(Boolean))]
-    : []
 
 const fetcher = async (url: string): Promise<DismissalsPayload> => {
   const response = await fetch(url, { cache: 'no-store' })
@@ -40,7 +39,7 @@ export function useSyntheticNotificationDismissals(scope: SyntheticDismissalScop
   const [legacyIds, setLegacyIds] = useState<string[]>([])
   const migratedRef = useRef(false)
 
-  const serverIds = useMemo(() => normalizeIds(data?.ids), [data?.ids])
+  const serverIds = useMemo(() => normalizeSyntheticDismissalIds(data?.ids), [data?.ids])
   const dismissedIds = useMemo(
     () => [...new Set([...serverIds, ...legacyIds])],
     [legacyIds, serverIds]
@@ -52,7 +51,7 @@ export function useSyntheticNotificationDismissals(scope: SyntheticDismissalScop
     const storageKey = LEGACY_STORAGE_KEYS[scope]
     let localIds: string[] = []
     try {
-      localIds = normalizeIds(JSON.parse(window.localStorage.getItem(storageKey) || '[]'))
+      localIds = normalizeSyntheticDismissalIds(JSON.parse(window.localStorage.getItem(storageKey) || '[]'))
     } catch {
       localIds = []
     }
@@ -70,7 +69,7 @@ export function useSyntheticNotificationDismissals(scope: SyntheticDismissalScop
 
   const dismiss = useCallback(
     async (ids: string[]) => {
-      const normalized = normalizeIds(ids)
+      const normalized = normalizeSyntheticDismissalIds(ids)
       if (normalized.length === 0) return
       const optimisticIds = [...new Set([...dismissedIds, ...normalized])]
       await mutate({ ids: optimisticIds }, { revalidate: false })
