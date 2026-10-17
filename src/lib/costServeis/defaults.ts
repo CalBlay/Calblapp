@@ -3,6 +3,7 @@ import type {
   ServiceCostConfig,
   DepartmentCostBlock,
   CostServeisDepartment,
+  DeparturePoint,
   VehicleFuelRate,
   VehicleTripLine,
   FuelConfig,
@@ -21,6 +22,19 @@ export const DEFAULT_DEPARTURE_ORIGENS = {
   address: 'Carrer Josep Rovira 27, 08770 Sant Sadurní d’Anoia, Barcelona',
   lat: 41.4261 as number | null,
   lng: 1.7872 as number | null,
+}
+
+/** Fusiona un punt de sortida desat amb el default. Adreça/label buits no trepitgen. */
+export function mergeDeparturePoint(
+  base: DeparturePoint,
+  saved?: Partial<DeparturePoint> | null
+): DeparturePoint {
+  const merged = { ...base, ...(saved || {}) }
+  if (!String(merged.address || '').trim()) merged.address = base.address
+  if (!String(merged.label || '').trim()) merged.label = base.label
+  if (merged.lat == null) merged.lat = base.lat
+  if (merged.lng == null) merged.lng = base.lng
+  return merged
 }
 
 /** Consums orientatius L/100km per tipus (editables a config). */
