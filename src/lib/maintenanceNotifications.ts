@@ -216,28 +216,43 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
   if (!uids.length) return
 
   const now = Date.now()
-  const batch = db.batch()
+  const notificationData = {
+    ...payload,
+    createdAt: now,
+    read: false,
+  }
+  let notifiedUids = uids
 
-  for (const uid of uids) {
-    const ref = docId
-      ? db.collection('users').doc(uid).collection('notifications').doc(docId)
-      : db.collection('users').doc(uid).collection('notifications').doc()
-    const data = {
-      ...payload,
-      createdAt: now,
-      read: false,
+  if (docId) {
+    const createdUids: string[] = []
+    for (const uid of uids) {
+      const ref = db.collection('users').doc(uid).collection('notifications').doc(docId)
+      try {
+        await ref.create(notificationData)
+        createdUids.push(uid)
+      } catch (error: unknown) {
+        const code = (error as { code?: number | string } | null)?.code
+        if (code === 6 || code === 'already-exists') continue
+        throw error
+      }
     }
-    if (docId) {
-      batch.set(ref, data, { merge: true })
-    } else {
-      batch.set(ref, data)
+    notifiedUids = createdUids
+  } else {
+    const batch = db.batch()
+
+    for (const uid of uids) {
+      const ref = db.collection('users').doc(uid).collection('notifications').doc()
+      batch.set(ref, notificationData)
     }
+
+    await batch.commit()
   }
 
-  await batch.commit()
+  if (!notifiedUids.length) return
+
   const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
   await afterNotificationsCommitted(
-    uids.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
+    notifiedUids.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
   )
 
   if (process.env.ABLY_API_KEY) {
@@ -245,7 +260,7 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
       const { getAblyRest } = await import('@/lib/server/ablyRest')
       const rest = getAblyRest()
       await Promise.all(
-        uids.map((uid) =>
+        notifiedUids.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {
             type: payload.type,
             ticketId: payload.ticketId,
@@ -258,7 +273,7 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
     }
   }
 
-  await sendPushToUsers(uids, {
+  await sendPushToUsers(notifiedUids, {
     title: payload.title,
     body: payload.body,
     url:

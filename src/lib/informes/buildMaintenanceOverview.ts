@@ -18,6 +18,7 @@ import {
   type StatusHistoryEntry,
 } from '@/lib/informes/maintenanceTicketMetrics'
 import type { MaintenanceWorkLogEntry } from '@/lib/maintenanceWorkLogs'
+import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
 import type {
   MaintenanceAssigneeRow,
   MaintenanceKpiCard,
@@ -44,6 +45,7 @@ type BuildParams = {
   interventionType?: string
   assigneeId?: string
   operatorId?: string
+  scope?: 'cuina_central'
 }
 
 type TicketRecord = Record<string, unknown> & {
@@ -61,6 +63,8 @@ type TicketRecord = Record<string, unknown> & {
   plannedStart?: string | number | { toDate?: () => Date } | null
   resolvedAt?: string | number | { toDate?: () => Date } | null
   externalized?: boolean
+  source?: string | null
+  intakeChannel?: string | null
   assignedToNames?: string[]
   assignedToIds?: string[]
   statusHistory?: StatusHistoryEntry[]
@@ -404,6 +408,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
 
   for (const doc of ticketSnap.docs) {
     const data = doc.data() as TicketRecord
+    if (params.scope === 'cuina_central' && !isCuinaCentralMaintenanceTicket(data)) continue
     const createdAtMs = parseCreatedAtMs(data.createdAt)
     const eventAtMs = resolveTicketLastActivityMs(data) || createdAtMs
     const assigneeNames = Array.isArray(data.assignedToNames)
@@ -440,7 +445,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     })
   }
 
-  for (const preventiu of preventiusRaw) {
+  for (const preventiu of params.scope === 'cuina_central' ? [] : preventiusRaw) {
     allItems.push({
       kind: 'preventiu',
       id: preventiu.id,
@@ -710,6 +715,14 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   ]
 
   const optionSource = inWindow
+  const optionCenters =
+    params.scope === 'cuina_central'
+      ? maintenanceCenters.filter(
+          (center) =>
+            isCuinaCentralMaintenanceTicket({ center: center.name }) ||
+            isCuinaCentralMaintenanceTicket({ center: center.code })
+        )
+      : maintenanceCenters
   const assigneesFromData = optionSource
     .flatMap((item) =>
       item.workerIds.map((id, index) => ({
@@ -720,7 +733,9 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     .filter((row, index, arr) => row.id && arr.findIndex((x) => x.id === row.id) === index)
 
   const assigneeMapOptions = new Map<string, MaintenanceSelectOption>()
-  for (const row of personnelOperators) assigneeMapOptions.set(row.value, row)
+  if (!params.scope) {
+    for (const row of personnelOperators) assigneeMapOptions.set(row.value, row)
+  }
   for (const row of assigneesFromData) {
     if (!assigneeMapOptions.has(row.id)) {
       assigneeMapOptions.set(row.id, { value: row.id, label: row.name })
@@ -736,17 +751,23 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       optionSource.map((t) => t.priority),
       (value) => PRIORITY_LABELS[value] || value
     ),
-    centers: uniqueLabeledOptions(getMaintenanceCenterOptions(maintenanceCenters), (value) => value),
-    interventionTypes: [
-      { value: 'ticket_internal', label: 'Tickets interns' },
-      { value: 'ticket_externalized', label: 'Tickets externalitzats' },
-      { value: 'preventiu', label: 'Preventius' },
-    ],
+    centers: uniqueLabeledOptions(getMaintenanceCenterOptions(optionCenters), (value) => value),
+    interventionTypes:
+      params.scope === 'cuina_central'
+        ? [
+            { value: 'ticket_internal', label: 'Tickets interns' },
+            { value: 'ticket_externalized', label: 'Tickets externalitzats' },
+          ]
+        : [
+            { value: 'ticket_internal', label: 'Tickets interns' },
+            { value: 'ticket_externalized', label: 'Tickets externalitzats' },
+            { value: 'preventiu', label: 'Preventius' },
+          ],
     locations: uniqueLabeledOptions(
-      getMaintenanceLocationsForCenter(maintenanceCenters),
+      getMaintenanceLocationsForCenter(optionCenters),
       (value) => value
     ),
-    zones: uniqueLabeledOptions(getMaintenanceZones(maintenanceCenters), (value) => value),
+    zones: uniqueLabeledOptions(getMaintenanceZones(optionCenters), (value) => value),
     ticketTypes: uniqueLabeledOptions(
       optionSource.filter((t) => t.kind === 'ticket').map((t) => t.category),
       (value) => (value === 'deco' ? 'Decoració' : 'Maquinària')

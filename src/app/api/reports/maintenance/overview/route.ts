@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { buildMaintenanceOverview } from '@/lib/informes/buildMaintenanceOverview'
 import { normalizeMaintenanceOverview } from '@/lib/informes/normalizeMaintenanceOverview'
 import { canViewReportsDomain, reportsDomainForbiddenResponse } from '@/lib/server/reportsApiAuth'
+import { canViewUiPath } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,12 +14,18 @@ export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  if (!(await canViewReportsDomain(auth.user, 'maintenance'))) {
+  const { searchParams } = new URL(req.url)
+  const scope = searchParams.get('scope') === 'cuina_central' ? 'cuina_central' : undefined
+  const canViewGeneralReports = await canViewReportsDomain(auth.user, 'maintenance')
+  const canViewCuinaCentralReports = scope
+    ? await canViewUiPath({ user: auth.user, path: '/menu/cuina-central/informes' })
+    : false
+
+  if (!canViewGeneralReports && !canViewCuinaCentralReports) {
     return reportsDomainForbiddenResponse()
   }
 
   try {
-    const { searchParams } = new URL(req.url)
     const mode = searchParams.get('mode')
 
     if (mode === 'custom') {
@@ -52,6 +59,7 @@ export async function GET(req: Request) {
         interventionType: searchParams.get('interventionType') || undefined,
         assigneeId: searchParams.get('assigneeId') || searchParams.get('operatorId') || undefined,
         operatorId: searchParams.get('operatorId') || searchParams.get('assigneeId') || undefined,
+        scope,
       })
       return NextResponse.json(normalizeMaintenanceOverview(payload), {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
@@ -64,14 +72,14 @@ export async function GET(req: Request) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
         return NextResponse.json({ error: 'Cal dateFrom i dateTo (YYYY-MM-DD).' }, { status: 400 })
       }
-      const payload = await buildMaintenanceOverview({ mode: 'range', dateFrom, dateTo })
+      const payload = await buildMaintenanceOverview({ mode: 'range', dateFrom, dateTo, scope })
       return NextResponse.json(normalizeMaintenanceOverview(payload), {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       })
     }
 
     const days = Math.min(365, Math.max(7, Number(searchParams.get('days')) || 30))
-    const payload = await buildMaintenanceOverview({ mode: 'rolling', days })
+    const payload = await buildMaintenanceOverview({ mode: 'rolling', days, scope })
     return NextResponse.json(normalizeMaintenanceOverview(payload), {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     })

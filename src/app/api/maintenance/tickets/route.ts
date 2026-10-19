@@ -279,6 +279,7 @@ export async function GET(req: Request) {
   const ticketType = (searchParams.get('ticketType') || 'all').toLowerCase()
   const requestedScope = (searchParams.get('scope') || '').trim().toLowerCase()
   const code = (searchParams.get('code') || '').trim().toUpperCase()
+  const machineCode = (searchParams.get('machineCode') || '').trim().toUpperCase()
   const start = (searchParams.get('start') || '').trim()
   const end = (searchParams.get('end') || '').trim()
   const dateMode = ((searchParams.get('dateMode') || 'all').trim().toLowerCase() || 'all') as
@@ -372,8 +373,10 @@ export async function GET(req: Request) {
       })
     } else {
       const queryLimit =
-        requestedScope === 'cuina_central' || (canViewCuinaCentral && !canViewAllTickets)
-          ? Math.max(limit + 1, 500)
+        machineCode
+          ? Math.max(limit + 1, 1000)
+          : requestedScope === 'cuina_central' || (canViewCuinaCentral && !canViewAllTickets)
+            ? Math.max(limit + 1, 500)
           : Math.max(limit + 1, 100)
       try {
         let orderedRef = ref.orderBy('createdAt', 'desc')
@@ -401,6 +404,19 @@ export async function GET(req: Request) {
 
     if (requestedScope === 'cuina_central' || (canViewCuinaCentral && !canViewAllTickets)) {
       tickets = tickets.filter((ticket) => isCuinaCentralMaintenanceTicket(ticket))
+    }
+
+    if (machineCode) {
+      const normalizedMachineCode = normalizeName(machineCode)
+      tickets = tickets.filter((ticket) => {
+        const machine = normalizeName(String(ticket.machine || ''))
+        return (
+          machine === normalizedMachineCode ||
+          machine.startsWith(`${normalizedMachineCode} ·`) ||
+          machine.startsWith(`${normalizedMachineCode} -`) ||
+          machine.startsWith(`${normalizedMachineCode} `)
+        )
+      })
     }
 
     if (code) {
@@ -464,6 +480,7 @@ export async function GET(req: Request) {
       location,
       ticketType,
       hasCode: Boolean(code),
+      hasMachineCode: Boolean(machineCode),
       hasDateRange: Boolean(start || end),
       dateMode,
       assignedToId: assignedToId || (role === 'treballador' ? user.id : ''),

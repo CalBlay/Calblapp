@@ -61,7 +61,11 @@ function formatDateTime(value?: string) {
   })
 }
 
-export function MaintenanceInformesPanel() {
+type MaintenanceInformesPanelProps = {
+  scope?: 'cuina_central'
+}
+
+export function MaintenanceInformesPanel({ scope }: MaintenanceInformesPanelProps = {}) {
   const [tab, setTab] = useState<'kpis' | 'custom'>('kpis')
   const [days, setDays] = useState('30')
   const [kpiData, setKpiData] = useState<MaintenanceOverview | null>(null)
@@ -95,6 +99,7 @@ export function MaintenanceInformesPanel() {
     try {
       const params = new URLSearchParams()
       params.set('days', days)
+      if (scope) params.set('scope', scope)
       const res = await fetch(`/api/reports/maintenance/overview?${params}`, { cache: 'no-store' })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
@@ -107,7 +112,7 @@ export function MaintenanceInformesPanel() {
     } finally {
       setKpiLoading(false)
     }
-  }, [days])
+  }, [days, scope])
 
   useEffect(() => {
     void loadKpis()
@@ -133,7 +138,9 @@ export function MaintenanceInformesPanel() {
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/reports/maintenance/filter-options?days=90', {
+        const params = new URLSearchParams({ days: '90' })
+        if (scope) params.set('scope', scope)
+        const res = await fetch(`/api/reports/maintenance/filter-options?${params}`, {
           cache: 'no-store',
         })
         if (!res.ok) return
@@ -146,7 +153,7 @@ export function MaintenanceInformesPanel() {
     return () => {
       cancelled = true
     }
-  }, [tab])
+  }, [scope, tab])
 
   const runCustomReport = useCallback(async () => {
     setCustomLoading(true)
@@ -156,6 +163,7 @@ export function MaintenanceInformesPanel() {
       params.set('mode', 'custom')
       params.set('dateFrom', customDateFrom)
       params.set('dateTo', customDateTo)
+      if (scope) params.set('scope', scope)
       if (customStatus) params.set('status', customStatus)
       if (customPriority) params.set('priority', customPriority)
       if (customCenter) params.set('center', customCenter)
@@ -190,6 +198,7 @@ export function MaintenanceInformesPanel() {
     customTicketType,
     customInterventionType,
     customAssigneeId,
+    scope,
   ])
 
   const exportSnapRef = useRef<ExportSnap>({ tab: 'kpis', data: null, loading: true })

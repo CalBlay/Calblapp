@@ -9,8 +9,6 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 const LINKS = [
   { href: '/menu/cuina-central/manteniment', label: 'Manteniment' },
   { href: '/menu/cuina-central/dades', label: 'Dades' },
-  { href: '/menu/cuina-central/produccio', label: 'Producció' },
-  { href: '/menu/cuina-central/decisions', label: 'Decisions diàries' },
   { href: '/menu/cuina-central/informes', label: 'Informes' },
   { href: '/menu/cuina-central/planificador', label: 'Planificador' },
 ] as const
