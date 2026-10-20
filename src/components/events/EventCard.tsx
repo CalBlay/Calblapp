@@ -24,6 +24,7 @@ interface EventData {
   start: string
   end: string | null
   location?: string
+  mapsLocation?: string
   Ubicacio?: string
   eventCode?: string | null
   codeConfirmed?: boolean
@@ -86,8 +87,9 @@ export default function EventCard({
 
   const location = event.Ubicacio || event.location || ''
   const locationDisplay = event.locationShort || location
-  const mapsUrl = location
-    ? `https://www.google.com/maps?q=${encodeURIComponent(location)}`
+  const mapsLocation = event.mapsLocation || location
+  const mapsUrl = mapsLocation
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsLocation)}`
     : null
 
   const hasAviso = Boolean(event.lastAviso)

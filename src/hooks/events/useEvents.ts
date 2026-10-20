@@ -12,6 +12,7 @@ export interface EventData {
   day: string
   occurrenceKey?: string
   location: string
+  mapsLocation?: string
   pax: number
   importAmount?: number
   state: 'pending' | 'draft' | 'confirmed'
@@ -50,6 +51,7 @@ interface EventPayload {
   day?: string
   occurrenceKey?: string
   location?: string
+  mapsLocation?: string
   pax?: number
   importAmount?: number
   state?: string
@@ -132,6 +134,7 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
 
   const flat: EventData[] = eventsFromPayload.map((ev) => {
     const location = ev.location || ''
+    const mapsLocation = ev.mapsLocation || location
     let eventCode = ev.eventCode || ev.code || null
 
     if (!eventCode && ev.summary) {
@@ -151,10 +154,11 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
       name: ev.summary,
       pax,
       location,
+      mapsLocation,
       day: String(ev.day || ev.start.slice(0, 10)),
       occurrenceKey: ev.occurrenceKey || undefined,
       locationShort: computeLocationShort(location),
-      mapsUrl: computeMapsUrl(location),
+      mapsUrl: computeMapsUrl(mapsLocation),
       state: normalizeStatus(ev.state || ev.status),
       eventCode: eventCode ? normalizeCode(eventCode) : null,
       commercial: ev.commercial ?? null,

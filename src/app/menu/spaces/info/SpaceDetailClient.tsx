@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { ExternalLink, MapPin, Trash2 } from 'lucide-react'
 import { MotionDiv } from '@/lib/lazyMotion'
 import { useRouter } from 'next/navigation'
 import SpaceMediaAttachments from '@/components/spaces/SpaceMediaAttachments'
@@ -105,6 +105,10 @@ export default function SpaceDetailClient({
   const [code, setCode] = useState(espai.code || '')
   const [nom, setNom] = useState(espai.nom || '')
   const [ubicacio, setUbicacio] = useState(espai.ubicacio || '')
+  const mapsQuery = ubicacio.trim() || nom.trim()
+  const mapsUrl = mapsQuery
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsQuery)}`
+    : null
   const [ln, setLn] = useState(espai.ln || '')
   const [tipus, setTipus] = useState<'Propi' | 'Extern'>(tipusInicial)
 
@@ -458,13 +462,34 @@ const handleDelete = async () => {
               <label className="block text-xs text-gray-500 mb-1">
                 Ubicació
               </label>
-              <input
-                value={ubicacio}
-                onChange={(e) => setUbicacio(e.target.value)}
-                disabled={!canEdit}
-                className="w-full border rounded-lg px-2 py-1.5 text-sm"
-                placeholder="Població, adreça, referències..."
-              />
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <MapPin
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    value={ubicacio}
+                    onChange={(e) => setUbicacio(e.target.value)}
+                    disabled={!canEdit}
+                    className="w-full rounded-lg border py-1.5 pl-8 pr-2 text-sm"
+                    placeholder="Població, adreça, referències..."
+                  />
+                </div>
+                {mapsUrl && (
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Obrir indicacions fins a ${mapsQuery} a Google Maps`}
+                    title="Com arribar amb Google Maps"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                  >
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Google Maps</span>
+                  </a>
+                )}
+              </div>
             </div>
 
             <div className="flex gap-2">

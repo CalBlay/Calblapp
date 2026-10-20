@@ -256,12 +256,33 @@ const getEventsListCached = unstable_cache(
       else deptsToUse = []
     }
 
-    const stageDocs = await queryStageCollectionDocsInDateRange(
-      db,
-      'stage_verd',
-      start.slice(0, 10),
-      end.slice(0, 10)
-    )
+    const [stageDocs, finquesSnapshot] = await Promise.all([
+      queryStageCollectionDocsInDateRange(
+        db,
+        'stage_verd',
+        start.slice(0, 10),
+        end.slice(0, 10)
+      ),
+      db.collection('finques').get(),
+    ])
+
+    const fincaAddressById = new Map<string, string>()
+    const fincaAddressByCode = new Map<string, string>()
+    const fincaAddressByName = new Map<string, string>()
+
+    finquesSnapshot.forEach((doc) => {
+      const finca = doc.data() as Record<string, unknown>
+      const address = firstDocString(finca, ['ubicacio', 'Ubicacio', 'address', 'Address'])
+      if (!address) return
+
+      fincaAddressById.set(doc.id, address)
+
+      const code = firstDocString(finca, ['code', 'Code', 'codi', 'Codi'])
+      if (code) fincaAddressByCode.set(normCode(code), address)
+
+      const name = firstDocString(finca, ['nom', 'Nom', 'name', 'Name'])
+      if (name) fincaAddressByName.set(normalize(name), address)
+    })
 
     const base = stageDocs.map((doc) => {
       const d = doc.data() as StageVerdDoc
@@ -309,6 +330,13 @@ const getEventsListCached = unstable_cache(
         .replace(/^ZZRestaurant\s*/i, '')
         .replace(/^ZZ\s*/i, '')
         .trim()
+      const fincaId = firstDocString(d, ['FincaId', 'fincaId'])
+      const fincaCode = firstDocString(d, ['FincaCode', 'fincaCode'])
+      const mapsLocation =
+        (fincaId ? fincaAddressById.get(fincaId) : undefined) ||
+        (fincaCode ? fincaAddressByCode.get(normCode(fincaCode)) : undefined) ||
+        fincaAddressByName.get(normalize(location)) ||
+        location
 
       const rawHora =
         typeof d?.HoraInici === 'string'
@@ -333,6 +361,7 @@ const getEventsListCached = unstable_cache(
         end: endISO,
         day: startISO ? dayKey(startISO) : '',
         location,
+        mapsLocation,
         pax,
         importAmount,
         eventCode,
@@ -345,8 +374,8 @@ const getEventsListCached = unstable_cache(
         lnKey: lnValue.toLowerCase(),
         lnLabel: lnValue,
         horaInici,
-        fincaId: d?.FincaId ?? null,
-        fincaCode: d?.FincaCode ?? null,
+        fincaId: fincaId ?? null,
+        fincaCode: fincaCode ?? null,
         hasDocuments: eventRecordHasAttachedDocuments(d),
       }
     })
@@ -478,7 +507,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v3-documents'],
+  ['api-events-list-v4-space-addresses'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC }
 )
 
