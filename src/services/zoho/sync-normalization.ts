@@ -46,7 +46,9 @@ export function classifyStage(stage: string): StageCollection | null {
     s.includes('pendent') ||
     s.includes('proposta') ||
     s.includes('propuesta') ||
-    s.includes('pressupost')
+    s.includes('pressupost') ||
+    s.includes('seguiment 1') ||
+    s.includes('seguiment 2')
   ) {
     return 'groc'
   }
@@ -89,7 +91,7 @@ function stagePresentation(group: StageCollection) {
     return {
       Color: 'border-yellow-300 bg-yellow-50 text-yellow-800',
       StageDot: 'bg-yellow-400',
-      StageGroup: 'Pressupost / Proposta / Pendent',
+      StageGroup: 'Pressupost / Seguiment / Proposta / Pendent',
     }
   }
 
