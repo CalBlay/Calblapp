@@ -5,6 +5,10 @@ import type {
   TimetableEntry,
 } from '../components/quadrantModalTypes'
 import { collectTimetable, splitTitle } from '../components/quadrantModalUtils'
+import {
+  evaluateRangeEligibility,
+  type RangeEligibilityCtx,
+} from '@/services/eligibility'
 
 export type IdName = { id: string; name?: string }
 
@@ -20,6 +24,49 @@ export type RoleLineReservation = {
   role?: string
   personId?: string
   personName?: string
+  serviceDate?: string
+  startTime?: string
+  endTime?: string
+}
+
+export type LocalPersonnelRules = RangeEligibilityCtx
+
+const roleLineDateTime = (line: RoleLineReservation, edge: 'start' | 'end') => {
+  const date = String(line.serviceDate || '').trim()
+  const time = String(edge === 'start' ? line.startTime : line.endTime || '').trim()
+  if (!date || !/^\d{2}:\d{2}$/.test(time)) return null
+  const value = new Date(`${date}T${time}:00`)
+  return Number.isNaN(value.getTime()) ? null : value
+}
+
+/**
+ * Dues files locals només es reserven entre elles quan les premisses indiquen
+ * un conflicte real. Si falten dades de franja, mantenim el bloqueig conservador.
+ */
+export function roleLineAssignmentsConflict(
+  a: RoleLineReservation,
+  b: RoleLineReservation,
+  rules?: LocalPersonnelRules
+): boolean {
+  if (!rules) return true
+
+  const aStart = roleLineDateTime(a, 'start')
+  const aEnd = roleLineDateTime(a, 'end')
+  const bStart = roleLineDateTime(b, 'start')
+  const bEnd = roleLineDateTime(b, 'end')
+  const aDate = String(a.serviceDate || '').trim()
+  const bDate = String(b.serviceDate || '').trim()
+  if (!aStart || !aEnd || !bStart || !bEnd || !aDate || !bDate) return true
+
+  return !evaluateRangeEligibility({
+    reqStart: aStart,
+    reqEnd: aEnd,
+    reqStartDate: aDate,
+    busyStart: bStart,
+    busyEnd: bEnd,
+    busyStartDate: bDate,
+    ctx: rules,
+  }).eligible
 }
 
 export function normalizeRoleLinePersonKey(value?: string): string {
@@ -82,9 +129,17 @@ export function buildReservedForRoleLine(
   allLines: RoleLineReservation[],
   currentLine: RoleLineReservation,
   manualResponsibleId?: string,
-  additionalReservedKeys?: Iterable<string>
+  additionalReservedKeys?: Iterable<string>,
+  rules?: LocalPersonnelRules
 ): Set<string> {
-  const reserved = collectReservedPersonKeysFromLines(allLines, currentLine.slotId)
+  const relevantLines = rules
+    ? allLines.filter(
+        (line) =>
+          line.slotId !== currentLine.slotId &&
+          roleLineAssignmentsConflict(currentLine, line, rules)
+      )
+    : allLines
+  const reserved = collectReservedPersonKeysFromLines(relevantLines, currentLine.slotId)
   if (additionalReservedKeys) {
     for (const key of additionalReservedKeys) {
       const normalized = normalizeRoleLinePersonKey(key)
@@ -107,6 +162,7 @@ export function buildReservedForRoleLine(
       (line) =>
         line.slotId !== currentLine.slotId &&
         roleLineHasAssignedPerson(line) &&
+        roleLineAssignmentsConflict(currentLine, line, rules) &&
         linesShareSamePerson(line, manualPerson)
     )
     if (!anotherLineHasManual) {
@@ -151,13 +207,19 @@ export function dedupeRoleLinePersonAssignments<T extends RoleLineReservation>(
   })
 }
 
-export function findDuplicateRoleLinePersonKeys(lines: RoleLineReservation[]): string[] {
+export function findDuplicateRoleLinePersonKeys(
+  lines: RoleLineReservation[],
+  rules?: LocalPersonnelRules
+): string[] {
   const duplicates = new Set<string>()
   for (let i = 0; i < lines.length; i += 1) {
     if (!roleLineHasAssignedPerson(lines[i])) continue
     for (let j = i + 1; j < lines.length; j += 1) {
       if (!roleLineHasAssignedPerson(lines[j])) continue
-      if (linesShareSamePerson(lines[i], lines[j])) {
+      if (
+        linesShareSamePerson(lines[i], lines[j]) &&
+        roleLineAssignmentsConflict(lines[i], lines[j], rules)
+      ) {
         const key =
           roleLinePersonReservationKey(lines[i]) || roleLinePersonReservationKey(lines[j])
         if (key) duplicates.add(key)

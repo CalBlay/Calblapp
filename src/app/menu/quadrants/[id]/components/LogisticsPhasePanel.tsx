@@ -27,6 +27,7 @@ import {
   resizeLogisticPhaseToTotalPersonSlots,
 } from "../lib/logisticPhaseRoleLines"
 import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../lib/quadrantPayloadShared"
+import type { LocalPersonnelRules } from "../lib/quadrantPayloadShared"
 import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { ComponentProps } from "react"
@@ -46,6 +47,7 @@ type Props = {
   availableConductors: AvailableConductor[]
   availableResponsables: ResponsableAvailabilityOption[]
   availableTreballadors?: Array<{ id: string; name: string }>
+  personnelRules?: LocalPersonnelRules
   togglePhaseVisibility: (key: LogisticPhaseKey) => void
   updatePhaseForm: (key: LogisticPhaseKey, patch: Partial<LogisticPhaseForm>) => void
   updatePhaseSetting: (key: LogisticPhaseKey, patch: Partial<LogisticPhaseSetting>) => void
@@ -76,6 +78,7 @@ export default function LogisticsPhasePanel({
   availableConductors,
   availableResponsables,
   availableTreballadors = [],
+  personnelRules,
   togglePhaseVisibility,
   updatePhaseForm,
   updatePhaseSetting,
@@ -146,28 +149,33 @@ export default function LogisticsPhasePanel({
               )
             )
           const allReservationLines = [...crossPhaseLines, ...roleLines]
-          const localDuplicateMessage = validateNoLocalQuadrantPersonDuplicates(allReservationLines)
+          const localDuplicateMessage = validateNoLocalQuadrantPersonDuplicates(
+            allReservationLines,
+            personnelRules
+          )
 
           const applyGroupDefaults = () => {
-            const { formPatch, assignments: nextAssignments } = patchLogisticRoleLines(
+            const { formPatch } = patchLogisticRoleLines(
               form,
               assignments,
-              (lines) => applyLogisticDefaultsToRoleLines(form, lines)
+              (lines) => applyLogisticDefaultsToRoleLines(form, lines),
+              roleLines
             )
+            // roleLines és la font de veritat. useLogisticsPhasesState sincronitza
+            // les assignacions de vehicle després del mateix canvi de formulari.
             updatePhaseForm(phase.key, formPatch)
-            replacePhaseVehicleAssignments(phase.key, nextAssignments)
           }
 
           const applyRoleLines = (
             updater: (lines: ReturnType<typeof ensureLogisticRoleLines>) => ReturnType<typeof ensureLogisticRoleLines>
           ) => {
-            const { formPatch, assignments: nextAssignments } = patchLogisticRoleLines(
+            const { formPatch } = patchLogisticRoleLines(
               form,
               assignments,
-              updater
+              updater,
+              roleLines
             )
             updatePhaseForm(phase.key, formPatch)
-            replacePhaseVehicleAssignments(phase.key, nextAssignments)
           }
 
           const patchAssignmentForLine = (
@@ -305,13 +313,12 @@ export default function LogisticsPhasePanel({
                             max={30}
                             value={roleLines.length}
                             onChange={(e) => {
-                              const result = resizeLogisticPhaseToTotalPersonSlots(
+                              const { formPatch } = resizeLogisticPhaseToTotalPersonSlots(
                                 form,
                                 assignments,
                                 Number(e.target.value)
                               )
-                              updatePhaseForm(phase.key, result.formPatch)
-                              replacePhaseVehicleAssignments(phase.key, result.assignments)
+                              updatePhaseForm(phase.key, formPatch)
                             }}
                             className={cn(
                               "w-[4.5rem] shrink-0 px-2 tabular-nums",
@@ -362,7 +369,9 @@ export default function LogisticsPhasePanel({
                         const reservedForLine = buildReservedForRoleLine(
                           allReservationLines,
                           line,
-                          logisticaTopBar?.manualResp
+                          logisticaTopBar?.manualResp,
+                          undefined,
+                          personnelRules
                         )
                         const lineAssignment = findAssignmentForLine(assignments, line)
                         return (

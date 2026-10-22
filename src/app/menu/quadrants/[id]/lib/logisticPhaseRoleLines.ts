@@ -227,9 +227,13 @@ export function syncLogisticPhaseFromRoleLines(
 export function patchLogisticRoleLines(
   form: LogisticPhaseForm,
   assignments: VehicleAssignment[],
-  updater: (lines: ServeiGroupRoleLine[]) => ServeiGroupRoleLine[]
+  updater: (lines: ServeiGroupRoleLine[]) => ServeiGroupRoleLine[],
+  renderedLines?: ServeiGroupRoleLine[]
 ): { formPatch: Partial<LogisticPhaseForm>; assignments: VehicleAssignment[] } {
-  const current = ensureLogisticRoleLines(form, assignments)
+  // En quadrants pendents, la primera fila encara no existeix a `form.roleLines`.
+  // El render ja n'ha creat una amb un slotId; reutilitzar-la evita generar un
+  // altre slotId en el primer clic i perdre el canvi de rol.
+  const current = renderedLines ?? ensureLogisticRoleLines(form, assignments)
   return syncLogisticPhaseFromRoleLines(form, updater(current), assignments)
 }
 

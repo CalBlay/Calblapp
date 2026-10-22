@@ -100,6 +100,23 @@ export type EditorDraftInput = {
   phaseType?: string
 }
 
+/** Identitat estable per rehidratar l'editor només quan el borrador canvia de debò. */
+export function editorDraftSyncStamp(draft?: EditorDraftInput | null): string {
+  if (!draft) return ''
+  const raw = draft.updatedAt
+  let version = ''
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    version = String(raw)
+  } else if (raw?.toDate) {
+    try {
+      version = raw.toDate().toISOString()
+    } catch {
+      version = ''
+    }
+  }
+  return `${String(draft.id || '').trim()}|${version}`
+}
+
 export type DraftEditorModel = {
   department: string
   rows: EditorRow[]

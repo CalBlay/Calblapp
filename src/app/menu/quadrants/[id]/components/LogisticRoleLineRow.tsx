@@ -5,6 +5,13 @@ import { toast } from 'sonner'
 import { Truck, User, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportPlateKey,
@@ -225,15 +232,21 @@ export default function LogisticRoleLineRow({
           )}
         </span>
 
-        <select
+        <Select
           value={line.role}
-          onChange={(e) => handleRoleChange(e.target.value as ServeiRoleKey)}
-          className={`${fieldClass} w-[7.25rem] shrink-0 rounded-md border border-slate-200 bg-white px-2 text-xs`}
-          aria-label="Rol"
+          onValueChange={(value) => handleRoleChange(value as ServeiRoleKey)}
         >
-          <option value="conductor">Conductor</option>
-          <option value="treballador">Treballador</option>
-        </select>
+          <SelectTrigger
+            className={`${fieldClass} w-[7.25rem] shrink-0 bg-white px-2 text-xs`}
+            aria-label="Rol"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="conductor">Conductor</SelectItem>
+            <SelectItem value="treballador">Treballador</SelectItem>
+          </SelectContent>
+        </Select>
 
         {isConductor ? (
           <>

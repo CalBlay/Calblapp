@@ -161,6 +161,7 @@ export function QuadrantEditor({
     availableConductors,
     availableJamoneros,
     availableTreballadors,
+    personnelRules,
   } = useQuadrantFormState({ event, department, modalOpen: active, mode, existingDraft })
 
   const rawTitle = event.summary || event.title || ''
@@ -795,6 +796,7 @@ export function QuadrantEditor({
               mode={mode}
               compact={layout === 'inline'}
               availableTreballadors={availableTreballadors}
+              personnelRules={personnelRules}
               department={department}
               excludeEventId={
                 String(existingDraft?.id || '').trim() ||

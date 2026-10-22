@@ -6,6 +6,8 @@ const {
   resizeStaffRoleLineSlots,
 } = require('../src/app/menu/quadrants/[id]/lib/resizeRoleLineSlots')
 const {
+  ensureLogisticRoleLines,
+  patchLogisticRoleLines,
   resizeLogisticPhaseToTotalPersonSlots,
 } = require('../src/app/menu/quadrants/[id]/lib/logisticPhaseRoleLines')
 
@@ -87,4 +89,67 @@ test('logística crea automàticament els espais indicats i conserva el conducto
   assert.equal(resized.formPatch.workers, 3)
   assert.equal(resized.formPatch.drivers, 1)
   assert.equal(resized.assignments[0].conductorId, 'driver-id')
+})
+
+test('logística canvia una fila de treballador a conductor en una sola actualització', () => {
+  const form = {
+    startDate: '2026-10-20',
+    endDate: '2026-10-20',
+    startTime: '12:00',
+    endTime: '23:59',
+    workers: 1,
+    drivers: 0,
+    meetingPoint: 'Grifols - Museu',
+    roleLines: [line('slot-1', 'treballador')],
+    workerIds: [''],
+    workerDetails: {},
+  }
+
+  const changed = patchLogisticRoleLines(form, [], (lines) =>
+    lines.map((entry) =>
+      entry.slotId === 'slot-1'
+        ? { ...entry, role: 'conductor', personId: '', personName: '' }
+        : entry
+    )
+  )
+
+  assert.equal(changed.formPatch.roleLines[0].role, 'conductor')
+  assert.equal(changed.formPatch.workers, 0)
+  assert.equal(changed.formPatch.drivers, 1)
+  assert.equal(changed.assignments.length, 1)
+  assert.equal(changed.assignments[0].slotId, 'slot-1')
+})
+
+test('logistica conserva el primer canvi de rol en un quadrant pendent sense roleLines', () => {
+  const form = {
+    startDate: '2026-10-19',
+    endDate: '2026-10-19',
+    startTime: '12:00',
+    endTime: '23:59',
+    workers: 1,
+    drivers: 0,
+    meetingPoint: 'Grifols - Museu',
+    workerIds: [''],
+    workerDetails: {},
+  }
+  const renderedLines = ensureLogisticRoleLines(form, [])
+  const renderedSlotId = renderedLines[0].slotId
+
+  const changed = patchLogisticRoleLines(
+    form,
+    [],
+    (lines) =>
+      lines.map((entry) =>
+        entry.slotId === renderedSlotId
+          ? { ...entry, role: 'conductor', personId: '', personName: '' }
+          : entry
+      ),
+    renderedLines
+  )
+
+  assert.equal(changed.formPatch.roleLines[0].slotId, renderedSlotId)
+  assert.equal(changed.formPatch.roleLines[0].role, 'conductor')
+  assert.equal(changed.formPatch.workers, 0)
+  assert.equal(changed.formPatch.drivers, 1)
+  assert.equal(changed.assignments[0].slotId, renderedSlotId)
 })

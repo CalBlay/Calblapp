@@ -13,7 +13,10 @@ import {
 } from '../phaseConfig'
 import { normalizeTransportType, normalizeTransportPlateKey } from '@/lib/transportTypes'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
-import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
+import {
+  editorDraftSyncStamp,
+  type EditorDraftInput,
+} from '@/lib/quadrantsDraftEditor'
 import { hydrateLogisticPhaseFromDraft } from '../lib/hydrateLogisticPhasesFromDraft'
 import { extractDraftResponsible } from '../lib/quadrantPayloadShared'
 import {
@@ -171,21 +174,76 @@ export function useLogisticsPhasesState({
     meetingPoint: baseMeetingPoint,
   }
 
+  const existingDraftRef = useRef(existingDraft)
+  existingDraftRef.current = existingDraft
+  const existingDraftStamp = editorDraftSyncStamp(existingDraft)
+  const hydrationKey = [
+    isLogistica ? 'logistica' : department,
+    String(event.id || ''),
+    String(event.start || ''),
+    requestedPhaseKey || '',
+    existingDraftStamp || 'new',
+  ].join('|')
+  const initialStateRef = useRef<{
+    forms: Record<LogisticPhaseKey, LogisticPhaseForm>
+    assignments: Record<LogisticPhaseKey, VehicleAssignment[]>
+    visibility: Record<LogisticPhaseKey, boolean>
+    settings: Record<LogisticPhaseKey, LogisticPhaseSetting>
+    responsibles: Record<LogisticPhaseKey, string>
+  } | null>(null)
+
+  if (!initialStateRef.current) {
+    const forms = createPhaseForms(initialPhaseParams)
+    const assignments = createPhaseVehicleAssignments()
+    const responsibles = createPhaseResponsibles()
+
+    if (isLogistica && existingDraft) {
+      for (const phase of logisticPhaseOptions) {
+        const hydrated = hydrateLogisticPhaseFromDraft(
+          existingDraft,
+          phase.key,
+          forms[phase.key]
+        )
+        if (hydrated) {
+          forms[phase.key] = hydrated.form
+          assignments[phase.key] = hydrated.assignments
+        }
+      }
+
+      const { id: responsableId } = extractDraftResponsible(existingDraft)
+      const draftPhaseKey = normalizePhaseKey(
+        existingDraft.phaseType || event.phaseKey || event.phaseType || event.phaseLabel
+      )
+      if (responsableId) {
+        responsibles[draftPhaseKey || requestedPhaseKey || 'event'] = responsableId
+      }
+    }
+
+    initialStateRef.current = {
+      forms,
+      assignments,
+      visibility: createPhaseVisibility(requestedPhaseKey),
+      settings: createPhaseSettings(requestedPhaseKey),
+      responsibles,
+    }
+  }
+  const initialState = initialStateRef.current
+
   const [phaseForms, setPhaseForms] = useState<Record<LogisticPhaseKey, LogisticPhaseForm>>(
-    () => createPhaseForms(initialPhaseParams)
+    () => initialState.forms
   )
   const [phaseVisibility, setPhaseVisibility] = useState<Record<LogisticPhaseKey, boolean>>(
-    () => createPhaseVisibility(requestedPhaseKey)
+    () => initialState.visibility
   )
   const [phaseSettings, setPhaseSettings] = useState<Record<LogisticPhaseKey, LogisticPhaseSetting>>(
-    () => createPhaseSettings(requestedPhaseKey)
+    () => initialState.settings
   )
   const [phaseResponsibles, setPhaseResponsibles] = useState<Record<LogisticPhaseKey, string>>(
-    createPhaseResponsibles
+    () => initialState.responsibles
   )
   const [phaseVehicleAssignments, setPhaseVehicleAssignments] = useState<
     Record<LogisticPhaseKey, VehicleAssignment[]>
-  >(() => createPhaseVehicleAssignments())
+  >(() => initialState.assignments)
   const {
     vehicles: availableVehicles,
     loading: loadingVehicles,
@@ -203,6 +261,8 @@ export function useLogisticsPhasesState({
 
   /** Evita falsos fotogrames durant salts de semi/auto manual. */
   const prevQuadrantModeRef = useRef(quadrantMode)
+  // L'estat inicial ja s'ha hidratat abans del primer paint.
+  const hydratedKeyRef = useRef(hydrationKey)
 
   useEffect(() => {
     setPhaseForms((prev) => {
@@ -229,6 +289,17 @@ export function useLogisticsPhasesState({
   }, [event, startTime, endTime, baseMeetingPoint])
 
   useEffect(() => {
+    if (!modalOpen) {
+      hydratedKeyRef.current = ''
+      return
+    }
+    // Un mateix borrador pot provocar diversos renders d'inicialització (SWR,
+    // dades base i mode manual). No el tornem a hidratar perquè desfaria el
+    // primer canvi que l'usuari fa al selector de rol.
+    if (hydratedKeyRef.current === hydrationKey) return
+    hydratedKeyRef.current = hydrationKey
+
+    const draft = existingDraftRef.current
     const params: PhaseFormParams = {
       startDate: extractDate(event.start),
       endDate: extractDate(event.start),
@@ -241,13 +312,13 @@ export function useLogisticsPhasesState({
       meetingPoint: baseMeetingPoint,
     }
 
-    if (isLogistica && existingDraft && modalOpen) {
+    if (isLogistica && draft) {
       const baseForms = createPhaseForms(params)
       const nextForms = { ...baseForms }
       const nextAssignments = createPhaseVehicleAssignments()
 
       for (const phase of logisticPhaseOptions) {
-        const hydrated = hydrateLogisticPhaseFromDraft(existingDraft, phase.key, baseForms[phase.key])
+        const hydrated = hydrateLogisticPhaseFromDraft(draft, phase.key, baseForms[phase.key])
         if (hydrated) {
           nextForms[phase.key] = hydrated.form
           nextAssignments[phase.key] = hydrated.assignments
@@ -259,11 +330,11 @@ export function useLogisticsPhasesState({
       setPhaseVisibility(createPhaseVisibility(requestedPhaseKey))
       setPhaseSettings(createPhaseSettings(requestedPhaseKey))
 
-      const { id: responsableId } = extractDraftResponsible(existingDraft)
+      const { id: responsableId } = extractDraftResponsible(draft)
       setPhaseResponsibles(() => {
         const next = createPhaseResponsibles()
         const draftPhaseKey = normalizePhaseKey(
-          existingDraft.phaseType ||
+          draft.phaseType ||
             event.phaseKey ||
             event.phaseType ||
             event.phaseLabel
@@ -293,9 +364,8 @@ export function useLogisticsPhasesState({
     event.phaseLabel,
     event.phaseType,
     event.start,
-    existingDraft?.id,
-    existingDraft?.updatedAt,
-    existingDraft,
+    existingDraftStamp,
+    hydrationKey,
     isLogistica,
     modalOpen,
     numDrivers,

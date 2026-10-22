@@ -9,6 +9,7 @@ import {
   isPersonReservedForRoleLine,
   linesShareSamePerson,
   normalizeRoleLinePersonKey,
+  type LocalPersonnelRules,
   type RoleLineReservation,
 } from '@/app/menu/quadrants/[id]/lib/quadrantPayloadShared'
 
@@ -46,11 +47,12 @@ export function filterPersonnelAfterLocalQuadrantCheck<T extends AssignablePerso
 }
 
 export function validateNoLocalQuadrantPersonDuplicates(
-  lines: RoleLineReservation[]
+  lines: RoleLineReservation[],
+  rules?: LocalPersonnelRules
 ): string | null {
-  const duplicates = findDuplicateRoleLinePersonKeys(lines)
+  const duplicates = findDuplicateRoleLinePersonKeys(lines, rules)
   if (duplicates.length === 0) return null
-  return 'Una persona no pot estar assignada en més d\'una línia del mateix quadrant (mateix dia i horari).'
+  return 'Una persona no pot estar assignada en franges incompatibles segons les premisses del departament.'
 }
 
 export function collectLocalExcludeIdsAndNames(

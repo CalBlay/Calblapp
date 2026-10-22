@@ -34,6 +34,13 @@ type PersonnelPayload = {
   responsables: PersonnelOption[]
   conductors: PersonnelOption[]
   treballadors: PersonnelOption[]
+  rules?: PersonnelAvailabilityRules
+}
+
+export type PersonnelAvailabilityRules = {
+  restHours: number
+  allowMultipleEventsSameDay: boolean
+  maxFirstEventDurationHours?: number
 }
 
 type CacheEntry = {
@@ -159,6 +166,14 @@ async function fetchPersonnel(
     responsables: Array.isArray(data?.responsables) ? data.responsables : [],
     conductors: Array.isArray(data?.conductors) ? data.conductors : [],
     treballadors: Array.isArray(data?.treballadors) ? data.treballadors : [],
+    rules:
+      data?.rules && Number.isFinite(Number(data.rules.restHours))
+        ? {
+            restHours: Number(data.rules.restHours),
+            allowMultipleEventsSameDay: data.rules.allowMultipleEventsSameDay === true,
+            maxFirstEventDurationHours: Number(data.rules.maxFirstEventDurationHours || 0),
+          }
+        : undefined,
   }
 }
 
@@ -364,6 +379,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     responsables: cleanList(payload.responsables, excludeIds, excludeNames),
     conductors: cleanList(payload.conductors, excludeIds, excludeNames),
     treballadors: cleanList(payload.treballadors, excludeIds, excludeNames),
+    rules: payload.rules,
     loading,
     error,
     refetchPersonnel,

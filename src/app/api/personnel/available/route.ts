@@ -583,6 +583,7 @@ export async function GET(request: NextRequest) {
       treballadors: includeConflicts
         ? filteredWorkers
         : filteredWorkers.filter((p) => p.status === 'available'),
+      rules: premisesRules,
     })
   } catch (err: unknown) {
     console.error('Error GET /api/personnel/available:', err)

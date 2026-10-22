@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
-import { resolvePersonnelAvailabilityParams } from '@/hooks/logistics/useAvailablePersonnel'
+import {
+  resolvePersonnelAvailabilityParams,
+  type PersonnelAvailabilityRules,
+} from '@/hooks/logistics/useAvailablePersonnel'
 import { useLogisticsPhasesState } from '@/app/menu/quadrants/[id]/hooks/useLogisticsPhasesState'
 import { useServicePhasesState } from '@/app/menu/quadrants/[id]/hooks/useServicePhasesState'
-import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
+import {
+  editorDraftSyncStamp,
+  type EditorDraftInput,
+} from '@/lib/quadrantsDraftEditor'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   logisticPhaseOptions,
@@ -207,6 +213,7 @@ export interface QuadrantFormState {
   availableConductors: AvailableConductor[]
   availableJamoneros: Array<{ id: string; name: string }>
   availableTreballadors: Array<{ id: string; name: string }>
+  personnelRules?: PersonnelAvailabilityRules
   serviceTotals: {
     workers: number
     drivers: number
@@ -301,7 +308,7 @@ export function useQuadrantFormState({
     ]
   )
 
-  const { responsables, conductors, treballadors } = useAvailablePersonnel({
+  const { responsables, conductors, treballadors, rules: personnelRules } = useAvailablePersonnel({
     departament: department,
     startDate: personnelAvailability.startDate,
     endDate: personnelAvailability.endDate,
@@ -631,41 +638,47 @@ export function useQuadrantFormState({
 
   const validateLocalPersonAssignments = useCallback((): string | null => {
     const lines = collectAllLogisticaRoleLines(phaseForms, phaseVehicleAssignments)
-    return validateNoLocalQuadrantPersonDuplicates(lines)
-  }, [phaseForms, phaseVehicleAssignments])
+    return validateNoLocalQuadrantPersonDuplicates(lines, personnelRules)
+  }, [phaseForms, phaseVehicleAssignments, personnelRules])
+
+  const existingDraftRef = useRef(existingDraft)
+  existingDraftRef.current = existingDraft
+  const existingDraftStamp = editorDraftSyncStamp(existingDraft)
 
   useEffect(() => {
     if (!modalOpen) return
 
-    if (existingDraft) {
-      const existingEttWorkers = (existingDraft.treballadors || []).filter((worker) => {
+    const draft = existingDraftRef.current
+
+    if (draft) {
+      const existingEttWorkers = (draft.treballadors || []).filter((worker) => {
         const name = String(worker?.name || '').trim().toLowerCase()
         return worker?.externalType === 'ett' || (worker?.isExternal === true && name.startsWith('ett'))
       })
-      setStartDate(existingDraft.startDate || extractDate(event.start))
+      setStartDate(draft.startDate || extractDate(event.start))
       setEndDate(
-        existingDraft.endDate ||
+        draft.endDate ||
           extractDate(event.end) ||
           extractDate(event.originalEnd || '') ||
           extractDate(event.start)
       )
-      setStartTime(existingDraft.startTime || event.startTime || '')
-      setEndTime(existingDraft.endTime || event.endTime || '')
-      setArrivalTime(existingDraft.arrivalTime || event.arrivalTime || '')
+      setStartTime(draft.startTime || event.startTime || '')
+      setEndTime(draft.endTime || event.endTime || '')
+      setArrivalTime(draft.arrivalTime || event.arrivalTime || '')
       setLocation(
-        typeof existingDraft.location === 'string'
-          ? existingDraft.location
+        typeof draft.location === 'string'
+          ? draft.location
           : event.location || event.eventLocation || ''
       )
       setMeetingPoint(
-        String(existingDraft.meetingPoint || event.meetingPoint || '').trim()
+        String(draft.meetingPoint || event.meetingPoint || '').trim()
       )
-      const { id: responsableId, name: responsableName } = extractDraftResponsible(existingDraft)
+      const { id: responsableId, name: responsableName } = extractDraftResponsible(draft)
       setManualResp(responsableId || responsableName)
       setTotalWorkers(
-        String(existingDraft.totalWorkers ?? event.totalWorkers ?? '').trim()
+        String(draft.totalWorkers ?? event.totalWorkers ?? '').trim()
       )
-      setNumDrivers(String(existingDraft.numDrivers ?? event.numDrivers ?? '').trim())
+      setNumDrivers(String(draft.numDrivers ?? event.numDrivers ?? '').trim())
       const groupedEttWorkers = new Map<string, typeof existingEttWorkers>()
       existingEttWorkers.forEach((worker, index) => {
         const persistedGroupId = String(worker?.groupId || '').trim()
@@ -688,25 +701,25 @@ export function useQuadrantFormState({
           const first = workers[0]
           return createLogisticsEttGroup(
             {
-              serviceDate: existingDraft.startDate || extractDate(event.start),
+              serviceDate: draft.startDate || extractDate(event.start),
               meetingPoint:
-                String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
+                String(draft.meetingPoint || event.meetingPoint || '').trim() ||
                 event.location ||
                 event.eventLocation ||
                 '',
-              startTime: existingDraft.startTime || event.startTime || '',
-              endTime: existingDraft.endTime || event.endTime || '',
+              startTime: draft.startTime || event.startTime || '',
+              endTime: draft.endTime || event.endTime || '',
             },
             {
-              serviceDate: first?.startDate || existingDraft.startDate || extractDate(event.start),
+              serviceDate: first?.startDate || draft.startDate || extractDate(event.start),
               meetingPoint:
                 first?.meetingPoint ||
-                String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
+                String(draft.meetingPoint || event.meetingPoint || '').trim() ||
                 event.location ||
                 event.eventLocation ||
                 '',
-              startTime: first?.startTime || existingDraft.startTime || event.startTime || '',
-              endTime: first?.endTime || existingDraft.endTime || event.endTime || '',
+              startTime: first?.startTime || draft.startTime || event.startTime || '',
+              endTime: first?.endTime || draft.endTime || event.endTime || '',
               workers: String(workers.length),
               ettProviderId: String(first?.ettProviderId || ''),
               ettProviderName: String(first?.ettProviderName || ''),
@@ -737,7 +750,7 @@ export function useQuadrantFormState({
     setLogisticsEtt({ open: false, groups: [] })
   }, [
     modalOpen,
-    existingDraft,
+    existingDraftStamp,
     event.id,
     event.start,
     event.end,
@@ -838,5 +851,6 @@ export function useQuadrantFormState({
     availableConductors,
     availableJamoneros,
     availableTreballadors,
+    personnelRules,
   }
 }
