@@ -15,7 +15,7 @@ import {
   startOfWeek,
 } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { AlertTriangle, ChevronDown, ChevronUp, Search, Ticket, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Plus, Search, Ticket, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
@@ -42,6 +42,7 @@ import {
 import PlannerSidebar from './components/PlannerSidebar'
 import PlannerEditModal from './components/PlannerEditModal'
 import PlannerTicketModal from './components/PlannerTicketModal'
+import CreatePlannerTicketModal from './components/CreatePlannerTicketModal'
 import usePlannerData from './usePlannerData'
 import {
   DECO_PLANNER_UI_PATH,
@@ -217,6 +218,8 @@ export default function PreventiusPlanificadorPage() {
     ? canEditPath(CUINA_CENTRAL_MAINTENANCE_PATH)
     : hasAction(isDecoPlanner ? DECO_TICKETS_MANAGE_PERM : MAINTENANCE_TICKETS_MANAGE_PERM)
   const canManagePreventius = !isCuinaCentralPlanner
+  const canCreateDirectTicket =
+    !isDecoPlanner && !isCuinaCentralPlanner && canManagePlannerTickets
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -242,6 +245,7 @@ export default function PreventiusPlanificadorPage() {
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false)
   const [draft, setDraft] = useState<PlannerDraft | null>(null)
   const [selectedMonthDayKey, setSelectedMonthDayKey] = useState<string | null>(null)
   const [plannerSearch, setPlannerSearch] = useState('')
@@ -1103,14 +1107,28 @@ export default function PreventiusPlanificadorPage() {
                 : '/menu/manteniment'
           }
           actions={
-            canViewTickets ? (
-              <Link
-                href={ticketsPath}
-                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50"
-              >
-                <Ticket className="h-4 w-4" />
-                Tickets
-              </Link>
+            canViewTickets || canCreateDirectTicket ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {canCreateDirectTicket ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateTicketOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Crear ticket intern
+                  </button>
+                ) : null}
+                {canViewTickets ? (
+                  <Link
+                    href={ticketsPath}
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50"
+                  >
+                    <Ticket className="h-4 w-4" />
+                    Tickets
+                  </Link>
+                ) : null}
+              </div>
             ) : undefined
           }
         />
@@ -2156,6 +2174,20 @@ export default function PreventiusPlanificadorPage() {
             onUnplanTicket={unplanTicket}
           />
         )}
+
+        {isCreateTicketOpen ? (
+          <CreatePlannerTicketModal
+            centers={centers}
+            machines={machines}
+            users={users}
+            initialDate={format(plannerStart, 'yyyy-MM-dd')}
+            weekStart={plannerStart}
+            dayCount={plannerDayCount}
+            availableWorkers={availableWorkers}
+            onClose={() => setIsCreateTicketOpen(false)}
+            onCreated={loadWeekSchedule}
+          />
+        ) : null}
       </div>
   )
 }

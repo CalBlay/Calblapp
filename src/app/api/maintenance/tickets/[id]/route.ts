@@ -53,9 +53,9 @@ import {
 } from '@/lib/maintenanceWorkLogs'
 import {
   normalizeAssignedIds,
-  rangesOverlap,
   shouldCheckMaintenanceAssigneeConflict,
 } from '@/lib/maintenanceAssigneeConflict'
+import { findMaintenancePlanningConflict } from '@/lib/server/maintenancePlanningConflict'
 import {
   syncMaintenanceTicketOutlookCalendar,
   type MaintenanceTicketOutlookEventRef,
@@ -92,6 +92,7 @@ type UpdatePayload = {
     | 'ops'
     | 'manual_tickets'
     | 'manual_cuina_central'
+    | 'maintenance_internal'
     | 'other'
   assignedToIds?: string[]
   assignedToNames?: string[]
@@ -224,91 +225,6 @@ const haveSameAssignedIds = (left: string[], right: string[]) => {
   if (left.length !== right.length) return false
   const rightSet = new Set(right)
   return left.every((entry) => rightSet.has(entry))
-}
-
-async function findMaintenanceTicketAssigneeConflict(params: {
-  ticketId: string
-  assignedToIds: string[]
-  plannedStart: number | null
-  plannedEnd: number | null
-}) {
-  const { ticketId, assignedToIds, plannedStart, plannedEnd } = params
-  if (!assignedToIds.length || plannedStart === null || plannedEnd === null) return null
-
-  const dayStart = new Date(plannedStart)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(plannedStart)
-  dayEnd.setHours(23, 59, 59, 999)
-
-  const snap = await db
-    .collection('maintenanceTickets')
-    .where('plannedStart', '>=', dayStart.getTime())
-    .where('plannedStart', '<=', dayEnd.getTime())
-    .get()
-
-  for (const doc of snap.docs) {
-    if (doc.id === ticketId) continue
-    const data = doc.data() as MaintenanceTicketRecord
-    const otherIds = normalizeAssignedIds(data.assignedToIds)
-    if (!otherIds.some((id) => assignedToIds.includes(id))) continue
-
-    const otherStart = toMillis(data.plannedStart)
-    const otherEnd = toMillis(data.plannedEnd)
-    if (!rangesOverlap(plannedStart, plannedEnd, otherStart, otherEnd)) continue
-
-    const conflictId = otherIds.find((id) => assignedToIds.includes(id)) || ''
-    const conflictName = Array.isArray(data.assignedToNames)
-      ? String(data.assignedToNames[otherIds.indexOf(conflictId)] || '').trim()
-      : ''
-
-    return {
-      conflictingTicketId: doc.id,
-      conflictingTicketCode: String(data.ticketCode || data.incidentNumber || doc.id).trim(),
-      conflictingPersonId: conflictId,
-      conflictingPersonName: conflictName,
-      conflictingStart: otherStart,
-      conflictingEnd: otherEnd,
-    }
-  }
-
-  const plannedDate = new Date(plannedStart)
-  const dateKey = `${plannedDate.getFullYear()}-${String(plannedDate.getMonth() + 1).padStart(2, '0')}-${String(plannedDate.getDate()).padStart(2, '0')}`
-  const preventiusSnap = await db
-    .collection('maintenancePreventiusPlanned')
-    .where('date', '==', dateKey)
-    .get()
-
-  for (const doc of preventiusSnap.docs) {
-    const data = doc.data() as {
-      startTime?: string
-      endTime?: string
-      workerIds?: unknown
-      workerNames?: unknown
-      title?: string
-    }
-    const workerIds = normalizeAssignedIds(data.workerIds)
-    if (!workerIds.some((id) => assignedToIds.includes(id))) continue
-    const startTime = String(data.startTime || '').trim()
-    const endTime = String(data.endTime || '').trim()
-    if (!startTime || !endTime) continue
-    const preventiveStart = new Date(`${dateKey}T${startTime}:00`).getTime()
-    const preventiveEnd = new Date(`${dateKey}T${endTime}:00`).getTime()
-    if (!rangesOverlap(plannedStart, plannedEnd, preventiveStart, preventiveEnd)) continue
-
-    const conflictId = workerIds.find((id) => assignedToIds.includes(id)) || ''
-    const workerNames = Array.isArray(data.workerNames) ? data.workerNames.map(String) : []
-    const conflictName = String(workerNames[workerIds.indexOf(conflictId)] || '').trim()
-    return {
-      conflictingTicketId: doc.id,
-      conflictingTicketCode: String(data.title || 'Manteniment preventiu').trim(),
-      conflictingPersonId: conflictId,
-      conflictingPersonName: conflictName,
-      conflictingStart: preventiveStart,
-      conflictingEnd: preventiveEnd,
-    }
-  }
-
-  return null
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -840,7 +756,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         plannedEnd: nextPlannedEnd,
       })
     ) {
-      const overlapConflict = await findMaintenanceTicketAssigneeConflict({
+      const overlapConflict = await findMaintenancePlanningConflict({
         ticketId: id,
         assignedToIds: nextAssignedIds,
         plannedStart: nextPlannedStart,

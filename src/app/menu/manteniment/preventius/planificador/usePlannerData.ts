@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
 import type { DueTemplate, ScheduledItem, Template, TicketCard } from './types'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
-import type { CenterRow } from '../../dades/types'
+import type { CenterRow, MachineRow } from '../../dades/types'
 import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 import {
   findAutoPlanSlot,
@@ -385,7 +385,7 @@ export default function usePlannerData({
   const [ticketById, setTicketById] = useState<Record<string, Ticket>>({})
   const [centers, setCenters] = useState<CenterRow[]>([])
   const [locations, setLocations] = useState<string[]>([])
-  const [machines, setMachines] = useState<Array<{ code: string; name: string; label: string }>>([])
+  const [machines, setMachines] = useState<MachineRow[]>([])
   const [users, setUsers] = useState<Array<{ id: string; name: string; department?: string }>>([])
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([])
   const [plannedPreventiuTemplateIds, setPlannedPreventiuTemplateIds] = useState<string[]>([])

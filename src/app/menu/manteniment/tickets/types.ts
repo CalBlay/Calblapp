@@ -16,6 +16,7 @@ export type TicketIntakeChannel =
   | 'ops'
   | 'manual_tickets'
   | 'manual_cuina_central'
+  | 'maintenance_internal'
   | 'other'
 export type TicketWorkflowStage =
   | 'tickets_inbox'
@@ -41,7 +42,7 @@ export type Ticket = {
   priority: TicketPriority
   status: TicketStatus
   ticketType?: TicketType
-  source?: 'manual' | 'incidencia' | 'whatsblapp'
+  source?: 'manual' | 'incidencia' | 'whatsblapp' | 'manual_cuina_central' | 'planner_direct'
   sourceChannelId?: string | null
   sourceMessageId?: string | null
   sourceMessageText?: string | null

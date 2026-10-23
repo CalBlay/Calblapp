@@ -16,6 +16,7 @@ import {
   buildTicketBody,
   notifyForNewMaintenanceTicket,
   notifyForNewDecoTicket,
+  notifyMaintenanceAssignees,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
@@ -31,6 +32,7 @@ import {
 import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 import { DECO_TICKETS_UI_PATH } from '@/lib/decoTicketsPermissions'
 import { CUINA_CENTRAL_MAINTENANCE_PATH } from '@/lib/cuinaCentralMaintenancePermissions'
+import { findMaintenancePlanningConflict } from '@/lib/server/maintenancePlanningConflict'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,7 +65,8 @@ type TicketPayload = {
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
   images?: TicketImagePayload[]
-  source?: 'manual' | 'incidencia' | 'whatsblapp' | 'manual_cuina_central'
+  source?: 'manual' | 'incidencia' | 'whatsblapp' | 'manual_cuina_central' | 'planner_direct'
+  creationMode?: 'planner_direct'
   intakeChannel?:
     | 'restaurant'
     | 'finca'
@@ -71,12 +74,15 @@ type TicketPayload = {
     | 'ops'
     | 'manual_tickets'
     | 'manual_cuina_central'
+    | 'maintenance_internal'
     | 'other'
   status?: string
   incidentNumber?: string
   plannedStart?: number | null
   plannedEnd?: number | null
   estimatedMinutes?: number | null
+  assignedToIds?: string[]
+  assignedToNames?: string[]
   sourceChannelId?: string | null
 }
 
@@ -168,6 +174,7 @@ const normalizeIntakeChannel = (value?: string, source?: string) => {
   if (v === 'incidencia') return 'incidencia'
   if (v === 'ops') return 'ops'
   if (v === 'manual_cuina_central') return 'manual_cuina_central'
+  if (v === 'maintenance_internal') return 'maintenance_internal'
   if (v === 'manual_tickets') return 'manual_tickets'
   if (v === 'other') return 'other'
   if (source === 'incidencia') return 'incidencia'
@@ -532,6 +539,14 @@ export async function POST(req: Request) {
   const user = auth.user as SessionUser
 
   try {
+    const isPlannerDirect = body.creationMode === 'planner_direct'
+    if (isPlannerDirect && !(await canManageAllMaintenanceTickets(user))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (isPlannerDirect && body.ticketType === 'deco') {
+      return NextResponse.json({ error: 'Invalid ticket type' }, { status: 400 })
+    }
+
     const center = String(body.center || '').trim() || null
     const location = (body.location || '').trim()
     const workLocation = String(body.workLocation || '').trim() || null
@@ -540,7 +555,7 @@ export async function POST(req: Request) {
     const description = (body.description || '').trim()
     const workerName = String(body.workerName || '').trim()
     const priority = normalizePriority(body.priority)
-    const status = normalizeStatus(body.status)
+    const status = isPlannerDirect ? 'assignat' : normalizeStatus(body.status)
     const ticketType =
       body.ticketType === 'deco' || body.ticketType === 'maquinaria'
         ? body.ticketType
@@ -549,19 +564,44 @@ export async function POST(req: Request) {
     const isWhatsBlapp = body.source === 'whatsblapp'
     const isIncidencia = body.source === 'incidencia'
     const manualRouting =
-      !isWhatsBlapp && !isIncidencia
+      !isPlannerDirect && !isWhatsBlapp && !isIncidencia
         ? resolveManualTicketRouting({ department: user.department, location })
         : null
     const opsChannel = resolveOpsChannelByLocationName(location)
-    const source = manualRouting?.source || body.source || 'manual'
-    const intakeChannel = manualRouting
-      ? manualRouting.intakeChannel
-      : normalizeIntakeChannel(body.intakeChannel, body.source)
-    const requiresWorkerName = !isWhatsBlapp && !isIncidencia
+    const source = isPlannerDirect ? 'planner_direct' : manualRouting?.source || body.source || 'manual'
+    const intakeChannel = isPlannerDirect
+      ? 'maintenance_internal'
+      : manualRouting
+        ? manualRouting.intakeChannel
+        : normalizeIntakeChannel(body.intakeChannel, body.source)
+    const requiresWorkerName = !isPlannerDirect && !isWhatsBlapp && !isIncidencia
     const sourceChannelId =
       String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
     const images = normalizeTicketImages(body)
-    const requiresManualImages = !isWhatsBlapp && !isIncidencia
+    const requiresManualImages = !isPlannerDirect && !isWhatsBlapp && !isIncidencia
+    const assignedToIds = Array.isArray(body.assignedToIds)
+      ? Array.from(new Set(body.assignedToIds.map(String).map((value) => value.trim()).filter(Boolean)))
+      : []
+    const assignedToNames = Array.isArray(body.assignedToNames)
+      ? body.assignedToNames.map(String).map((value) => value.trim()).filter(Boolean)
+      : []
+    const plannedStart = Number(body.plannedStart || 0)
+    const plannedEnd = Number(body.plannedEnd || 0)
+
+    if (
+      isPlannerDirect &&
+      (!assignedToIds.length ||
+        assignedToIds.length !== assignedToNames.length ||
+        !Number.isFinite(plannedStart) ||
+        !Number.isFinite(plannedEnd) ||
+        plannedStart <= 0 ||
+        plannedEnd <= plannedStart)
+    ) {
+      return NextResponse.json(
+        { error: 'Cal indicar una franja valida i com a minim un treballador.' },
+        { status: 400 }
+      )
+    }
 
     if (!location || !description || (!isWhatsBlapp && !machine)) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
@@ -583,20 +623,41 @@ export async function POST(req: Request) {
       }
     }
 
+    if (isPlannerDirect) {
+      const overlapConflict = await findMaintenancePlanningConflict({
+        assignedToIds,
+        plannedStart,
+        plannedEnd,
+      })
+      if (overlapConflict) {
+        const who =
+          overlapConflict.conflictingPersonName ||
+          overlapConflict.conflictingPersonId ||
+          'Operari'
+        return NextResponse.json(
+          {
+            error: `${who} ja te una altra tasca assignada en aquesta mateixa franja (${overlapConflict.conflictingTicketCode}).`,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     const primaryImage = images[0] || null
     const imageUrls = images.map((image) => image.url).filter((url): url is string => Boolean(url))
 
     const now = Date.now()
     const incidentNumber = (body.incidentNumber || '').trim()
     const ticketCode = incidentNumber || (await generateTicketCode())
-    const workflowStage =
-      manualRouting?.workflowStage ||
-      getInitialWorkflowStage({
-        source,
-        intakeChannel,
-        assigned: Boolean(body.plannedStart && body.plannedEnd),
-        externalized: false,
-      })
+    const workflowStage = isPlannerDirect
+      ? 'planned_internal'
+      : manualRouting?.workflowStage ||
+        getInitialWorkflowStage({
+          source,
+          intakeChannel,
+          assigned: Boolean(body.plannedStart && body.plannedEnd),
+          externalized: false,
+        })
 
     const doc = await db.collection('maintenanceTickets').add({
       ticketCode,
@@ -614,13 +675,13 @@ export async function POST(req: Request) {
       createdById: user.id,
       createdByName: user.name || '',
       workerName: workerName || null,
-      assignedToIds: [],
-      assignedToNames: [],
-      assignedAt: null,
-      assignedById: null,
-      assignedByName: null,
-      plannedStart: body.plannedStart || null,
-      plannedEnd: body.plannedEnd || null,
+      assignedToIds: isPlannerDirect ? assignedToIds : [],
+      assignedToNames: isPlannerDirect ? assignedToNames : [],
+      assignedAt: isPlannerDirect ? now : null,
+      assignedById: isPlannerDirect ? user.id : null,
+      assignedByName: isPlannerDirect ? user.name || '' : null,
+      plannedStart: isPlannerDirect ? plannedStart : body.plannedStart || null,
+      plannedEnd: isPlannerDirect ? plannedEnd : body.plannedEnd || null,
       estimatedMinutes: body.estimatedMinutes || null,
       ticketType,
       source,
@@ -658,6 +719,22 @@ export async function POST(req: Request) {
           byName: user.name || '',
         },
       ],
+      planningHistory: isPlannerDirect
+        ? [
+            {
+              action: 'planificat',
+              at: now,
+              byId: user.id,
+              byName: user.name || '',
+              plannedStart,
+              plannedEnd,
+              previousPlannedStart: null,
+              previousPlannedEnd: null,
+              assignedToNames,
+              note: 'Creat directament des del planificador',
+            },
+          ]
+        : [],
       workLogs: [],
     })
 
@@ -678,7 +755,18 @@ export async function POST(req: Request) {
         machine,
         source,
       } as const
-    if (ticketType === 'deco') {
+    if (isPlannerDirect) {
+      await notifyMaintenanceAssignees({
+        uids: assignedToIds,
+        payload: {
+          ...notificationPayload,
+          type: 'maintenance_ticket_assigned',
+          title: 'Nou ticket de manteniment assignat',
+          workflowStage: 'planned_internal',
+        },
+        excludeIds: [user.id],
+      })
+    } else if (ticketType === 'deco') {
       await notifyForNewDecoTicket({ payload: notificationPayload, excludeIds: [user.id] })
     } else {
       await notifyForNewMaintenanceTicket({
