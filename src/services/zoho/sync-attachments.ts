@@ -14,6 +14,8 @@ import {
 import {
   extractFileNameFromContentDisposition,
   sanitizeStorageName,
+  validateZohoDownloadedFile,
+  zohoApiBaseForVersion,
 } from '@/services/zoho/attachmentFileNames'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 import type { ZohoDeal } from '@/services/zoho/sync-types'
@@ -22,6 +24,8 @@ type ZohoDealAttachmentFields = Pick<
   ZohoDeal,
   (typeof ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES)[number]
 >
+
+const ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'
 
 async function getZohoFieldAttachmentValue(
   moduleName: string,
@@ -38,12 +42,15 @@ async function downloadZohoAttachment(
   moduleName: string,
   recordId: string,
   attachmentId: string,
-  fallbackDownloadUrl?: string
+  fallbackDownloadUrl?: string,
+  expectedFileName?: string,
+  expectedSize?: number | null
 ): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
   const token = await getZohoAccessToken()
   const base = String(process.env.ZOHO_API_BASE || '').trim().replace(/\/$/, '')
   if (!base) throw new Error('Missing ZOHO_API_BASE')
   const baseOrigin = new URL(base).origin
+  const downloadBase = zohoApiBaseForVersion(base, '8')
 
   const fetchBinary = async (url: string) =>
     fetch(url, {
@@ -53,46 +60,52 @@ async function downloadZohoAttachment(
       cache: 'no-store',
     })
 
-  let res = await fetchBinary(
-    `${base}/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`
-  )
-
-  if (!res.ok) {
-    const legacyRes = await fetchBinary(
-      `${base}/${moduleName}/${recordId}/Attachments/${encodeURIComponent(attachmentId)}`
+  const fieldPath = `/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`
+  const attempts = [
+    `${downloadBase}${fieldPath}`,
+    ...(downloadBase === base ? [] : [`${base}${fieldPath}`]),
+    `${base}/${moduleName}/${recordId}/Attachments/${encodeURIComponent(attachmentId)}`,
+  ]
+  if (fallbackDownloadUrl) {
+    attempts.push(
+      fallbackDownloadUrl.startsWith('http')
+        ? fallbackDownloadUrl
+        : `${baseOrigin}${fallbackDownloadUrl.startsWith('/') ? '' : '/'}${fallbackDownloadUrl}`
     )
-    if (legacyRes.ok) {
-      res = legacyRes
+  }
+
+  const failures: string[] = []
+  for (const [index, url] of attempts.entries()) {
+    const res = await fetchBinary(url)
+    if (!res.ok) {
+      failures.push(`attempt ${index + 1}: HTTP ${res.status}`)
+      continue
     }
-  }
 
-  if (!res.ok && fallbackDownloadUrl) {
-    const fallbackUrl = fallbackDownloadUrl.startsWith('http')
-      ? fallbackDownloadUrl
-      : `${baseOrigin}${fallbackDownloadUrl.startsWith('/') ? '' : '/'}${fallbackDownloadUrl}`
-    res = await fetchBinary(fallbackUrl)
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(
-      `Error descarregant fulla d'encarrec Zoho ${attachmentId}: ${res.status} ${text}`
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const fileName = extractFileNameFromContentDisposition(
+      res.headers.get('content-disposition')
     )
+    const validation = validateZohoDownloadedFile({
+      expectedFileName,
+      expectedSize,
+      downloadedFileName: fileName,
+      downloadedSize: buffer.length,
+    })
+    if (!validation.ok) {
+      failures.push(`attempt ${index + 1}: ${validation.reason}`)
+      continue
+    }
+
+    const mimeType =
+      String(res.headers.get('content-type') || '').split(';')[0].trim() ||
+      'application/octet-stream'
+    return { buffer, mimeType, fileName }
   }
 
-  const arrayBuffer = await res.arrayBuffer()
-  const mimeType =
-    String(res.headers.get('content-type') || '').split(';')[0].trim() ||
-    'application/octet-stream'
-  const fileName = extractFileNameFromContentDisposition(
-    res.headers.get('content-disposition')
+  throw new Error(
+    `Error descarregant adjunt Zoho ${attachmentId}: ${failures.join('; ')}`
   )
-
-  return {
-    buffer: Buffer.from(arrayBuffer),
-    mimeType,
-    fileName,
-  }
 }
 
 async function resolveZohoDealAttachments(
@@ -159,7 +172,9 @@ export async function buildZohoAttachmentFields(
           moduleName,
           dealId,
           String(attachment.id),
-          attachment.Download_Url
+          attachment.Download_Url,
+          existingName || undefined,
+          typeof attachment.Size === 'number' ? attachment.Size : null
         )
         fileName = downloaded.fileName.trim() || fileName
         if (!shouldImportZohoAttachment(fileName)) continue
@@ -182,6 +197,7 @@ export async function buildZohoAttachmentFields(
       String(existing?.[keys.modifiedTime] || '') !== modifiedTime ||
       Number(existing?.[keys.size] || 0) !== Number(size || 0) ||
       String(existing?.[keys.path] || '') !== storagePath ||
+      String(existing?.[keys.source] || '') !== ZOHO_FIELD_ATTACHMENT_SOURCE_V8 ||
       !String(existing?.[keys.url] || '').trim()
 
     let publicUrl = String(existing?.[keys.url] || '').trim()
@@ -194,7 +210,9 @@ export async function buildZohoAttachmentFields(
           moduleName,
           dealId,
           String(attachment.id),
-          attachment.Download_Url
+          attachment.Download_Url,
+          fileName,
+          size
         )
         fileBuffer = downloaded.buffer
         mimeType = downloaded.mimeType
@@ -219,7 +237,7 @@ export async function buildZohoAttachmentFields(
     out[keys.modifiedTime] = modifiedTime
     out[keys.size] = size
     out[keys.path] = storagePath
-    out[keys.source] = 'zoho-field-attachment'
+    out[keys.source] = ZOHO_FIELD_ATTACHMENT_SOURCE_V8
     currentKeys.add(slot)
   }
 

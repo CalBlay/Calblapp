@@ -127,6 +127,11 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Full_de_modificacions',
     'Full_modificacions',
   ])
+  assert.match(source, /ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'/)
+  assert.match(
+    source,
+    /existing\?\.\[keys\.source\][\s\S]*ZOHO_FIELD_ATTACHMENT_SOURCE_V8/
+  )
 })
 
 test('manual Zoho sync is incremental and uses bounded deal concurrency', () => {

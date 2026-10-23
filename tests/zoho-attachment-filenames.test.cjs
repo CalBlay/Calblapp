@@ -4,6 +4,8 @@ const { test } = require('node:test')
 const {
   extractFileNameFromContentDisposition,
   sanitizeStorageName,
+  validateZohoDownloadedFile,
+  zohoApiBaseForVersion,
 } = require('../src/services/zoho/attachmentFileNames')
 
 test('extractFileNameFromContentDisposition prefers RFC 5987 UTF-8 filename*', () => {
@@ -47,4 +49,58 @@ test('sanitizeStorageName strips accents and collapses unsafe characters', () =>
 test('sanitizeStorageName falls back when the name is empty after sanitizing', () => {
   const name = sanitizeStorageName('   ***   ')
   assert.match(name, /^attachment-\d+$/)
+})
+
+test('zohoApiBaseForVersion upgrades only the CRM API version', () => {
+  assert.equal(
+    zohoApiBaseForVersion('https://www.zohoapis.eu/crm/v2/', '8'),
+    'https://www.zohoapis.eu/crm/v8'
+  )
+  assert.equal(
+    zohoApiBaseForVersion('https://www.zohoapis.com/crm/v8', '8'),
+    'https://www.zohoapis.com/crm/v8'
+  )
+  assert.throws(
+    () => zohoApiBaseForVersion('https://www.zohoapis.eu', '8'),
+    /Unsupported ZOHO_API_BASE format/
+  )
+})
+
+test('validateZohoDownloadedFile rejects a different field binary', () => {
+  assert.deepEqual(
+    validateZohoDownloadedFile({
+      expectedFileName: 'FE event.pptx',
+      expectedSize: 1200,
+      downloadedFileName: 'Logo.svg',
+      downloadedSize: 1200,
+    }),
+    {
+      ok: false,
+      reason: 'filename mismatch (expected FE event.pptx, received Logo.svg)',
+    }
+  )
+})
+
+test('validateZohoDownloadedFile rejects a wrong size and accepts matching metadata', () => {
+  assert.deepEqual(
+    validateZohoDownloadedFile({
+      expectedFileName: 'FM tast.pdf',
+      expectedSize: 42,
+      downloadedFileName: 'FM tast.pdf',
+      downloadedSize: 41,
+    }),
+    {
+      ok: false,
+      reason: 'size mismatch (expected 42, received 41)',
+    }
+  )
+  assert.deepEqual(
+    validateZohoDownloadedFile({
+      expectedFileName: 'FM tast.pdf',
+      expectedSize: 42,
+      downloadedFileName: 'FM tast.pdf',
+      downloadedSize: 42,
+    }),
+    { ok: true }
+  )
 })
