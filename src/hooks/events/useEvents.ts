@@ -3,6 +3,11 @@
 import { useMemo } from 'react'
 import useSWR from 'swr'
 import { normalizeStatus } from '@/utils/normalize'
+import {
+  formatEventLnLabel,
+  normalizeEventLnKey,
+  type EventLnKey,
+} from '@/lib/events/eventsLnFilter'
 
 export interface EventData {
   id: string
@@ -26,7 +31,7 @@ export interface EventData {
   mapsUrl?: string
   htmlLink?: string | null
   responsableName?: string
-  lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+  lnKey?: EventLnKey
   lnLabel?: string
   fincaId?: string | null
   fincaCode?: string | null
@@ -36,6 +41,7 @@ export interface EventData {
   treballadors?: string[]
   horaInici?: string
   hasDocuments?: boolean
+  hasInvalidZohoDocuments?: boolean
   lastAviso?: {
     content: string
     department: string
@@ -72,6 +78,7 @@ interface EventPayload {
   Hora?: string
   hora?: string
   hasDocuments?: boolean
+  hasInvalidZohoDocuments?: boolean
   lastAviso?: {
     content: string
     department: string
@@ -143,11 +150,7 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
     }
 
     const pax = Number(ev.pax ?? 0)
-    const lnRaw = String(ev.LN || ev.lnKey || 'altres').toLowerCase()
-    const lnKeys = ['empresa', 'casaments', 'foodlovers', 'agenda', 'altres'] as const
-    const lnKey = (lnKeys.includes(lnRaw as (typeof lnKeys)[number])
-      ? lnRaw
-      : 'altres') as NonNullable<EventData['lnKey']>
+    const lnKey = normalizeEventLnKey(ev.LN || ev.lnKey)
 
     return {
       ...ev,
@@ -171,13 +174,14 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
       conductors: [],
       treballadors: [],
       lnKey,
-      lnLabel: String(ev.LN || ev.lnLabel || 'Altres'),
+      lnLabel: formatEventLnLabel(lnKey),
       fincaId: ev.fincaId ?? null,
       fincaCode: ev.fincaCode ?? null,
       horaInici:
         String(ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || '').slice(0, 5) ||
         undefined,
       hasDocuments: ev.hasDocuments === true,
+      hasInvalidZohoDocuments: ev.hasInvalidZohoDocuments === true,
     } as EventData
   })
 

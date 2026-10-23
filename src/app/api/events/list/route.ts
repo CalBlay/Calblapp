@@ -10,6 +10,7 @@ import {
 } from '@/lib/firestoreStageRangeQuery'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
+import { documentHasInvalidZohoAttachments } from '@/services/zoho/attachments'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
@@ -377,6 +378,7 @@ const getEventsListCached = unstable_cache(
         fincaId: fincaId ?? null,
         fincaCode: fincaCode ?? null,
         hasDocuments: eventRecordHasAttachedDocuments(d),
+        hasInvalidZohoDocuments: documentHasInvalidZohoAttachments(d),
       }
     })
 

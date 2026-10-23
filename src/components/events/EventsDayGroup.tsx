@@ -6,6 +6,7 @@ import { Users, Calendar } from 'lucide-react'
 import { addDays, format, isAfter, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import type { WarehouseComandaEventBatchChip } from '@/lib/eventComanda/types'
+import type { EventLnKey } from '@/lib/events/eventsLnFilter'
 
 export interface EventData {
   id: string
@@ -17,7 +18,7 @@ export interface EventData {
   occurrenceKey?: string
   location?: string
   locationShort?: string
-  lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+  lnKey?: EventLnKey
   lnLabel?: string
   responsableName?: string
   eventCode?: string | null
@@ -33,6 +34,7 @@ export interface EventData {
   } | null
   warehouseBatches?: WarehouseComandaEventBatchChip[]
   hasDocuments?: boolean
+  hasInvalidZohoDocuments?: boolean
 }
 
 interface Props {

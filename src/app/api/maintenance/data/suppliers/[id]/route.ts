@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
-import { normalizeSupplierDepartmentsInput } from '@/lib/companySuppliers/server'
 import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
@@ -30,12 +29,8 @@ export async function PATCH(
       ...(body?.specialty !== undefined ? { specialty: String(body.specialty || '').trim() } : {}),
       ...(body?.notes !== undefined ? { notes: String(body.notes || '').trim() } : {}),
       ...(body?.active !== undefined ? { active: Boolean(body.active) } : {}),
+      supplierDepartments: ['Manteniment'],
       updatedAt: Date.now(),
-    }
-    if (body?.supplierDepartments !== undefined) {
-      patch.supplierDepartments = normalizeSupplierDepartmentsInput(body.supplierDepartments, [
-        'Manteniment',
-      ])
     }
     await ref.set(patch, { merge: true })
 

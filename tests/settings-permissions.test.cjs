@@ -5,6 +5,7 @@ const {
   SETTINGS_ARTICLES_PATH,
   SETTINGS_MAGATZEMS_PATH,
   SETTINGS_SERVEIS_PATH,
+  SETTINGS_SUPPLIERS_PATH,
   SETTINGS_UI_PATH,
   canEditSettingsSubpath,
   canViewSettingsSubpath,
@@ -15,6 +16,7 @@ test('settings path constants stay under /menu/settings', () => {
   assert.equal(SETTINGS_SERVEIS_PATH, '/menu/settings/serveis')
   assert.equal(SETTINGS_MAGATZEMS_PATH, '/menu/settings/magatzems')
   assert.equal(SETTINGS_ARTICLES_PATH, '/menu/settings/articles')
+  assert.equal(SETTINGS_SUPPLIERS_PATH, '/menu/settings/proveidors')
 })
 
 test('canViewSettingsSubpath grants access via the exact subpath or parent settings path', () => {

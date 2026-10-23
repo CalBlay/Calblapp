@@ -37,7 +37,7 @@ export type SupplierRow = {
   specialty?: string
   notes?: string
   active?: boolean
-  /** Àmbits on s’usa el proveïdor (mateixa col·lecció que Roba personal). */
+  /** Àmbit històric; Manteniment desa sempre exclusivament `Manteniment`. */
   supplierDepartments?: string[]
 }
 

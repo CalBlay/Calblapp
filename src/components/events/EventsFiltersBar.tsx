@@ -11,10 +11,14 @@ import {
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { colorByLN } from '@/lib/colors'
 import { corporateFilterBadgeClass, corporateFilterChipClass } from '@/lib/corporate-filters'
-import { toggleEventLnSelection } from '@/lib/events/eventsLnFilter'
+import {
+  formatEventLnLabel,
+  toggleEventLnSelection,
+  type EventLnKey,
+} from '@/lib/events/eventsLnFilter'
 import { cn } from '@/lib/utils'
 
-export type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+export type LnKey = EventLnKey
 
 export type EventsFiltersState = Omit<FiltersState, 'ln'> & {
   ln?: LnKey[]
@@ -35,8 +39,6 @@ type Props = {
 }
 
 const ALL = '__all__'
-
-const formatLnLabel = (key: string) => key.charAt(0).toUpperCase() + key.slice(1)
 
 const compactSelectClass =
   'h-9 max-w-[9.5rem] truncate px-2.5 text-xs font-medium sm:max-w-[10.5rem] sm:text-sm'
@@ -72,7 +74,7 @@ export default function EventsFiltersBar({
     () =>
       lnOptions.map((key) => ({
         value: key,
-        label: formatLnLabel(key),
+        label: formatEventLnLabel(key),
         className: colorByLN(key),
       })),
     [lnOptions]

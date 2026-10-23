@@ -19,6 +19,7 @@ export type EventDoc = {
   previewUrl?: string
   icon: 'pdf' | 'doc' | 'sheet' | 'slide' | 'img' | 'video' | 'link'
   createdBy?: string | null
+  validationStatus?: 'validated' | 'invalid'
 }
 
 function normalizeUrl(url?: string): string {

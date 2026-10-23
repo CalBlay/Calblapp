@@ -3,7 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { ClipboardList, ConciergeBell, Package, Shield } from 'lucide-react'
+import { ClipboardList, ConciergeBell, Package, Shield, Truck } from 'lucide-react'
 import ModuleHub, { type ModuleHubCard } from '@/components/layout/ModuleHub'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { normalizeRole } from '@/lib/roles'
@@ -11,6 +11,7 @@ import {
   SETTINGS_ARTICLES_PATH,
   SETTINGS_MAGATZEMS_PATH,
   SETTINGS_SERVEIS_PATH,
+  SETTINGS_SUPPLIERS_PATH,
   SETTINGS_UI_PATH,
   canViewSettingsSubpath,
 } from '@/lib/settingsPermissions'
@@ -26,6 +27,7 @@ export default function SettingsAdminPage() {
   const canViewMagatzems = canViewSettingsSubpath(canViewPath, SETTINGS_MAGATZEMS_PATH)
   const canViewArticles = canViewSettingsSubpath(canViewPath, SETTINGS_ARTICLES_PATH)
   const canViewServeis = canViewSettingsSubpath(canViewPath, SETTINGS_SERVEIS_PATH)
+  const canViewSuppliers = canViewSettingsSubpath(canViewPath, SETTINGS_SUPPLIERS_PATH)
 
   useEffect(() => {
     if (status === 'loading' || !permsReady) return
@@ -81,6 +83,16 @@ export default function SettingsAdminPage() {
       description: 'Catàleg de serveis per a esdeveniments i cerques.',
       icon: ConciergeBell,
       tone: 'sky',
+    })
+  }
+
+  if (canViewSuppliers) {
+    cards.push({
+      href: '/menu/settings/proveidors',
+      title: 'Proveïdors',
+      description: 'Vista conjunta dels proveïdors de Manteniment i Roba personal.',
+      icon: Truck,
+      tone: 'amber',
     })
   }
 

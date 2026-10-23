@@ -27,7 +27,7 @@ import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/rob
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { ChevronDown, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Trash2 } from 'lucide-react'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -54,6 +54,24 @@ type SupplierOption = {
   active?: boolean
   supplierDepartments?: string[]
 }
+
+type SupplierForm = {
+  name: string
+  email: string
+  phone: string
+  specialty: string
+  notes: string
+  active: boolean
+}
+
+const emptySupplierForm = (): SupplierForm => ({
+  name: '',
+  email: '',
+  phone: '',
+  specialty: '',
+  notes: '',
+  active: true,
+})
 
 type TaxonomyTerm = {
   id: string
@@ -93,14 +111,12 @@ export function ProductesPanel() {
   const [terms, setTerms] = useState<TaxonomyTerm[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [showNewSupplier, setShowNewSupplier] = useState(false)
-  const [newSupplier, setNewSupplier] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    specialty: '',
-    notes: '',
-    active: true,
-  })
+  const [newSupplier, setNewSupplier] = useState<SupplierForm>(emptySupplierForm)
+  const [supplierEditOpen, setSupplierEditOpen] = useState(false)
+  const [supplierEditId, setSupplierEditId] = useState('')
+  const [supplierEditForm, setSupplierEditForm] = useState<SupplierForm>(emptySupplierForm)
+  const [supplierBusy, setSupplierBusy] = useState(false)
+  const [supplierDeleteBusyId, setSupplierDeleteBusyId] = useState<string | null>(null)
   const [form, setForm] = useState({
     code: '',
     supplierSku: '',
@@ -254,13 +270,84 @@ export function ProductesPanel() {
         specialty: newSupplier.specialty.trim(),
         notes: newSupplier.notes.trim(),
         active: newSupplier.active,
-        supplierDepartments: ['Recursos Humans'],
       }),
     })
     if (!res.id) throw new Error('Sense id de proveïdor')
     toast({ title: 'Proveïdor creat' })
     await loadSuppliers()
     return res.id
+  }
+
+  const openSupplierEdit = () => {
+    const supplier = suppliers.find((item) => item.id === supplierId)
+    if (!supplier) return
+    setSupplierEditId(supplier.id)
+    setSupplierEditForm({
+      name: supplier.name,
+      email: supplier.email || '',
+      phone: supplier.phone || '',
+      specialty: supplier.specialty || '',
+      notes: supplier.notes || '',
+      active: supplier.active !== false,
+    })
+    setSupplierEditOpen(true)
+  }
+
+  const saveSupplierEdit = async () => {
+    if (!supplierEditId) return
+    if (!supplierEditForm.name.trim()) {
+      toast({ title: 'Cal el nom del proveïdor', variant: 'destructive' })
+      return
+    }
+    setSupplierBusy(true)
+    try {
+      await api(`/api/roba-personal/suppliers/${encodeURIComponent(supplierEditId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...supplierEditForm,
+          name: supplierEditForm.name.trim(),
+          email: supplierEditForm.email.trim(),
+          phone: supplierEditForm.phone.trim(),
+          specialty: supplierEditForm.specialty.trim(),
+          notes: supplierEditForm.notes.trim(),
+        }),
+      })
+      await Promise.all([loadSuppliers(), loadProducts()])
+      setSupplierEditOpen(false)
+      toast({ title: 'Proveïdor actualitzat' })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut actualitzar el proveïdor',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSupplierBusy(false)
+    }
+  }
+
+  const deleteSupplier = async () => {
+    const supplier = suppliers.find((item) => item.id === supplierId)
+    if (!supplier) return
+    if (!window.confirm(`Voleu eliminar el proveïdor «${supplier.name}»?`)) return
+
+    setSupplierDeleteBusyId(supplier.id)
+    try {
+      await api(`/api/roba-personal/suppliers/${encodeURIComponent(supplier.id)}`, {
+        method: 'DELETE',
+      })
+      setSupplierId('')
+      await loadSuppliers()
+      toast({ title: 'Proveïdor eliminat de Roba personal' })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut eliminar el proveïdor',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSupplierDeleteBusyId(null)
+    }
   }
 
   const crear = async () => {
@@ -271,7 +358,7 @@ export function ProductesPanel() {
         if (!id) return
         sid = id
         setShowNewSupplier(false)
-        setNewSupplier({ name: '', email: '', phone: '', specialty: '', notes: '', active: true })
+        setNewSupplier(emptySupplierForm())
       }
       if (!sid) {
         toast({ title: 'Trieu o creeu un proveïdor', variant: 'destructive' })
@@ -652,6 +739,31 @@ export function ProductesPanel() {
                 />
               </div>
             </div>
+            {!showNewSupplier ? (
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!supplierId || supplierDeleteBusyId === supplierId}
+                  onClick={openSupplierEdit}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar proveïdor
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  disabled={!supplierId || supplierDeleteBusyId === supplierId}
+                  onClick={() => void deleteSupplier()}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {supplierDeleteBusyId === supplierId ? 'Eliminant…' : 'Eliminar proveïdor'}
+                </Button>
+              </div>
+            ) : null}
             {showNewSupplier ? (
               <div className="mt-3 grid w-full gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
@@ -943,6 +1055,100 @@ export function ProductesPanel() {
           </>
         ) : null}
       </div>
+
+      <Dialog
+        open={supplierEditOpen}
+        onOpenChange={(open) => {
+          if (supplierBusy) return
+          setSupplierEditOpen(open)
+          if (!open) setSupplierEditId('')
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar proveïdor</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-1 sm:grid-cols-2">
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="supplier-edit-name">Nom</Label>
+              <Input
+                id="supplier-edit-name"
+                value={supplierEditForm.name}
+                onChange={(event) =>
+                  setSupplierEditForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="supplier-edit-email">Email</Label>
+              <Input
+                id="supplier-edit-email"
+                type="email"
+                value={supplierEditForm.email}
+                onChange={(event) =>
+                  setSupplierEditForm((current) => ({ ...current, email: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="supplier-edit-phone">Telèfon</Label>
+              <Input
+                id="supplier-edit-phone"
+                value={supplierEditForm.phone}
+                onChange={(event) =>
+                  setSupplierEditForm((current) => ({ ...current, phone: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="supplier-edit-specialty">Especialitat</Label>
+              <Input
+                id="supplier-edit-specialty"
+                value={supplierEditForm.specialty}
+                onChange={(event) =>
+                  setSupplierEditForm((current) => ({
+                    ...current,
+                    specialty: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="supplier-edit-notes">Notes</Label>
+              <Input
+                id="supplier-edit-notes"
+                value={supplierEditForm.notes}
+                onChange={(event) =>
+                  setSupplierEditForm((current) => ({ ...current, notes: event.target.value }))
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border p-3 sm:col-span-2">
+              <Label htmlFor="supplier-edit-active">Proveïdor actiu</Label>
+              <Switch
+                id="supplier-edit-active"
+                checked={supplierEditForm.active}
+                onCheckedChange={(active) =>
+                  setSupplierEditForm((current) => ({ ...current, active }))
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={supplierBusy}
+              onClick={() => setSupplierEditOpen(false)}
+            >
+              Cancel·lar
+            </Button>
+            <Button type="button" disabled={supplierBusy} onClick={() => void saveSupplierEdit()}>
+              {supplierBusy ? 'Desant…' : 'Desar canvis'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={editOpen}

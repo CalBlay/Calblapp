@@ -8,6 +8,7 @@ import {
   shouldImportZohoAttachment,
   shouldRefetchZohoAttachmentField,
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
+  ZOHO_FIELD_ATTACHMENT_SOURCE_V8,
   zohoAttachmentSlotKeys,
   type ZohoAttachment,
 } from '@/services/zoho/attachments'
@@ -24,8 +25,6 @@ type ZohoDealAttachmentFields = Pick<
   ZohoDeal,
   (typeof ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES)[number]
 >
-
-const ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'
 
 async function getZohoFieldAttachmentValue(
   moduleName: string,
@@ -206,16 +205,37 @@ export async function buildZohoAttachmentFields(
 
     if (needsRefresh) {
       if (!fileBuffer) {
-        const downloaded = await downloadZohoAttachment(
-          moduleName,
-          dealId,
-          String(attachment.id),
-          attachment.Download_Url,
-          fileName,
-          size
-        )
-        fileBuffer = downloaded.buffer
-        mimeType = downloaded.mimeType
+        try {
+          const downloaded = await downloadZohoAttachment(
+            moduleName,
+            dealId,
+            String(attachment.id),
+            attachment.Download_Url,
+            fileName,
+            size
+          )
+          fileBuffer = downloaded.buffer
+          mimeType = downloaded.mimeType
+        } catch (error) {
+          if (!publicUrl) throw error
+
+          console.error('[zoho-sync] attachment validation failed', {
+            dealId,
+            attachmentId: String(attachment.id),
+            error: error instanceof Error ? error.message : String(error),
+          })
+          out[keys.url] = publicUrl
+          out[keys.name] = existingName || fileName
+          out[keys.mimeType] = String(existing?.[keys.mimeType] || '').trim()
+          out[keys.attachmentId] = String(existing?.[keys.attachmentId] || attachment.id)
+          out[keys.modifiedTime] = String(existing?.[keys.modifiedTime] || '')
+          out[keys.size] = existing?.[keys.size] ?? size
+          out[keys.path] = String(existing?.[keys.path] || '').trim()
+          out[keys.source] = String(existing?.[keys.source] || '').trim()
+          out[keys.validationStatus] = 'invalid'
+          currentKeys.add(slot)
+          continue
+        }
       }
       await bucket.file(storagePath).save(fileBuffer, {
         contentType: mimeType || 'application/octet-stream',
@@ -238,6 +258,7 @@ export async function buildZohoAttachmentFields(
     out[keys.size] = size
     out[keys.path] = storagePath
     out[keys.source] = ZOHO_FIELD_ATTACHMENT_SOURCE_V8
+    out[keys.validationStatus] = 'validated'
     currentKeys.add(slot)
   }
 
@@ -262,6 +283,7 @@ export async function buildZohoAttachmentFields(
       out[keys.size] = FieldValue.delete()
       out[keys.path] = FieldValue.delete()
       out[keys.source] = FieldValue.delete()
+      out[keys.validationStatus] = FieldValue.delete()
     }
   }
 

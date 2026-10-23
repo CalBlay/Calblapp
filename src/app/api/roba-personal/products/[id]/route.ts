@@ -10,7 +10,6 @@ import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { normalizeRobaProductDepartments } from '@/data/departments'
-import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 
 const COL = DOTACIO_COLLECTIONS.products
 
@@ -20,7 +19,7 @@ function str(v: unknown): string {
 
 async function resolveSupplierName(supplierId: string): Promise<string | null> {
   if (!supplierId) return null
-  const snap = await db.collection(SUPPLIERS_COLLECTION).doc(supplierId).get()
+  const snap = await db.collection(DOTACIO_COLLECTIONS.suppliers).doc(supplierId).get()
   if (!snap.exists) return null
   return str((snap.data() as Record<string, unknown>).name)
 }

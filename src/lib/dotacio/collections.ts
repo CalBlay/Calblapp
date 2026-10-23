@@ -1,6 +1,8 @@
 /** Prefix de col·leccions Firestore per al mòdul de dotació / estoc (sense ERP). */
 export const DOTACIO_COLLECTIONS = {
   products: 'dotacio_products',
+  /** Catàleg propi de proveïdors de Roba personal; no es comparteix amb Manteniment. */
+  suppliers: 'dotacio_suppliers',
   /** Mateix magatzem Firestore que el mòdul Personal (`personnel`); només el mòdul Roba personal escriu camps `workerCode`, `roba*`. */
   workers: 'personnel',
   stockMovements: 'dotacio_stock_movements',

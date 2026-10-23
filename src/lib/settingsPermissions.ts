@@ -2,6 +2,7 @@ export const SETTINGS_UI_PATH = '/menu/settings'
 export const SETTINGS_SERVEIS_PATH = '/menu/settings/serveis'
 export const SETTINGS_MAGATZEMS_PATH = '/menu/settings/magatzems'
 export const SETTINGS_ARTICLES_PATH = '/menu/settings/articles'
+export const SETTINGS_SUPPLIERS_PATH = '/menu/settings/proveidors'
 
 export function canViewSettingsSubpath(
   canViewPath: (path: string) => boolean,

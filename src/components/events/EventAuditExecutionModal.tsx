@@ -35,6 +35,7 @@ import EventClosingHoursPanel from './EventClosingModal'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
+import type { EventLnKey } from '@/lib/events/eventsLnFilter'
 
 type Outcome = 'none' | 'reported'
 
@@ -47,7 +48,7 @@ interface Props {
     start: string
     eventCode?: string
     location?: string
-    lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+    lnKey?: EventLnKey
   }
   user: {
     department?: string

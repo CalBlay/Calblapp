@@ -1,6 +1,7 @@
 import type { AccessUser } from '@/lib/accessControl'
 import {
   SETTINGS_SERVEIS_PATH,
+  SETTINGS_SUPPLIERS_PATH,
   SETTINGS_UI_PATH,
 } from '@/lib/settingsPermissions'
 import type { AuthSuccess } from '@/lib/server/apiAuth'
@@ -31,4 +32,14 @@ export async function requireSettingsServeisView(auth: AuthSuccess): Promise<boo
 export async function requireSettingsServeisEdit(auth: AuthSuccess): Promise<boolean> {
   const user = accessUserFromAuth(auth.user)
   return canEditSettingsSubpathUi(user, SETTINGS_SERVEIS_PATH)
+}
+
+export async function requireSettingsSuppliersView(auth: AuthSuccess): Promise<boolean> {
+  const user = accessUserFromAuth(auth.user)
+  return canViewSettingsSubpathUi(user, SETTINGS_SUPPLIERS_PATH)
+}
+
+export async function requireSettingsSuppliersEdit(auth: AuthSuccess): Promise<boolean> {
+  const user = accessUserFromAuth(auth.user)
+  return canEditSettingsSubpathUi(user, SETTINGS_SUPPLIERS_PATH)
 }

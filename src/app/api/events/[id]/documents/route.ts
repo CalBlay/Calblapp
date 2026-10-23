@@ -25,6 +25,10 @@ import {
   getCachedEventDocuments,
   setCachedEventDocuments,
 } from '@/lib/events/eventDocumentsCache.server'
+import {
+  zohoAttachmentValidationStatus,
+  type ZohoAttachmentValidationStatus,
+} from '@/services/zoho/attachments'
 
 export type EventDoc = {
   id: string
@@ -36,6 +40,7 @@ export type EventDoc = {
   kind?: string
   updatedAt?: string | number | null
   createdBy?: string | null
+  validationStatus?: ZohoAttachmentValidationStatus
 }
 
 function detectIcon(name: string): EventDoc['icon'] {
@@ -122,6 +127,7 @@ function buildBaseDoc(
       isVisitVideo && typeof data[`${key}By`] === 'string'
         ? String(data[`${key}By`]).trim() || null
         : undefined,
+    validationStatus: zohoAttachmentValidationStatus(key, data),
   }
 }
 

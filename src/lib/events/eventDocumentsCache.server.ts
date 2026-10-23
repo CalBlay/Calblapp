@@ -8,6 +8,7 @@ type CachedEventDoc = {
   kind?: string
   updatedAt?: string | number | null
   createdBy?: string | null
+  validationStatus?: 'validated' | 'invalid'
 }
 
 const TTL_MS = 60 * 1000

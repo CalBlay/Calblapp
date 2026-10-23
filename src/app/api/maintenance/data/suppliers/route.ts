@@ -4,7 +4,6 @@ import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 import {
   filterSuppliersByDepartment,
   listAllSuppliers,
-  normalizeSupplierDepartmentsInput,
 } from '@/lib/companySuppliers/server'
 import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
@@ -36,7 +35,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cal informar el nom del proveidor' }, { status: 400 })
     }
     const now = Date.now()
-    const supplierDepartments = normalizeSupplierDepartmentsInput(body?.supplierDepartments, ['Manteniment'])
     const payload = {
       name,
       email: String(body?.email || '').trim(),
@@ -44,7 +42,7 @@ export async function POST(req: Request) {
       specialty: String(body?.specialty || '').trim(),
       notes: String(body?.notes || '').trim(),
       active: body?.active !== false,
-      supplierDepartments,
+      supplierDepartments: ['Manteniment'],
       createdAt: now,
       updatedAt: now,
     }

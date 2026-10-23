@@ -44,6 +44,7 @@ import { resolveAuditDepartmentForEvent } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
+import type { EventLnKey } from '@/lib/events/eventsLnFilter'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -53,7 +54,7 @@ const norm = (s?: string | number | null) =>
     .toLowerCase()
     .trim()
 
-type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+type LnKey = EventLnKey
 
 interface WorkerLite {
   id?: string | number

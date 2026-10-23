@@ -292,6 +292,7 @@ function ModalContent({
         {docs.map((d) => {
           const url = safeUrl(d.url)
           const isDisabled = !url
+          const hasZohoValidationError = d.validationStatus === 'invalid'
           const isExternalVideo = isExternalVideoLinkDoc(d)
           const isEmbeddableVideo = isEmbeddableVideoDoc(d)
           const openTarget = isExternalVideo ? '_blank' : linkTarget
@@ -303,7 +304,18 @@ function ModalContent({
               className="w-full rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
             >
               <div className="flex items-center gap-4">
-                <div className="rounded-lg bg-gray-100 p-2">
+                <div
+                  className={`rounded-lg p-2 ${
+                    hasZohoValidationError
+                      ? 'bg-red-50 text-red-600'
+                      : 'bg-blue-50 text-blue-600'
+                  }`}
+                  title={
+                    hasZohoValidationError
+                      ? 'Document de Zoho amb un error de validació'
+                      : undefined
+                  }
+                >
                   <DocIcon d={d} />
                 </div>
 

@@ -6,6 +6,34 @@ export interface ZohoAttachment {
   Download_Url?: string
 }
 
+export const ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'
+
+export type ZohoAttachmentValidationStatus = 'validated' | 'invalid'
+
+export function zohoAttachmentValidationStatus(
+  baseKey: string,
+  document: Record<string, unknown>
+): ZohoAttachmentValidationStatus | undefined {
+  if (!/^zohoFile\d+$/i.test(baseKey)) return undefined
+  const explicitStatus = String(document[`${baseKey}ValidationStatus`] || '')
+  if (explicitStatus === 'validated' || explicitStatus === 'invalid') {
+    return explicitStatus
+  }
+  return String(document[`${baseKey}Source`] || '') === ZOHO_FIELD_ATTACHMENT_SOURCE_V8
+    ? 'validated'
+    : undefined
+}
+
+export function documentHasInvalidZohoAttachments(
+  document: Record<string, unknown>
+): boolean {
+  return Object.entries(document).some(([key, value]) => {
+    if (!/^zohoFile\d+$/i.test(key)) return false
+    if (typeof value !== 'string' || !value.trim()) return false
+    return zohoAttachmentValidationStatus(key, document) === 'invalid'
+  })
+}
+
 /** Camps Zoho (Deals) de tipus fitxer que alimenten zohoFile* al sync. */
 export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Fulla_d_enc_rrec',
@@ -43,6 +71,7 @@ export function zohoAttachmentSlotKeys(baseKey: string) {
     size: `${baseKey}Size`,
     path: `${baseKey}Path`,
     source: `${baseKey}Source`,
+    validationStatus: `${baseKey}ValidationStatus`,
   }
 }
 

@@ -3,23 +3,18 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
-import {
-  filterSuppliersByDepartment,
-  listAllSuppliers,
-  normalizeSupplierDepartmentsInput,
-} from '@/lib/companySuppliers/server'
+import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
+import { listRobaSuppliers } from '@/lib/roba-personal/suppliers.server'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
 import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 
-/** Mateixa col·lecció que Manteniment → Dades → proveïdors (`SUPPLIERS_COLLECTION`). */
+/** Catàleg propi de Roba personal, separat dels proveïdors de Manteniment. */
 export async function GET() {
   const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   try {
-    const all = await listAllSuppliers(db)
-    const suppliers = filterSuppliersByDepartment(all, 'Recursos Humans')
+    const suppliers = await listRobaSuppliers(db)
     return NextResponse.json({ suppliers })
   } catch (e: unknown) {
     console.error('[roba-personal/suppliers] GET', e)
@@ -39,9 +34,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cal el nom del proveïdor' }, { status: 400 })
     }
     const now = Date.now()
-    const supplierDepartments = normalizeSupplierDepartmentsInput(body.supplierDepartments, [
-      'Recursos Humans',
-    ])
     const payload = {
       name,
       email: String(body.email || '').trim(),
@@ -49,11 +41,10 @@ export async function POST(req: Request) {
       specialty: String(body.specialty || '').trim(),
       notes: String(body.notes || '').trim(),
       active: body.active !== false,
-      supplierDepartments,
       createdAt: now,
       updatedAt: now,
     }
-    const ref = await db.collection(SUPPLIERS_COLLECTION).add(payload)
+    const ref = await db.collection(DOTACIO_COLLECTIONS.suppliers).add(payload)
     return NextResponse.json({ ok: true, id: ref.id }, { status: 201 })
   } catch (e: unknown) {
     console.error('[roba-personal/suppliers] POST', e)

@@ -6,12 +6,15 @@ const { test } = require('node:test')
 const {
   canPruneMissingZohoAttachmentSlots,
   deletedZohoAttachmentIdsFromDocument,
+  documentHasInvalidZohoAttachments,
   extractZohoFieldAttachments,
   listExistingZohoAttachmentBaseKeys,
   mergeZohoFieldAttachments,
   shouldImportZohoAttachment,
   shouldRefetchZohoAttachmentField,
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
+  ZOHO_FIELD_ATTACHMENT_SOURCE_V8,
+  zohoAttachmentValidationStatus,
   zohoAttachmentSlotKeys,
 } = require('../src/services/zoho/attachments')
 
@@ -101,6 +104,7 @@ test('attachment slot helpers protect against destructive empty-sync cleanup', (
     size: 'zohoFile3Size',
     path: 'zohoFile3Path',
     source: 'zohoFile3Source',
+    validationStatus: 'zohoFile3ValidationStatus',
   })
 })
 
@@ -112,6 +116,44 @@ test('deleted Zoho attachment ids are normalized for sync suppression', () => {
     ['att-1', 'att-2']
   )
   assert.deepEqual([...deletedZohoAttachmentIdsFromDocument({})], [])
+})
+
+test('Zoho attachment validation status marks only explicit errors as invalid', () => {
+  assert.equal(
+    zohoAttachmentValidationStatus('zohoFile1', {
+      zohoFile1Source: ZOHO_FIELD_ATTACHMENT_SOURCE_V8,
+    }),
+    'validated'
+  )
+  assert.equal(
+    zohoAttachmentValidationStatus('zohoFile1', {
+      zohoFile1Source: 'zoho-field-attachment',
+    }),
+    undefined
+  )
+  assert.equal(
+    zohoAttachmentValidationStatus('zohoFile1', {
+      zohoFile1ValidationStatus: 'invalid',
+    }),
+    'invalid'
+  )
+  assert.equal(zohoAttachmentValidationStatus('file1', {}), undefined)
+
+  assert.equal(
+    documentHasInvalidZohoAttachments({
+      zohoFile1: 'https://storage.example/file.pdf',
+      zohoFile1Source: 'zoho-field-attachment',
+    }),
+    false
+  )
+  assert.equal(
+    documentHasInvalidZohoAttachments({
+      zohoFile1: 'https://storage.example/file.pdf',
+      zohoFile1ValidationStatus: 'invalid',
+    }),
+    true
+  )
+  assert.equal(documentHasInvalidZohoAttachments({ file1: '/manual.pdf' }), false)
 })
 
 test('Zoho sync discovers attachments only from the configured file fields', () => {
@@ -127,11 +169,13 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Full_de_modificacions',
     'Full_modificacions',
   ])
-  assert.match(source, /ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'/)
+  assert.equal(ZOHO_FIELD_ATTACHMENT_SOURCE_V8, 'zoho-field-attachment-v8')
   assert.match(
     source,
     /existing\?\.\[keys\.source\][\s\S]*ZOHO_FIELD_ATTACHMENT_SOURCE_V8/
   )
+  assert.match(source, /out\[keys\.validationStatus\] = 'invalid'/)
+  assert.match(source, /out\[keys\.validationStatus\] = 'validated'/)
 })
 
 test('manual Zoho sync is incremental and uses bounded deal concurrency', () => {

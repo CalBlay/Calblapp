@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import { invalidateEventDocumentsCache } from '@/lib/events/eventDocumentsCache.server'
 
 export const runtime = 'nodejs'
 
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
       if (cronDenied) return cronDenied
 
       const result = await syncZohoDealsToFirestore(syncOptions)
+      invalidateEventDocumentsCache()
       return NextResponse.json({
         ok: true,
         mode: 'cron',
@@ -45,6 +47,7 @@ export async function GET(req: Request) {
     if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const result = await syncZohoDealsToFirestore(syncOptions)
+    invalidateEventDocumentsCache()
 
     return NextResponse.json({
       ok: true,

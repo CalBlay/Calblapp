@@ -41,6 +41,7 @@ interface EventData {
   locationShort?: string
   warehouseBatches?: WarehouseComandaEventBatchChip[]
   hasDocuments?: boolean
+  hasInvalidZohoDocuments?: boolean
 }
 
 interface Props {
@@ -132,16 +133,26 @@ export default function EventCard({
     <button
       type="button"
       aria-label={
-        event.hasDocuments
-          ? `Veure documents adjunts de ${displaySummary}`
-          : `Sense documents adjunts de ${displaySummary}`
+        !event.hasDocuments
+          ? `Sense documents adjunts de ${displaySummary}`
+          : event.hasInvalidZohoDocuments
+            ? `Documents incorrectes de ${displaySummary}`
+            : `Veure documents adjunts de ${displaySummary}`
       }
-      title={event.hasDocuments ? 'Veure documents adjunts' : 'Sense documents adjunts'}
+      title={
+        !event.hasDocuments
+          ? 'Sense documents adjunts'
+          : event.hasInvalidZohoDocuments
+            ? 'Hi ha documents de Zoho amb errors de validació'
+            : 'Veure documents adjunts'
+      }
       className={cn(
         'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border shadow-sm transition',
-        event.hasDocuments
-          ? 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100'
-          : 'border-slate-200 bg-slate-50 text-slate-400 opacity-55 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-500'
+        !event.hasDocuments
+          ? 'border-slate-200 bg-slate-50 text-slate-400 opacity-55 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-500'
+          : event.hasInvalidZohoDocuments
+            ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100'
+            : 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100'
       )}
       onClick={(e) => {
         e.stopPropagation()

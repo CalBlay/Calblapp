@@ -51,7 +51,7 @@ import EventsFiltersBar, {
   type EventsFiltersState,
   type LnKey,
 } from '@/components/events/EventsFiltersBar'
-import { filterEventsByLns } from '@/lib/events/eventsLnFilter'
+import { defaultEventLnSelection, filterEventsByLns } from '@/lib/events/eventsLnFilter'
 
 const normalize = (s?: string | null) =>
   (s || '')
@@ -164,7 +164,7 @@ export default function EventsPage() {
     return {
       start: format(s, 'yyyy-MM-dd'),
       end: format(e, 'yyyy-MM-dd'),
-      ln: defaultLn ? [defaultLn] : [],
+      ln: defaultEventLnSelection(defaultLn),
     }
   }, [defaultLn])
 
@@ -178,7 +178,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     if (departmentFilterInitialized || sessionStatus === 'loading') return
-    setFilters((prev) => ({ ...prev, ln: defaultLn ? [defaultLn] : [] }))
+    setFilters((prev) => ({ ...prev, ln: defaultEventLnSelection(defaultLn) }))
     setDepartmentFilterInitialized(true)
   }, [defaultLn, departmentFilterInitialized, sessionStatus])
 
@@ -584,7 +584,7 @@ export default function EventsPage() {
       start: format(s, 'yyyy-MM-dd'),
       end: format(e, 'yyyy-MM-dd'),
       mode: 'week',
-      ln: defaultLn ? [defaultLn] : [],
+      ln: defaultEventLnSelection(defaultLn),
       responsable: undefined,
       commercial: undefined,
       location: undefined,

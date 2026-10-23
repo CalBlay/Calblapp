@@ -1,10 +1,6 @@
 /**
- * Col·lecció única de proveïdors compartida entre:
- * - Manteniment → Dades → Proveïdors
- * - Roba personal (RRHH)
- *
- * El camp `supplierDepartments` (array) indica per a quins àmbits serveix el proveïdor
- * (p. ex. `['Manteniment']`, `['Recursos Humans']`, o ambdós).
+ * Catàleg de proveïdors de Manteniment. Els antics registres de Recursos Humans
+ * es migren al catàleg independent `dotacio_suppliers` de Roba personal.
  */
 export const SUPPLIERS_COLLECTION = 'maintenanceSuppliers'
 

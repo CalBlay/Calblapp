@@ -5,7 +5,6 @@ import { NextResponse } from 'next/server'
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 import {
   requireRobaPersonalAdmin,
   requireRobaProductsReadAccess,
@@ -27,7 +26,7 @@ function str(v: unknown): string {
 
 async function resolveSupplierName(supplierId: string): Promise<string | null> {
   if (!supplierId) return null
-  const snap = await db.collection(SUPPLIERS_COLLECTION).doc(supplierId).get()
+  const snap = await db.collection(DOTACIO_COLLECTIONS.suppliers).doc(supplierId).get()
   if (!snap.exists) return null
   return str((snap.data() as Record<string, unknown>).name)
 }

@@ -7,6 +7,16 @@ const {
   serializeSupplier,
   supplierServesDepartment,
 } = require('../src/lib/companySuppliers/server')
+const { DOTACIO_COLLECTIONS } = require('../src/lib/dotacio/collections')
+const { serializeRobaSupplier } = require('../src/lib/roba-personal/suppliers.server')
+
+test('Roba personal uses a supplier catalogue separate from Manteniment', () => {
+  assert.equal(DOTACIO_COLLECTIONS.suppliers, 'dotacio_suppliers')
+  const supplier = serializeRobaSupplier('roba-1', { name: ' Tèxtil ', active: false })
+  assert.equal(supplier.name, 'Tèxtil')
+  assert.equal(supplier.active, false)
+  assert.equal('supplierDepartments' in supplier, false)
+})
 
 test('serializeSupplier treats missing departments as Manteniment and active unless explicitly false', () => {
   const legacy = serializeSupplier('s1', { name: ' Acme ', email: 'a@x.com' })
