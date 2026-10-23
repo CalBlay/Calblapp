@@ -11,6 +11,7 @@ import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
 import { clearExternalStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
+import { resolveMaintenanceTicketCreatorExplanation } from '@/lib/maintenanceSupplierEmail'
 
 export const runtime = 'nodejs'
 
@@ -45,6 +46,7 @@ type MaintenanceTicketExternalizeRecord = Record<string, unknown> & {
   workLocation?: string
   operatorTitle?: string
   description?: string
+  sourceMessageText?: string
   priority?: string
   createdAt?: string | number | null
   imagePath?: string | null
@@ -168,7 +170,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       center: String(current.location || '').trim(),
       location: String(current.workLocation || '').trim(),
       machine: String(current.machine || '').trim(),
-      description: String(current.operatorTitle || current.description || '').trim(),
+      // `description` is the explanation written by the ticket creator. Do not
+      // replace it with `operatorTitle`, which is an editable task/machine title.
+      description: resolveMaintenanceTicketCreatorExplanation(current),
       priority: String(current.priority || '').trim(),
       createdAt: current.createdAt || null,
       reference: externalReference || null,

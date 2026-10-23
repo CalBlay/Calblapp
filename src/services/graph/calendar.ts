@@ -1604,7 +1604,9 @@ function buildMaintenanceSupplierEmailHtml(input: SendMaintenanceSupplierEmailIn
     `<p style="margin:0 0 8px"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>`,
     createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : '',
     reference ? `<p style="margin:0 0 8px"><strong>Referencia externa:</strong> ${escapeHtml(reference)}</p>` : '',
-    description ? `<p style="margin:0 0 8px"><strong>Descripcio:</strong> ${escapeHtml(description)}</p>` : '',
+    description
+      ? `<p style="margin:0 0 8px"><strong>Explicacio original del creador:</strong> ${escapeHtml(description)}</p>`
+      : '',
     message ? `<div style="margin:12px 0 0">${escapeHtml(message).replace(/\n/g, '<br/>')}</div>` : '',
   ]
     .filter(Boolean)

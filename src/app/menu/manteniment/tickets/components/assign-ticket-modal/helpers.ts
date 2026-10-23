@@ -1,4 +1,5 @@
 import { formatDateOnly } from '@/lib/date-format'
+import { resolveMaintenanceTicketCreatorExplanation } from '@/lib/maintenanceSupplierEmail'
 import type { Ticket } from '../../types'
 
 export function buildSupplierSubject(ticket: Ticket) {
@@ -11,12 +12,19 @@ export function buildSupplierSubject(ticket: Ticket) {
 
 export function buildSupplierMessage(ticket: Ticket) {
   const taskTitle = String(ticket.operatorTitle || ticket.description || '').trim()
+  const creatorExplanation = resolveMaintenanceTicketCreatorExplanation({
+    description: ticket.description,
+    sourceMessageText: ticket.sourceMessageText,
+  })
   const machine = String(ticket.machine || '').trim()
   const lines = [
     'Bon dia,',
     '',
     'Us preguem revisio i disponibilitat per aquesta actuacio de manteniment.',
     taskTitle ? `Descripcio de la feina: ${taskTitle}` : '',
+    creatorExplanation && creatorExplanation !== taskTitle
+      ? `Explicacio original del creador: ${creatorExplanation}`
+      : '',
     machine ? `Maquinaria: ${machine}` : '',
     '',
     'Gracies.',
