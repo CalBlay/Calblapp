@@ -143,7 +143,12 @@ function MaintenanceNotificationItems({
     closeBell?.()
 
     const explicitUrl = String(notification.url || '').trim()
-    if (explicitUrl.startsWith('/')) {
+    const explicitTicketBasePath = [
+      '/menu/manteniment/tickets',
+      '/menu/deco/tickets',
+      '/menu/cuina-central/manteniment/tickets',
+    ].find((path) => explicitUrl === path || explicitUrl.startsWith(`${path}?`))
+    if (explicitUrl.startsWith('/') && !explicitTicketBasePath) {
       router.push(explicitUrl)
       return
     }
@@ -202,6 +207,15 @@ function MaintenanceNotificationItems({
       }
     } catch {
       // keep fallback route below
+    }
+
+    if (explicitTicketBasePath) {
+      const explicitQuery = explicitUrl.includes('?') ? explicitUrl.split('?').slice(1).join('?') : ''
+      const explicitParams = new URLSearchParams(explicitQuery)
+      query.forEach((value, key) => explicitParams.set(key, value))
+      const suffix = explicitParams.toString()
+      router.push(suffix ? `${explicitTicketBasePath}?${suffix}` : explicitTicketBasePath)
+      return
     }
 
     if (notification.type === 'maintenance_ticket_assigned') {

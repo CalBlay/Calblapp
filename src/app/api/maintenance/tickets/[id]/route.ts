@@ -778,7 +778,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     let autoReturnToPlanner = false
 
-    if (body.assignedToIds !== undefined) {
+    if (assigneesChanged) {
       updates.assignedAt = nextAssignedIds.length ? Date.now() : null
       updates.assignedById = user.id
       updates.assignedByName = user.name || ''
@@ -1224,7 +1224,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       })
     }
 
-    if (body.assignedToIds !== undefined && body.assignedToIds.length > 0) {
+    if (assigneesChanged && nextAssignedIds.length > 0) {
       const effectiveMachine =
         body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
       const effectiveLocation =
@@ -1258,7 +1258,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
 
       await notifyMaintenanceAssignees({
-        uids: body.assignedToIds,
+        uids: nextAssignedIds,
         payload: assignPayload,
         excludeIds: [user.id],
       })
@@ -1269,6 +1269,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           uid: creatorId,
           payload: {
             ...assignPayload,
+            url: isDecoTicket
+              ? `/menu/deco/tickets?ticketId=${encodeURIComponent(id)}`
+              : `/menu/manteniment/tickets?ticketId=${encodeURIComponent(id)}`,
             body: buildAssignedTicketBodyForCreator({
               machine: effectiveMachine,
               location: effectiveLocation,
@@ -1277,7 +1280,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
               plannedStart,
             }),
           },
-          excludeIds: [user.id, ...body.assignedToIds],
+          excludeIds: [user.id, ...nextAssignedIds],
         })
       }
     }

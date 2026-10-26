@@ -36,7 +36,7 @@ export interface Deal {
   cancelledByName?: string
   cancellationNoticeSentAt?: string
   sourceEventId?: string
-  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2'
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
   files?: { key: string; url: string; name?: string; source?: string }[]
 }
 
@@ -116,6 +116,22 @@ export function useCalendarData(filters?: {
                 ? (ev[`${key}Source`] as string)
                 : undefined,
           }))
+        const structuredFiles = Array.isArray(ev.files)
+          ? ev.files.filter(
+              (file): file is { key: string; url: string; name?: string; source?: string } =>
+                Boolean(
+                  file &&
+                    typeof file === 'object' &&
+                    typeof (file as { key?: unknown }).key === 'string' &&
+                    typeof (file as { url?: unknown }).url === 'string'
+                )
+            )
+          : []
+        const calendarFiles = Array.from(
+          new Map(
+            [...fileEntries, ...structuredFiles].map((file) => [file.key, file] as const)
+          ).values()
+        )
 
         const codeValue = String(ev.code ?? '').trim()
         const codeMatchScore =
@@ -204,13 +220,14 @@ export function useCalendarData(filters?: {
             typeof ev.sourceEventId === 'string' ? ev.sourceEventId : undefined,
           calendarOccurrenceType:
             ev.calendarOccurrenceType === 'menu_tasting_1' ||
-            ev.calendarOccurrenceType === 'menu_tasting_2'
+            ev.calendarOccurrenceType === 'menu_tasting_2' ||
+            ev.calendarOccurrenceType === 'menu_tasting_company'
               ? ev.calendarOccurrenceType
               : undefined,
           origen: (ev.origen === 'manual' || ev.origen === 'firestore' || ev.origen === 'zoho'
             ? ev.origen
             : 'zoho') as Deal['origen'],
-          files: fileEntries,
+          files: calendarFiles,
         }
       })
 

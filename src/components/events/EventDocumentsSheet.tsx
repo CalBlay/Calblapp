@@ -12,7 +12,10 @@ import {
   Image as ImgIcon,
   Video,
 } from 'lucide-react'
-import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
+import useEventDocuments, {
+  EventDoc,
+  useEventDocumentsMany,
+} from '@/hooks/events/useEventDocuments'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import { isTicketVideoMime, isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import {
@@ -101,12 +104,16 @@ const kindLabel = (doc: EventDoc) => {
 
 export default function EventDocumentsSheet({
   eventId,
+  eventIds,
+  sourceEvents,
   eventCode,
   open,
   onOpenChange,
   embedded = false,
 }: {
   eventId: string
+  eventIds?: string[]
+  sourceEvents?: Array<{ id: string; name?: string; code?: string }>
   eventCode?: string | null
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -118,11 +125,40 @@ export default function EventDocumentsSheet({
     return uiActions[PERM.action('/menu/events', 'docs:view')] === true
   }, [permsReady, uiActions])
 
-  const { docs, loading, error } = useEventDocuments(
+  const normalizedEventIds = useMemo(
+    () => Array.from(new Set((eventIds || []).map((id) => String(id || '').trim()).filter(Boolean))),
+    [eventIds]
+  )
+  const hasMultipleEvents = normalizedEventIds.length > 1
+  const eventLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        (sourceEvents || [])
+          .map((event) => [
+            String(event.id || '').trim(),
+            [String(event.code || '').trim(), String(event.name || '').trim()]
+              .filter(Boolean)
+              .join(' · '),
+          ])
+          .filter(([id]) => Boolean(id))
+      ),
+    [sourceEvents]
+  )
+  const singleDocuments = useEventDocuments(
     canViewDocs ? eventId : undefined,
     canViewDocs ? (eventCode || undefined) : undefined,
-    'all'
+    'all',
+    0,
+    !hasMultipleEvents
   )
+  const multipleDocuments = useEventDocumentsMany(
+    normalizedEventIds,
+    eventLabels,
+    canViewDocs && hasMultipleEvents
+  )
+  const { docs, loading, error } = hasMultipleEvents
+    ? multipleDocuments
+    : singleDocuments
 
   const [isNarrow, setIsNarrow] = useState(false)
 

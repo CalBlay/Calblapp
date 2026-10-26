@@ -211,7 +211,15 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
         status: 'confirmed',
         confirmedAt: confirmedAtSf,
         confirmedBy: confirmedBySf,
-        code: quadrantConfirmTrim(stagePayloadSf?.code ?? stagePayloadSf?.C_digo ?? ''),
+        code: quadrantConfirmTrim(
+          stagePayloadSf?.code ??
+          stagePayloadSf?.C_digo ??
+          firstPrevSf?.code ??
+          firstPrevSf?.eventCode ??
+          body.code ??
+          body.eventCode ??
+          ''
+        ),
       },
       notificationAssignmentsByDocId: assignmentsByDocId(
         notificationPlanSf.currentAssignments

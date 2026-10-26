@@ -1050,6 +1050,7 @@ function TicketWorkspace() {
 
         <TicketsList
           groupedTickets={groupedTickets}
+          focusedTicketId={queryTicketId || undefined}
           externalReporterView={isExternalReporter}
           onResolve={(ticket) => {
             if (!canResolveDirectly(ticket)) return

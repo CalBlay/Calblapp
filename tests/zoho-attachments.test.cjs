@@ -197,6 +197,10 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   assert.match(syncSource, /const ZOHO_SYNC_CONCURRENCY = 4/)
   assert.match(syncSource, /slice\(offset, offset \+ ZOHO_SYNC_CONCURRENCY\)/)
   for (const field of [
+    'Pipeline',
+    'Ubicaci',
+    'Ubicaci_1a_Part',
+    'Ubicaci_2a_part',
     'Hora_Fi_Boda',
     'Hora_Fi_Evento',
     'Data_1_Prova_Men',

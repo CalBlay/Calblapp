@@ -163,7 +163,13 @@ export async function POST(req: NextRequest) {
         status: 'confirmed',
         confirmedAt,
         confirmedBy,
-        code: quadrantConfirmTrim(stageData?.code ?? stageData?.C_digo ?? ''),
+        code: quadrantConfirmTrim(
+          stageData?.code ??
+          stageData?.C_digo ??
+          firstPrev?.code ??
+          firstPrev?.eventCode ??
+          ''
+        ),
       },
       notificationAssignmentsByDocId: assignmentsByDocId(
         notificationPlan.currentAssignments

@@ -645,7 +645,15 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
         status: 'confirmed',
         confirmedAt: confirmedAtIc,
         confirmedBy: confirmedByIc,
-        code: quadrantConfirmTrim(sdInline?.code ?? sdInline?.C_digo ?? ''),
+        code: quadrantConfirmTrim(
+          sdInline?.code ??
+          sdInline?.C_digo ??
+          firstPrevInline?.code ??
+          firstPrevInline?.eventCode ??
+          body.code ??
+          body.eventCode ??
+          ''
+        ),
       },
       notificationAssignmentsByDocId: assignmentsByDocId(
         notificationPlan.currentAssignments

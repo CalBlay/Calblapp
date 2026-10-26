@@ -399,7 +399,12 @@ export default function QuadrantsEventGroup({
 
       {documentsOpen ? (
         <EventDocumentsSheet
-          eventId={String(event.eventId || '').split('__')[0]}
+          eventId={
+            event.sourceEventIds?.[0] ||
+            String(event.eventId || '').split('__')[0]
+          }
+          eventIds={event.sourceEventIds}
+          sourceEvents={event.sourceEvents}
           eventCode={event.eventCode}
           open
           onOpenChange={setDocumentsOpen}

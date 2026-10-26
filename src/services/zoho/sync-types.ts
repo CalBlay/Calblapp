@@ -15,6 +15,7 @@ export interface ZohoDeal {
   Modified_Time?: string | null
   Account_Name?: string | ZohoNamedValue | null
   Stage: string
+  Pipeline?: string | ZohoNamedValue | null
   Servicio_texto?: string | null
   Men_texto?: string | null
   N_mero_de_invitados?: number | string | null
@@ -32,6 +33,12 @@ export interface ZohoDeal {
   Owner: ZohoOwner
   Responsable?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
   Comercial_Interna?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
+  Data_i_hora?: string | null
+  Ubicaci?: string | null
+  Ubicaci_1a_Part?: string | null
+  Ubicaci_2a_part?: string | null
+  Pax?: number | string | null
+  confirmar_prova?: boolean | string | number | null
   Data_1_Prova_Men?: string | null
   Auto_data_1a_part?: string | boolean | null
   Otros?: string | null
@@ -71,11 +78,21 @@ export interface NormalizedDeal {
   NomEvent: string
   NomClient?: string
   Stage: string
+  Pipeline?: string | null
   LN: string
   Servei: string
   Comercial: string
   ComercialIntern?: string
   Responsable: string
+  Data_i_hora?: string | null
+  Ubicaci?: string | null
+  Ubicaci_1a_Part?: string | null
+  Ubicaci_2a_part?: string | null
+  Pax?: number | string | null
+  confirmar_prova?: boolean | string | number | null
+  MenuTasting1Date?: string | null
+  MenuTasting2Date?: string | null
+  MenuTastingCompanyDate?: string | null
   Data_1_Prova_Men?: string | null
   Auto_data_1a_part?: string | boolean | null
   Otros?: string | null

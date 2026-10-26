@@ -92,7 +92,12 @@ export async function queryStageCollectionDocsByDateFieldInRange(
   const col = db.collection(collectionId)
 
   try {
-    const snap = await col.where(fieldName, '>=', s).where(fieldName, '<=', e).get()
+    // El camp pot ser una data simple o un datetime Zoho. El sufix alt inclou
+    // totes les hores del darrer dia del rang.
+    const snap = await col
+      .where(fieldName, '>=', s)
+      .where(fieldName, '<=', `${e}\uf8ff`)
+      .get()
     return snap.docs
   } catch (err) {
     console.warn(

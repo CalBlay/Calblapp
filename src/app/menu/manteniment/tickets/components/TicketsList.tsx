@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, MessageCircle, Trash2 } from 'lucide-react'
@@ -37,6 +37,7 @@ type Props = {
   statusLabels: Record<TicketStatus, string>
   priorityLabels: Record<TicketPriority, string>
   externalReporterView?: boolean
+  focusedTicketId?: string
 }
 
 type PlanningHistoryEntry = NonNullable<Ticket['planningHistory']>[number]
@@ -231,9 +232,27 @@ export default function TicketsList({
   statusLabels,
   priorityLabels,
   externalReporterView = false,
+  focusedTicketId,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!focusedTicketId) return
+    const section = groupedTickets.find((entry) =>
+      entry.items.some((ticket) => ticket.id === focusedTicketId)
+    )
+    if (!section) return
+
+    setExpandedId(focusedTicketId)
+    setCollapsedSections((prev) => ({ ...prev, [section.key]: false }))
+    window.requestAnimationFrame(() => {
+      document.getElementById(`maintenance-ticket-${focusedTicketId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+  }, [focusedTicketId, groupedTickets])
 
   const codeLabelById = useMemo(
     () =>
@@ -323,6 +342,7 @@ export default function TicketsList({
                   return (
                     <article
                       key={ticket.id}
+                      id={`maintenance-ticket-${ticket.id}`}
                       className={`flex h-full flex-col overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md ${
                         isStale ? STALE_TICKET_CARD_CLASS : sectionStyle.card
                       }`}
@@ -498,6 +518,28 @@ export default function TicketsList({
                                   <div className={typography('eyebrow')}>Maquinaria</div>
                                   <div className="mt-1 text-sm text-slate-800">{machineLabel}</div>
                                 </div>
+                                <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                                  <div className={typography('eyebrow')}>Operaris assignats</div>
+                                  <div className="mt-1 text-sm text-slate-800">
+                                    {ticket.assignedToNames?.length
+                                      ? ticket.assignedToNames.join(', ')
+                                      : 'Sense assignar'}
+                                  </div>
+                                </div>
+                                {ticket.assignedAt ? (
+                                  <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                                    <div className={typography('eyebrow')}>Data d'assignacio</div>
+                                    <div className="mt-1 text-sm text-slate-800">
+                                      {formatDateTime(ticket.assignedAt)}
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {plannedSummary ? (
+                                  <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                                    <div className={typography('eyebrow')}>Dia i hora previstos</div>
+                                    <div className="mt-1 text-sm text-slate-800">{plannedSummary}</div>
+                                  </div>
+                                ) : null}
                               </div>
                               {eventLabel ? (
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">

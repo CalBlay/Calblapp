@@ -32,6 +32,9 @@ export interface QuadrantEvent {
   commercial?: string | null
   /** True si el document stage_verd té algun adjunt (file/zohoFile/cuinaFile/visitVideo). */
   hasDocuments?: boolean
+  /** Esdeveniments Zoho originals que formen una PM agrupada. */
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name: string; code: string }>
   phaseKey?: string
   phaseLabel?: string
   phaseType?: string

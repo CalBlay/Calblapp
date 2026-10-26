@@ -6,6 +6,7 @@ import {
 } from '@/lib/firestoreStageRangeQuery'
 import {
   buildMenuTastingOccurrence,
+  groupWeddingMenuTastingOccurrences,
   MENU_TASTING_CONFIGS,
 } from '@/lib/calendar/menuTastingOccurrences'
 
@@ -14,6 +15,25 @@ const padHhMm = (raw: unknown): string | null => {
   const s = raw.trim().slice(0, 5)
   return /^\d{2}:\d{2}$/.test(s) ? s : null
 }
+
+const structuredEventFiles = (
+  data: FirebaseFirestore.DocumentData,
+  sourceEventId: string
+) =>
+  Object.entries(data)
+    .filter(
+      ([key, value]) =>
+        /^(file|zohofile)\d+$/i.test(key) &&
+        typeof value === 'string' &&
+        value.length > 0
+    )
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([key, url]) => ({
+      key: `${sourceEventId}:${key}`,
+      url: String(url),
+      name: typeof data[`${key}Name`] === 'string' ? data[`${key}Name`] : undefined,
+      source: typeof data[`${key}Source`] === 'string' ? data[`${key}Source`] : undefined,
+    }))
 
 export async function computeCalendarEventsInRange(
   start: string,
@@ -229,6 +249,7 @@ export async function computeCalendarEventsInRange(
             typeof d.cancellationNoticeSentAt === 'string'
               ? d.cancellationNoticeSentAt
               : '',
+          files: structuredEventFiles(d, doc.id),
         }
 
         const occurrence = buildMenuTastingOccurrence({
@@ -244,5 +265,5 @@ export async function computeCalendarEventsInRange(
     })
   }
 
-  return { events: base }
+  return { events: groupWeddingMenuTastingOccurrences(base) }
 }

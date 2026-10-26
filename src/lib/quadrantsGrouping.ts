@@ -10,6 +10,8 @@ export type GroupedQuadrantEvent = {
   commercial: string | null
   service: string | null
   hasDocuments: boolean
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name: string; code: string }>
   phases: UnifiedEvent[]
 }
 
@@ -43,6 +45,8 @@ export function groupQuadrantsByDayAndEvent(rows: UnifiedEvent[]): GroupedQuadra
         commercial: ev.commercial ?? null,
         service: ev.service ?? null,
         hasDocuments: Boolean(ev.hasDocuments),
+        sourceEventIds: Array.isArray(ev.sourceEventIds) ? ev.sourceEventIds : undefined,
+        sourceEvents: Array.isArray(ev.sourceEvents) ? ev.sourceEvents : undefined,
         phases: [],
       })
     } else if (ev.hasDocuments) {

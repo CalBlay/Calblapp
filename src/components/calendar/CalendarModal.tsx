@@ -23,6 +23,7 @@ import { displayCalendarFileName } from '@/lib/calendar/calendarFiles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
+import { formatDateOnly } from '@/lib/date-format'
 
 interface Props {
   deal: Deal
@@ -799,7 +800,7 @@ export default function CalendarModal({
                 onChange={(e) => handleChange('DataInici', e.target.value)}
               />
             ) : (
-              <p>{editData.DataInici}</p>
+              <p>{formatDateOnly(editData.DataInici, '—')}</p>
             )}
           </div>
 
@@ -876,7 +877,7 @@ export default function CalendarModal({
               <label className="block text-xs text-gray-500 mb-1">
                 Data fi
               </label>
-              <p>{editData.DataFi}</p>
+              <p>{formatDateOnly(editData.DataFi, '—')}</p>
             </div>
           )}
 

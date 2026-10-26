@@ -15,13 +15,70 @@ Module._load = function loadWithStubs(request, parent, isMain) {
 }
 
 const {
+  businessLineFromPipeline,
   classifyStage,
   isLostZohoStage,
+  normalizeZohoDeals,
   resolveZohoEndTime,
 } = require('../src/services/zoho/sync-normalization')
 
 after(() => {
   Module._load = originalLoad
+})
+
+test('businessLineFromPipeline uses Pipeline as the canonical business line', () => {
+  assert.equal(businessLineFromPipeline('Bodas'), 'Casaments')
+  assert.equal(businessLineFromPipeline({ id: '1', name: 'Corporativo' }), 'Empresa')
+  assert.equal(businessLineFromPipeline('Fires i Festivals'), 'Foodlovers')
+  assert.equal(businessLineFromPipeline('Grupos Restaurantes'), 'Grups Restaurants')
+  assert.equal(businessLineFromPipeline(null), null)
+})
+
+test('restaurant centres keep priority over Pipeline when resolving LN', async () => {
+  const dependencies = {
+    parseZohoDate: (value) => value || null,
+    parseZohoTime: () => null,
+    getLN: async () => 'Agenda',
+    lnForMartaGranatoCommercial: (ln, commercial) =>
+      String(commercial || '').includes('Marta Granato') ? 'Grups Restaurants' : ln,
+    stripCode: (value) => String(value).replace(/\s*\([^)]+\)\s*/g, '').trim(),
+    normalizeIncomingZohoCode: (value) => value || null,
+    extractCodeFromName: (value) => String(value).match(/\(([^)]+)\)/)?.[1] || null,
+    isBadCode: () => false,
+    hasRestaurantKeyword: () => false,
+    findFincaForUbicacio: () => null,
+    extractZohoDisplayName: () => null,
+    operativeResponsableFromZohoDeal: () => '',
+    fincaLnForDeal: (ln, _commercial, force) =>
+      force ? 'Grups Restaurants' : ln,
+  }
+  const [restaurant] = await normalizeZohoDeals(
+    [{
+      id: 'deal-1',
+      Deal_Name: 'Prova restaurant',
+      Stage: 'Pagament confirmat',
+      Pipeline: 'Bodas',
+      Fecha_del_evento: '2027-06-21',
+      Owner: { id: 'owner-1', name: 'Comercial' },
+      Finca_2: ['Restaurant Mirador (CCR00006)'],
+    }],
+    dependencies
+  )
+  const [company] = await normalizeZohoDeals(
+    [{
+      id: 'deal-2',
+      Deal_Name: 'Empresa fora restaurant',
+      Stage: 'Pagament confirmat',
+      Pipeline: 'Corporativo',
+      Fecha_del_evento: '2027-06-22',
+      Owner: { id: 'owner-2', name: 'Comercial' },
+      Finca_2: ['Espai Empresa (CCE00001)'],
+    }],
+    dependencies
+  )
+
+  assert.equal(restaurant.LN, 'Grups Restaurants')
+  assert.equal(company.LN, 'Empresa')
 })
 
 test('classifyStage routes calentet to taronja and payment/RQ to verd', () => {

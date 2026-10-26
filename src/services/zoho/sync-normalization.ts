@@ -1,7 +1,49 @@
 import { extractZohoClientNameFromDeal } from '@/services/spaces/zohoClients'
 import type { NormalizedDeal, ZohoDeal, ZohoNamedValue } from '@/services/zoho/sync-types'
+import { menuTastingIsoDay } from '@/lib/calendar/menuTastingOccurrences'
 
 export type StageCollection = 'groc' | 'taronja' | 'verd'
+
+export function businessLineFromPipeline(
+  raw: ZohoDeal['Pipeline']
+): string | null {
+  const value =
+    typeof raw === 'string'
+      ? raw.trim()
+      : raw && typeof raw === 'object'
+        ? String(raw.name || '').trim()
+        : ''
+  if (!value) return null
+
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+  if (normalized.includes('boda') || normalized.includes('casament')) {
+    return 'Casaments'
+  }
+  if (normalized.includes('corporativ') || normalized.includes('empresa')) {
+    return 'Empresa'
+  }
+  if (
+    normalized.includes('foodlovers') ||
+    normalized.includes('food lovers') ||
+    normalized.includes('fires') ||
+    normalized.includes('festivals')
+  ) {
+    return 'Foodlovers'
+  }
+  if (normalized.includes('restaurant')) return 'Grups Restaurants'
+  if (normalized.includes('comida preparada') || normalized.includes('menjar preparat')) {
+    return 'Menjar Preparat'
+  }
+  if (normalized.includes('agenda')) return 'Agenda'
+
+  return value
+}
 
 export type FincaMatch = {
   id: string
@@ -129,7 +171,12 @@ export async function normalizeZohoDeals(
     }
 
     const ownerCommercial = deal.Owner?.name?.trim() || '-'
-    let ln = await deps.getLN(deal.Owner?.id)
+    const pipelineName =
+      typeof deal.Pipeline === 'string'
+        ? deal.Pipeline.trim()
+        : String(deal.Pipeline?.name || '').trim()
+    const pipelineLn = businessLineFromPipeline(deal.Pipeline)
+    let ln = pipelineLn || await deps.getLN(deal.Owner?.id)
     ln = deps.lnForMartaGranatoCommercial(ln, ownerCommercial)
 
     const ubicacions = [...(deal.Espai_2 || []), ...(deal.Finca_2 || [])]
@@ -145,6 +192,8 @@ export async function normalizeZohoDeals(
       ubicacions.some((item) => deps.hasRestaurantKeyword(String(item || ''))) ||
       deps.hasRestaurantKeyword(ubicacioRaw)
 
+    // Regla operativa històrica: els centres CCR/restaurants pertanyen a
+    // Grups Restaurants encara que Zoho informi una altra Pipeline.
     if (forceGrupsRestaurants) {
       ln = 'Grups Restaurants'
     }
@@ -165,11 +214,25 @@ export async function normalizeZohoDeals(
       NomEvent: deal.Deal_Name || 'Sense nom',
       NomClient: nomClient || undefined,
       Stage: deal.Stage,
+      Pipeline: pipelineName || null,
       LN: ln,
       Servei: deal.Servicio_texto || deal.Men_texto || '',
       Comercial: comercial,
       ComercialIntern: comercialIntern,
       Responsable: responsableZoho,
+      Data_i_hora: deal.Data_i_hora || null,
+      Ubicaci: deal.Ubicaci || null,
+      Ubicaci_1a_Part: deal.Ubicaci_1a_Part || null,
+      Ubicaci_2a_part: deal.Ubicaci_2a_part || null,
+      Pax: deal.Pax ?? null,
+      confirmar_prova: deal.confirmar_prova ?? null,
+      MenuTasting1Date:
+        menuTastingIsoDay(deal.Data_1_Prova_Men) ||
+        menuTastingIsoDay(deal.Auto_data_1a_part),
+      MenuTasting2Date:
+        menuTastingIsoDay(deal.Data_2a_Part_Tast) ||
+        menuTastingIsoDay(deal.Auto_Data_2a_Part),
+      MenuTastingCompanyDate: menuTastingIsoDay(deal.Data_i_hora),
       Data_1_Prova_Men: deal.Data_1_Prova_Men || null,
       Auto_data_1a_part: deal.Auto_data_1a_part ?? null,
       Otros: deal.Otros ?? null,

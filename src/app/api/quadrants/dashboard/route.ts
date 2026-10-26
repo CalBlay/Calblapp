@@ -36,7 +36,7 @@ const getDashboardCached = unstable_cache(
       surveyKeys,
     }
   },
-  ['api-quadrants-dashboard-v1'],
+  ['api-quadrants-dashboard-v2'],
   { revalidate: DASHBOARD_REVALIDATE_SEC, tags: [QUADRANTS_LIST_CACHE_TAG] }
 )
 

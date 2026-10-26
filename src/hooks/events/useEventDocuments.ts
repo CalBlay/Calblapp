@@ -115,3 +115,53 @@ export default function useEventDocuments(
     refresh: mutate,
   }
 }
+
+export function useEventDocumentsMany(
+  eventIds: string[] = [],
+  eventLabels: Record<string, string> = {},
+  enabled: boolean = true
+) {
+  const normalizedIds = Array.from(
+    new Set(eventIds.map((id) => String(id || '').trim()).filter(Boolean))
+  ).sort()
+  const swrKey =
+    enabled && normalizedIds.length > 1
+      ? `event-documents-many:${encodeURIComponent(JSON.stringify({ normalizedIds, eventLabels }))}`
+      : null
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    swrKey,
+    async () => {
+      const batches = await Promise.all(
+        normalizedIds.map(async (eventId) => {
+          const docs = await fetchEventDocuments(
+            buildEventDocumentsUrl(eventId, undefined, 'all')
+          )
+          return docs.map((doc) => ({
+            ...doc,
+            id: `${eventId}:${doc.id}`,
+            title: [eventLabels[eventId], doc.title].filter(Boolean).join(' · '),
+          }))
+        })
+      )
+      return Array.from(
+        new Map(
+          batches.flat().map((doc) => [`${doc.url}::${doc.title}`, doc] as const)
+        ).values()
+      )
+    },
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 30_000,
+      keepPreviousData: true,
+    }
+  )
+
+  return {
+    docs: data ?? [],
+    loading: isLoading && data === undefined,
+    validating: isValidating,
+    error: error ? String(error.message || error) : null,
+    refresh: mutate,
+  }
+}
