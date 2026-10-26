@@ -29,6 +29,7 @@ import {
 } from '@/lib/maintenanceDateFilter'
 import {
   canCreateMaintenanceTicketsAsReporter,
+  getMaintenanceTicketScope,
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
   type MaintenanceTicketScope,
@@ -372,6 +373,47 @@ function TicketWorkspace() {
     () => dateScopedSites.centers,
     [dateScopedSites.centers]
   )
+  const restaurantCenterSummary = useMemo(() => {
+    const counts = new Map<string, { name: string; count: number }>()
+
+    tickets.forEach((ticket) => {
+      if (getMaintenanceTicketScope(ticket) !== 'restaurants') return
+      if (
+        !matchesMaintenanceTicketDateFilter({
+          mode: (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode,
+          start: filters.start,
+          end: filters.end,
+          plannedStart: ticket.plannedStart,
+          createdAt: ticket.createdAt,
+        })
+      ) {
+        return
+      }
+      const site = resolveMaintenanceSite(
+        catalogCenters,
+        ticket.workLocation,
+        ticket.location
+      )
+      if (!site.center) return
+      const key = site.center.toLocaleLowerCase('ca')
+      const current = counts.get(key)
+      counts.set(key, {
+        name: current?.name || site.center,
+        count: (current?.count || 0) + 1,
+      })
+    })
+
+    return [...counts.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'ca', { sensitivity: 'base' })
+    )
+  }, [catalogCenters, filters.dateMode, filters.end, filters.start, tickets])
+  const restaurantCenters = useMemo(
+    () => restaurantCenterSummary.map((restaurant) => restaurant.name),
+    [restaurantCenterSummary]
+  )
+  const isRestaurantScope =
+    !isDeco && !isExternalReporter && !isCuinaCentral && filters.ticketScope === 'restaurants'
+  const contextualFilterCenters = isRestaurantScope ? restaurantCenters : filterCenters
   const filterLocations = useMemo(
     () => {
       const selectedCenter = filters.center && filters.center !== '__all__' ? filters.center : ''
@@ -508,7 +550,7 @@ function TicketWorkspace() {
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
               >
                 <option value="__all__">Tots</option>
-                {filterCenters.map((center) => (
+                {contextualFilterCenters.map((center) => (
                   <option key={center} value={center}>
                     {center}
                   </option>
@@ -583,6 +625,7 @@ function TicketWorkspace() {
     canValidate,
     dateResetSignal,
     filterCenters,
+    contextualFilterCenters,
     filterLocations,
     filterZones,
     filters,
@@ -808,32 +851,104 @@ function TicketWorkspace() {
             bottomSlot={
               <div className="flex flex-col gap-3">
                 {!isExternalReporter && !isCuinaCentral ? (
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => {
-                      const active = (filters.ticketScope ?? '__all__') === scope
-                      return (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => {
+                        const active = (filters.ticketScope ?? '__all__') === scope
+                        return (
+                          <button
+                            key={scope}
+                            type="button"
+                            onClick={() =>
+                              setFilters((prev) => {
+                                const nextScope = prev.ticketScope === scope ? '__all__' : scope
+                                const keepSelectedRestaurant =
+                                  nextScope === 'restaurants' &&
+                                  restaurantCenters.includes(prev.center || '')
+                                return {
+                                  ...prev,
+                                  ticketScope: nextScope,
+                                  center: keepSelectedRestaurant ? prev.center : '__all__',
+                                  location: '__all__',
+                                  zone: '__all__',
+                                }
+                              })
+                            }
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] transition ${
+                              active
+                                ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                            }`}
+                          >
+                            <span>{TICKET_SCOPE_LABELS[scope]}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] tracking-normal text-slate-700">
+                              {ticketScopeSummary[scope]}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {isRestaurantScope ? (
+                      <div
+                        className="ml-auto flex flex-wrap justify-end gap-2"
+                        aria-label="Filtrar per restaurant"
+                      >
                         <button
-                          key={scope}
                           type="button"
+                          aria-pressed={!filters.center || filters.center === '__all__'}
                           onClick={() =>
                             setFilters((prev) => ({
                               ...prev,
-                              ticketScope: prev.ticketScope === scope ? '__all__' : scope,
+                              center: '__all__',
+                              location: '__all__',
+                              zone: '__all__',
                             }))
                           }
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] transition ${
-                            active
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                            !filters.center || filters.center === '__all__'
                               ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
                               : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
                           }`}
                         >
-                          <span>{TICKET_SCOPE_LABELS[scope]}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] tracking-normal text-slate-700">
-                            {ticketScopeSummary[scope]}
+                          <span>Tots</span>
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] text-slate-700">
+                            {restaurantCenterSummary.reduce(
+                              (total, restaurant) => total + restaurant.count,
+                              0
+                            )}
                           </span>
                         </button>
-                      )
-                    })}
+                        {restaurantCenterSummary.map((restaurant) => {
+                          const active = filters.center === restaurant.name
+                          return (
+                            <button
+                              key={restaurant.name}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() =>
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  center: active ? '__all__' : restaurant.name,
+                                  location: '__all__',
+                                  zone: '__all__',
+                                }))
+                              }
+                              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                                active
+                                  ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                              }`}
+                            >
+                              <span>{restaurant.name}</span>
+                              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] text-slate-700">
+                                {restaurant.count}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <CorporateFiltersActiveRow>
