@@ -12,11 +12,10 @@ import {
   canUseDecoTicketPermission,
 } from '@/lib/server/maintenanceTicketsAccess'
 import {
-  listDecoTicketInboxRecipientIds,
   listMaintenanceTicketInboxRecipientIds,
 } from '@/lib/server/maintenanceTicketInboxRecipients'
 import { buildMaintenanceTicketChannelId } from '@/lib/messaging/maintenanceTicketChatIds'
-import { isDecoDepartmentHead } from '@/lib/decoTicketsPermissions'
+import { isDecoDepartment, isDecoDepartmentHead } from '@/lib/decoTicketsPermissions'
 import { isTicketOpsActive } from '@/lib/messaging/ticketOpsStatus'
 
 export type MaintenanceTicketOpsRecord = {
@@ -97,9 +96,29 @@ async function listMaintenanceTicketOpsManagerIds() {
   return [...new Set([...inboxIds, ...managerIds.filter(Boolean)])]
 }
 
+/** Membres fixos dels xats OPS Deco: tot el personal adscrit al departament Deco. */
+async function listDecoTicketOpsPersonnelIds() {
+  const usersSnap = await db.collection('users').get()
+  return usersSnap.docs
+    .filter((doc) => {
+      const data = doc.data() as Record<string, unknown>
+      return isDecoDepartment(String(data.department || data.departmentLower || ''))
+    })
+    .map((doc) => doc.id)
+}
+
+async function isDecoPersonnelUserId(userId: string) {
+  const normalizedUserId = String(userId || '').trim()
+  if (!normalizedUserId) return false
+  const userSnap = await db.collection('users').doc(normalizedUserId).get()
+  if (!userSnap.exists) return false
+  const data = userSnap.data() as Record<string, unknown>
+  return isDecoDepartment(String(data.department || data.departmentLower || ''))
+}
+
 async function listTicketOpsRecipientIds(ticket: MaintenanceTicketOpsRecord) {
   return isDecoTicket(ticket)
-    ? listDecoTicketInboxRecipientIds()
+    ? listDecoTicketOpsPersonnelIds()
     : listMaintenanceTicketOpsManagerIds()
 }
 
@@ -136,6 +155,13 @@ export async function canAccessMaintenanceTicketOps(params: {
   ticket: MaintenanceTicketOpsRecord
   user: AccessUser & { id: string }
 }): Promise<boolean> {
+  if (isDecoTicket(params.ticket)) {
+    return (
+      String(params.ticket.createdById || '').trim() === params.user.id ||
+      isDecoDepartment(params.user.department)
+    )
+  }
+
   const role = normalizeRole(params.user.role)
   if (role === 'admin' || role === 'direccio') return true
   if (await canManageTicketOpsScope(params.ticket, params.user)) return true
@@ -150,6 +176,9 @@ export async function canManageMaintenanceTicketChatMembers(params: {
   role: string
   user?: AccessUser & { id: string }
 }) {
+  // Els xats Deco tenen una composició fixa: personal de Deco + creador.
+  if (isDecoTicket(params.ticket)) return false
+
   const role = normalizeRole(params.role)
   if (role === 'admin' || role === 'direccio') return true
 
@@ -171,10 +200,11 @@ async function resolveManagerUserId(params: {
   actor: AccessUser & { id: string }
 }) {
   const stored = String(params.ticket.opsManagerUserId || '').trim()
-  if (stored) return stored
 
   if (isDecoTicket(params.ticket)) {
-    const recipientIds = await listDecoTicketInboxRecipientIds()
+    if (stored && (await isDecoPersonnelUserId(stored))) return stored
+
+    const recipientIds = await listDecoTicketOpsPersonnelIds()
     if (recipientIds.length > 0) {
       const userSnaps = await db.getAll(
         ...recipientIds.map((userId) => db.collection('users').doc(userId))
@@ -188,8 +218,10 @@ async function resolveManagerUserId(params: {
         })
       })
       if (departmentHead) return departmentHead.id
+      return recipientIds[0]
     }
   } else {
+    if (stored) return stored
     const recipientIds = await listMaintenanceTicketOpsManagerIds()
     if (recipientIds.length > 0) {
       const userSnaps = await db.getAll(
@@ -231,8 +263,10 @@ async function collectDefaultMemberIds(params: {
     if (gestorId) memberIds.add(gestorId)
   }
 
-  const managerId = String(params.managerUserId || '').trim()
-  if (managerId) memberIds.add(managerId)
+  if (!isDecoTicket(params.ticket)) {
+    const managerId = String(params.managerUserId || '').trim()
+    if (managerId) memberIds.add(managerId)
+  }
 
   return [...memberIds]
 }
@@ -295,15 +329,24 @@ export async function syncMaintenanceTicketOpsChannel(params: {
   const now = Date.now()
   const channelId =
     String(params.ticket.opsChannelId || '').trim() || buildMaintenanceTicketChannelId(ticketId)
-  const managerUserId = String(params.managerUserId || params.ticket.opsManagerUserId || '').trim()
+  let managerUserId = String(params.managerUserId || params.ticket.opsManagerUserId || '').trim()
+  if (
+    isDecoTicket(params.ticket) &&
+    managerUserId &&
+    !(await isDecoPersonnelUserId(managerUserId))
+  ) {
+    managerUserId = ''
+  }
 
   const defaultMemberIds = await collectDefaultMemberIds({
     ticket: params.ticket,
     managerUserId,
   })
-  const extraMemberIds = (params.extraMemberIds || [])
-    .map((id) => String(id || '').trim())
-    .filter(Boolean)
+  const extraMemberIds = isDecoTicket(params.ticket)
+    ? []
+    : (params.extraMemberIds || [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
   const allMemberIds = [...new Set([...defaultMemberIds, ...extraMemberIds])]
   const nameMap = await fetchUserDisplayNames(allMemberIds)
   const finalMembers: ChatMember[] = allMemberIds.map((userId) => ({
@@ -319,9 +362,11 @@ export async function syncMaintenanceTicketOpsChannel(params: {
   const existingExtras = Array.isArray(existingChannel?.chatExtraMemberIds)
     ? existingChannel.chatExtraMemberIds.map((id) => String(id || '').trim()).filter(Boolean)
     : []
-  const mergedExtras = [...new Set([...existingExtras, ...extraMemberIds])].filter(
-    (id) => !defaultMemberIds.includes(id)
-  )
+  const mergedExtras = isDecoTicket(params.ticket)
+    ? []
+    : [...new Set([...existingExtras, ...extraMemberIds])].filter(
+        (id) => !defaultMemberIds.includes(id)
+      )
 
   const managerName = managerUserId ? nameMap.get(managerUserId) || null : null
   const channelPayload = {
@@ -399,7 +444,9 @@ export async function syncMaintenanceTicketOpsChannel(params: {
     opsChannelId: channelId,
     updatedAt: now,
   }
-  if (managerUserId) ticketUpdates.opsManagerUserId = managerUserId
+  if (managerUserId || isDecoTicket(params.ticket)) {
+    ticketUpdates.opsManagerUserId = managerUserId || null
+  }
 
   await db.collection('maintenanceTickets').doc(ticketId).set(ticketUpdates, { merge: true })
 
@@ -501,6 +548,10 @@ export async function addMaintenanceTicketChatExtraMember(params: {
   if (!ticketSnap.exists) throw new Error('Ticket no trobat.')
   const ticket = { ...(ticketSnap.data() as MaintenanceTicketOpsRecord), id: ticketSnap.id }
 
+  if (isDecoTicket(ticket)) {
+    throw new Error('El xat Deco només admet el personal de Deco i el creador del ticket.')
+  }
+
   const channelId =
     String(ticket.opsChannelId || '').trim() || buildMaintenanceTicketChannelId(ticketId)
   const channelSnap = await db.collection('channels').doc(channelId).get()
@@ -541,6 +592,10 @@ export async function removeMaintenanceTicketChatExtraMember(params: {
   const ticketSnap = await db.collection('maintenanceTickets').doc(ticketId).get()
   if (!ticketSnap.exists) throw new Error('Ticket no trobat.')
   const ticket = { ...(ticketSnap.data() as MaintenanceTicketOpsRecord), id: ticketSnap.id }
+
+  if (isDecoTicket(ticket)) {
+    throw new Error('Els participants del xat Deco es gestionen automàticament.')
+  }
 
   const channelId =
     String(ticket.opsChannelId || '').trim() || buildMaintenanceTicketChannelId(ticketId)

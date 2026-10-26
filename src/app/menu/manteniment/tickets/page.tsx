@@ -190,6 +190,16 @@ function TicketWorkspace() {
     () => createMaintenanceOpsWorkspaceConfig(ticketType),
     [ticketType]
   )
+  const focusedMaintenanceOpsConfig = useMemo(
+    () =>
+      opsTicket
+        ? {
+            ...maintenanceOpsConfig,
+            roomsUrl: `/api/maintenance/tickets/${encodeURIComponent(opsTicket.id)}/ops/rooms`,
+          }
+        : maintenanceOpsConfig,
+    [maintenanceOpsConfig, opsTicket]
+  )
 
   const {
     userId,
@@ -1096,7 +1106,8 @@ function TicketWorkspace() {
           <OpsWorkspacePanel
             open
             initialRoomId={opsTicket.id}
-            config={maintenanceOpsConfig}
+            config={focusedMaintenanceOpsConfig}
+            showRoomList={false}
             onOpenChange={(open) => {
               if (!open) setOpsTicket(null)
             }}

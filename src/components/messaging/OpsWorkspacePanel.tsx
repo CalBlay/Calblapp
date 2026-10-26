@@ -36,6 +36,7 @@ type Props<TRoom extends OpsWorkspaceRoom> = {
   config: OpsWorkspaceConfig<TRoom>
   initialRoomId?: string | null
   initialChannelId?: string | null
+  showRoomList?: boolean
 }
 
 export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
@@ -44,6 +45,7 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
   config,
   initialRoomId = null,
   initialChannelId = null,
+  showRoomList = true,
 }: Props<TRoom>) {
   const { data: session } = useSession()
   const userId = session?.user?.id
@@ -404,22 +406,24 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <OpsChannelsSidebar
-            className="hidden w-72 shrink-0 border-r lg:flex"
-            eyebrow={config.sidebarEyebrow}
-            description={config.sidebarDescription}
-            items={sidebarItems}
-            selectedId={activeRoomId}
-            onSelect={setActiveRoomId}
-            loading={isLoading}
-            emptyMessage={config.getSidebarEmptyMessage(activeFilterKey)}
-            filters={config.filters && config.filters.length > 1 ? config.filters : undefined}
-            activeFilter={activeFilterKey || undefined}
-            onFilterChange={setActiveFilterKey}
-          />
+          {showRoomList ? (
+            <OpsChannelsSidebar
+              className="hidden w-72 shrink-0 border-r lg:flex"
+              eyebrow={config.sidebarEyebrow}
+              description={config.sidebarDescription}
+              items={sidebarItems}
+              selectedId={activeRoomId}
+              onSelect={setActiveRoomId}
+              loading={isLoading}
+              emptyMessage={config.getSidebarEmptyMessage(activeFilterKey)}
+              filters={config.filters && config.filters.length > 1 ? config.filters : undefined}
+              activeFilter={activeFilterKey || undefined}
+              onFilterChange={setActiveFilterKey}
+            />
+          ) : null}
 
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {config.filters && config.filters.length > 1 ? (
+            {showRoomList && config.filters && config.filters.length > 1 ? (
               <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-2 lg:hidden">
                 <div className="flex flex-wrap gap-2">
                   {config.filters.map((filter) => {
@@ -451,7 +455,7 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
               </div>
             ) : null}
 
-            {visibleRooms.length > 1 ? (
+            {showRoomList && visibleRooms.length > 1 ? (
               <div className="border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
                 <select
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"

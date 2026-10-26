@@ -3,11 +3,15 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import {
+  canAccessRestrictedDecoTicketChannel,
+  isRestrictedDecoTicketChannel,
+} from '@/lib/messaging/decoTicketChatAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type SessionUser = { id: string; role?: string }
+type SessionUser = { id: string; role?: string; department?: string }
 type ChannelRecord = Record<string, unknown>
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -24,8 +28,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!channelSnap.exists) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
+  const channel = channelSnap.data() as ChannelRecord
+  if (!canAccessRestrictedDecoTicketChannel(channel, user)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
-  if (role !== 'admin' && role !== 'direccio') {
+  if (
+    isRestrictedDecoTicketChannel(channel) ||
+    (role !== 'admin' && role !== 'direccio')
+  ) {
     const memberSnap = await db
       .collection('channelMembers')
       .where('channelId', '==', id)
@@ -37,5 +48,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  return NextResponse.json({ channel: { id: channelSnap.id, ...(channelSnap.data() as ChannelRecord) } })
+  return NextResponse.json({ channel: { id: channelSnap.id, ...channel } })
 }

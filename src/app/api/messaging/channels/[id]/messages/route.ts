@@ -14,6 +14,10 @@ import {
   buildChannelPushUrl,
   resolveMessagePushRecipients,
 } from '@/lib/messaging/messagePush.server'
+import {
+  canAccessRestrictedDecoTicketChannel,
+  isRestrictedDecoTicketChannel,
+} from '@/lib/messaging/decoTicketChatAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,6 +26,7 @@ type SessionUser = {
   id: string
   name?: string
   role?: string
+  department?: string
 }
 
 type ChannelRecord = Record<string, unknown> & {
@@ -31,6 +36,7 @@ type ChannelRecord = Record<string, unknown> & {
   status?: string
   name?: string
   ticketType?: string
+  requesterUserId?: string | null
 }
 
 type ChannelMemberRecord = Record<string, unknown> & {
@@ -256,7 +262,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const before = searchParams.get('before')
 
   try {
-    const isMember = role === 'admin' || role === 'direccio' ? true : await ensureMember(id, userId)
+    const channelSnap = await db.collection('channels').doc(id).get()
+    if (!channelSnap.exists) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    const channelData = channelSnap.data() as ChannelRecord
+    if (!canAccessRestrictedDecoTicketChannel(channelData, user)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const requiresMembership = isRestrictedDecoTicketChannel(channelData)
+    const isMember =
+      !requiresMembership && (role === 'admin' || role === 'direccio')
+        ? true
+        : await ensureMember(id, userId)
     if (!isMember) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -324,7 +343,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
 
   try {
-    const isMember = role === 'admin' || role === 'direccio' ? true : await ensureMember(id, userId)
+    const channelSnap = await db.collection('channels').doc(id).get()
+    if (!channelSnap.exists) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    const channelData = channelSnap.data() as ChannelRecord
+    if (!canAccessRestrictedDecoTicketChannel(channelData, user)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const requiresMembership = isRestrictedDecoTicketChannel(channelData)
+    const isMember =
+      !requiresMembership && (role === 'admin' || role === 'direccio')
+        ? true
+        : await ensureMember(id, userId)
     if (!isMember) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -363,12 +395,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const now = Date.now()
     const msgRef = db.collection('messages').doc()
 
-    const channelSnap = await db.collection('channels').doc(id).get()
-    const channelData = channelSnap.exists ? (channelSnap.data() as ChannelRecord) : null
     if (String(channelData?.status || '').toLowerCase() === 'archived') {
       return NextResponse.json({ error: 'Canal tancat' }, { status: 400 })
     }
-    const channelName = channelSnap.exists ? (channelSnap.data() as ChannelRecord)?.name : ''
+    const channelName = channelData?.name || ''
     const channelSource = String(channelData?.source || '').toLowerCase()
     const data = {
       channelId: id,

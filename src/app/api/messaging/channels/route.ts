@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { syncSpaceRequestManagerMembershipForUser } from '@/lib/spaces/spaceRequests.server'
+import { canAccessRestrictedDecoTicketChannel } from '@/lib/messaging/decoTicketChatAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,10 +13,14 @@ type SessionUser = {
   id: string
   role?: string
   name?: string
+  department?: string
 }
 
 type ChannelRecord = Record<string, unknown> & {
   lastMessageAt?: number
+  source?: string
+  ticketType?: string
+  requesterUserId?: string | null
 }
 
 type ChannelMemberRecord = Record<string, unknown> & {
@@ -49,7 +54,9 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const snap = await db.collection('channels').get()
-      const channels = snap.docs.map((d) => ({ id: d.id, ...(d.data() as ChannelRecord) }))
+      const channels = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as ChannelRecord) }))
+        .filter((channel) => canAccessRestrictedDecoTicketChannel(channel, user))
       return NextResponse.json({ channels })
     }
 
@@ -85,6 +92,7 @@ export async function GET(req: Request) {
         if (!m.channelId) return null
         const c = channelMap.get(m.channelId)
         if (!c) return null
+        if (!canAccessRestrictedDecoTicketChannel(c, user)) return null
         return {
           ...c,
           unreadCount: Number(m.unreadCount || 0),

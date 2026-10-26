@@ -26,6 +26,10 @@ import {
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
 import { accessUserFromAuth } from '@/lib/server/spacesApiAuth'
 import { reconcileSpaceRequestChannelMembers } from '@/lib/spaces/spaceRequests.server'
+import {
+  canAccessRestrictedDecoTicketChannel,
+  isRestrictedDecoTicketChannel,
+} from '@/lib/messaging/decoTicketChatAccess'
 
 export const runtime = 'nodejs'
 
@@ -76,12 +80,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const channelSnap = await db.collection('channels').doc(id).get()
     const channel = channelSnap.exists ? (channelSnap.data() as ChannelRecord) : {}
     const channelSource = String(channel?.source || '')
+    if (!canAccessRestrictedDecoTicketChannel(channel, user)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     if (channelSource === 'spaces') {
       await reconcileSpaceRequestChannelMembers(id)
     }
     const isEventChannel = channelSource === 'events' || channelSource === 'event_comanda'
 
-    if (role !== 'admin' && role !== 'direccio') {
+    if (
+      isRestrictedDecoTicketChannel(channel) ||
+      (role !== 'admin' && role !== 'direccio')
+    ) {
       const memberCheck = await db
         .collection('channelMembers')
         .where('channelId', '==', id)
