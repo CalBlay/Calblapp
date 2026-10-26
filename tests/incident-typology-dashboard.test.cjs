@@ -8,6 +8,7 @@ const {
   replaceCategoryFamilyPrefix,
   isIncidentCategoryGroup2xx,
   incidentCategoryRequiresMedia,
+  entersMaintenanceIncidentCategory,
   DEFAULT_INCIDENT_FAMILY_LABELS,
 } = require('../src/lib/incidentTypology')
 
@@ -36,6 +37,14 @@ test('incidentCategoryRequiresMedia requires media for Maquinaria and Deco', () 
   assert.equal(incidentCategoryRequiresMedia('499-extra'), true)
   assert.equal(incidentCategoryRequiresMedia('301'), false)
   assert.equal(incidentCategoryRequiresMedia(''), false)
+})
+
+test('entersMaintenanceIncidentCategory only detects entry into Maquinaria or Deco', () => {
+  assert.equal(entersMaintenanceIncidentCategory('101', '201'), true)
+  assert.equal(entersMaintenanceIncidentCategory('301', '499'), true)
+  assert.equal(entersMaintenanceIncidentCategory('201', '499'), false)
+  assert.equal(entersMaintenanceIncidentCategory('401', '202'), false)
+  assert.equal(entersMaintenanceIncidentCategory('101', '301'), false)
 })
 
 test('mergeFamilyLabels overlays Firestore labels onto defaults by digit prefix', () => {

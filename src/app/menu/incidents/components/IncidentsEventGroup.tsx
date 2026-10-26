@@ -5,7 +5,7 @@ import IncidentsRow from './IncidentsRow'
 import IncidentsMobileCard from './IncidentsMobileCard'
 import IncidentsEventHeader from './IncidentsEventHeader'
 import type { GroupedIncidentEvent } from '@/lib/incidentsMeetingMinutes'
-import { Incident, type IncidentAction } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction, type IncidentPatch } from '@/hooks/useIncidents'
 import { getIncidentEventGroupMeta, getEventBlockVisualStyle } from '@/lib/incidentEventGroupMeta'
 import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
@@ -31,7 +31,7 @@ interface Props {
   actionsByIncident: Record<string, IncidentAction[]>
   expandIncidentId?: string
   expandIncidentOperations?: boolean
-  onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onUpdate: (id: string, d: IncidentPatch) => Promise<unknown>
   onLocalPatch: (id: string, d: Partial<Incident>) => void
   onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   onDelete: (inc: Incident) => void
@@ -122,7 +122,7 @@ export default function IncidentsEventGroup({
   }, [])
 
   const applyPatch = useCallback(
-    async (id: string, data: Partial<Incident>) => {
+    async (id: string, data: IncidentPatch) => {
       await onUpdate(id, data)
       setEditingId(null)
     },

@@ -8,12 +8,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Incident, type IncidentAction } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction, type IncidentPatch } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { Camera, ChevronDown, ChevronUp, MessageSquareText, Trash2 } from 'lucide-react'
 import IncidentOperationsPanel from './IncidentOperationsPanel'
 import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
+import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
 
 declare global {
   interface Window {
@@ -26,7 +27,7 @@ interface Props {
   isEditing: boolean
   /** Referències estables (per `React.memo`): la fila passa `inc` a la crida. */
   beginEdit: (row: Incident) => void
-  applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
+  applyPatch: (id: string, d: IncidentPatch) => void | Promise<unknown>
   opsExpanded: boolean
   onToggleOps: (row: Incident) => void
   onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
@@ -289,10 +290,23 @@ function IncidentsRow({
           <Select
             value={editValues.categoryId || inc.category?.id || ''}
             onValueChange={(val) => {
-              setEditValues((v) => ({ ...v, categoryId: val }))
               const selected = categoryOptions.find((option) => option.id === val)
               if (!selected) return
-              void applyPatch(inc.id, { category: { id: selected.id, label: selected.label } })
+              const entersMaintenance = entersMaintenanceIncidentCategory(
+                inc.category?.id || '',
+                selected.id
+              )
+              if (
+                entersMaintenance &&
+                !window.confirm('Segur que vols crear un tiquet de manteniment?')
+              ) {
+                return
+              }
+              setEditValues((v) => ({ ...v, categoryId: val }))
+              void applyPatch(inc.id, {
+                category: { id: selected.id, label: selected.label },
+                ...(entersMaintenance ? { createMaintenanceTicket: true } : {}),
+              })
             }}
           >
             <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Categoria" /></SelectTrigger>

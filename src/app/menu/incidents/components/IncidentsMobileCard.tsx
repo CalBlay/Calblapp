@@ -12,17 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Incident, IncidentAction } from '@/hooks/useIncidents'
+import type { Incident, IncidentAction, IncidentPatch } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
+import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
 
 interface Props {
   inc: Incident
   isEditing: boolean
   beginEdit: (row: Incident) => void
-  applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
+  applyPatch: (id: string, d: IncidentPatch) => void | Promise<unknown>
   opsExpanded: boolean
   onToggleOps: (row: Incident) => void
   onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
@@ -235,10 +236,23 @@ export default function IncidentsMobileCard({
               <Select
                 value={editValues.categoryId || inc.category?.id || ''}
                 onValueChange={(val) => {
-                  setEditValues((v) => ({ ...v, categoryId: val }))
                   const selected = categoryOptions.find((option) => option.id === val)
                   if (!selected) return
-                  void applyPatch(inc.id, { category: { id: selected.id, label: selected.label } })
+                  const entersMaintenance = entersMaintenanceIncidentCategory(
+                    inc.category?.id || '',
+                    selected.id
+                  )
+                  if (
+                    entersMaintenance &&
+                    !window.confirm('Segur que vols crear un tiquet de manteniment?')
+                  ) {
+                    return
+                  }
+                  setEditValues((v) => ({ ...v, categoryId: val }))
+                  void applyPatch(inc.id, {
+                    category: { id: selected.id, label: selected.label },
+                    ...(entersMaintenance ? { createMaintenanceTicket: true } : {}),
+                  })
                 }}
               >
                 <SelectTrigger onClick={(e) => e.stopPropagation()}>

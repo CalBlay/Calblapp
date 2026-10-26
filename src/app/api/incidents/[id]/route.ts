@@ -7,6 +7,13 @@ import admin from 'firebase-admin'
 import { deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
 import { canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { requireIncidentsCategoryEdit, requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import {
+  buildTicketBody,
+  notifyForNewDecoTicket,
+  notifyForNewMaintenanceTicket,
+} from '@/lib/maintenanceNotifications'
+import { registerMediaRef } from '@/lib/media/storageMediaIndex'
+import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -189,9 +196,146 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Cap camp valid per actualitzar' }, { status: 400 })
     }
 
+    const currentData = snap.data() || {}
+    const nextCategory = cleaned.category as { id?: string; label?: string } | undefined
+    const entersMaintenance =
+      Boolean(nextCategory) &&
+      entersMaintenanceIncidentCategory(
+        String((currentData.category as { id?: unknown } | undefined)?.id || ''),
+        String(nextCategory?.id || '')
+      )
+
+    if (entersMaintenance && payload.createMaintenanceTicket !== true) {
+      return NextResponse.json(
+        { error: 'Cal confirmar la creacio del tiquet de manteniment' },
+        { status: 400 }
+      )
+    }
+
     cleaned.updatedAt = admin.firestore.Timestamp.now()
 
-    await docRef.set(cleaned, { merge: true })
+    let createdTicket: { id: string; ticketType: 'maquinaria' | 'deco' } | null = null
+
+    if (entersMaintenance) {
+      const existingTicket = await firestoreAdmin
+        .collection('maintenanceTickets')
+        .where('sourceIncidentId', '==', incidentId)
+        .limit(1)
+        .get()
+
+      if (existingTicket.empty) {
+        const user = auth.user as { id?: string; name?: string | null }
+        const ticketType = String(nextCategory?.id || '').trim().charAt(0) === '4' ? 'deco' : 'maquinaria'
+        const now = Date.now()
+        const ticketRef = firestoreAdmin.collection('maintenanceTickets').doc(`incident_${incidentId}`)
+        const ticketData = {
+          ticketCode: String(currentData.incidentNumber || '').trim() || null,
+          incidentNumber: String(currentData.incidentNumber || '').trim() || null,
+          location: String(currentData.eventLocation || '').trim(),
+          machine: '',
+          description: String(currentData.description || '').trim(),
+          priority: normalizeImportance(String(currentData.priority || currentData.importance || '')),
+          status: 'nou',
+          ticketType,
+          createdAt: now,
+          createdById: String(currentData.createdById || user.id || '').trim(),
+          createdByName: String(currentData.createdBy || user.name || '').trim(),
+          assignedToIds: [],
+          assignedToNames: [],
+          assignedAt: null,
+          assignedById: null,
+          assignedByName: null,
+          plannedStart: null,
+          plannedEnd: null,
+          estimatedMinutes: null,
+          source: 'incidencia',
+          sourceEventId: String(currentData.eventId || '').trim(),
+          sourceEventCode: String(currentData.eventCode || '').trim(),
+          sourceEventTitle: String(currentData.eventTitle || '').trim(),
+          sourceEventLocation: String(currentData.eventLocation || '').trim(),
+          sourceEventDate: String(currentData.eventDate || '').trim(),
+          sourceIncidentId: incidentId,
+          imageUrl: currentData.imageUrl || null,
+          imagePath: currentData.imagePath || null,
+          imageMeta: currentData.imageMeta || null,
+          needsVehicle: false,
+          vehicleId: null,
+          vehiclePlate: null,
+          workflowStage: 'tickets_inbox',
+          intakeChannel: 'incidencia',
+          statusHistory: [
+            {
+              status: 'nou',
+              at: now,
+              byId: String(user.id || '').trim(),
+              byName: String(user.name || '').trim(),
+            },
+          ],
+        }
+        const ticketWasCreated = await firestoreAdmin.runTransaction(async (transaction) => {
+          const deterministicTicket = await transaction.get(ticketRef)
+          transaction.set(docRef, cleaned, { merge: true })
+          if (deterministicTicket.exists) return false
+          transaction.create(ticketRef, ticketData)
+          return true
+        })
+        if (ticketWasCreated) createdTicket = { id: ticketRef.id, ticketType }
+      } else {
+        await docRef.set(cleaned, { merge: true })
+      }
+    } else {
+      await docRef.set(cleaned, { merge: true })
+    }
+
+    if (createdTicket) {
+      const ticketCode = String(currentData.incidentNumber || '').trim() || null
+      const location = String(currentData.eventLocation || '').trim()
+      const description = String(currentData.description || '').trim()
+      const notificationPayload = {
+        type: createdTicket.ticketType === 'deco' ? 'deco_ticket_new' : 'maintenance_ticket_new',
+        title:
+          createdTicket.ticketType === 'deco'
+            ? 'Nou ticket Imatge-Deco'
+            : 'Nou ticket de manteniment',
+        body: buildTicketBody({ machine: '', location, description }),
+        ticketId: createdTicket.id,
+        ticketCode,
+        status: 'nou',
+        priority: normalizeImportance(String(currentData.priority || currentData.importance || '')),
+        location,
+        machine: '',
+        source: 'incidencia',
+      } as const
+
+      try {
+        if (createdTicket.ticketType === 'deco') {
+          await notifyForNewDecoTicket({ payload: notificationPayload })
+        } else {
+          await notifyForNewMaintenanceTicket({
+            workflowStage: 'tickets_inbox',
+            payload: notificationPayload,
+          })
+        }
+      } catch (notificationError) {
+        console.error('[incidents PATCH] ticket notification error', notificationError)
+      }
+
+      const imagePath = String(currentData.imagePath || '').trim()
+      if (imagePath) {
+        const imageMeta = currentData.imageMeta as { size?: number; type?: string } | null | undefined
+        void registerMediaRef({
+          path: imagePath,
+          source: 'maintenance',
+          firestoreDocId: createdTicket.id,
+          url: String(currentData.imageUrl || '').trim() || null,
+          size: typeof imageMeta?.size === 'number' ? imageMeta.size : null,
+          contentType: imageMeta?.type ? String(imageMeta.type) : null,
+          title: [ticketCode, location, description.slice(0, 80)].filter(Boolean).join(' - '),
+          createdAt: Date.now(),
+          incidentEventId: String(currentData.eventId || '').trim() || null,
+        })
+      }
+    }
 
     const updated = await docRef.get()
     const data = updated.data() || {}

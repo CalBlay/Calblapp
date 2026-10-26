@@ -47,6 +47,10 @@ export interface Incident {
   meetingComment?: string
 }
 
+export type IncidentPatch = Partial<Incident> & {
+  createMaintenanceTicket?: boolean
+}
+
 export interface IncidentAction {
   id: string
   incidentId: string
@@ -354,7 +358,7 @@ export function useIncidents(_filters: {
     filters.enabled,
   ])
 
-  const updateIncident = useCallback(async (id: string, data: Partial<Incident>) => {
+  const updateIncident = useCallback(async (id: string, data: IncidentPatch) => {
     try {
       setError(null)
 

@@ -67,3 +67,14 @@ export function incidentCategoryRequiresMedia(categoryId: string): boolean {
   const prefix = normalizeFamilyPrefix(categoryId || '')
   return prefix === '2' || prefix === '4'
 }
+
+/** Indica si un canvi de categoria entra per primer cop al circuit de tiquets. */
+export function entersMaintenanceIncidentCategory(
+  currentCategoryId: string,
+  nextCategoryId: string
+): boolean {
+  return (
+    !incidentCategoryRequiresMedia(currentCategoryId) &&
+    incidentCategoryRequiresMedia(nextCategoryId)
+  )
+}
