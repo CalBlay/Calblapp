@@ -354,6 +354,9 @@ export function groupWeddingMenuTastingOccurrences(
       numPax: totalPax,
       files,
       hasDocuments: items.some((item) => item.hasDocuments === true),
+      hasInvalidZohoDocuments: items.some(
+        (item) => item.hasInvalidZohoDocuments === true
+      ),
       groupedMenuTasting: true,
     }
   })

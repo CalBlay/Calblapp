@@ -106,6 +106,10 @@ type EventMenuData = {
   fincaCode?: string | null
   pax?: number
   importAmount?: number
+  isMenuTasting?: boolean
+  sourceEventId?: string
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name?: string; code?: string }>
 }
 
 type MessagingChannel = {
@@ -233,6 +237,8 @@ export default function EventsPage() {
   const [docsEvent, setDocsEvent] = useState<{
     eventId: string
     eventCode?: string | null
+    eventIds?: string[]
+    sourceEvents?: Array<{ id: string; name?: string; code?: string }>
   } | null>(null)
   const docsClosedRef = useRef<{ eventId: string; ts: number } | null>(null)
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -378,6 +384,10 @@ export default function EventsPage() {
       eventCode: ev.eventCode ?? null,
       pax: ev.pax ?? 0,
       importAmount: ev.importAmount ?? 0,
+      isMenuTasting: ev.isMenuTasting === true,
+      sourceEventId: ev.sourceEventId,
+      sourceEventIds: ev.sourceEventIds,
+      sourceEvents: ev.sourceEvents,
     })
 
     setMenuOpen(true)
@@ -476,7 +486,12 @@ export default function EventsPage() {
     []
   )
 
-  const openDocuments = (data: { eventId: string; eventCode?: string | null }) => {
+  const openDocuments = (data: {
+    eventId: string
+    eventCode?: string | null
+    eventIds?: string[]
+    sourceEvents?: Array<{ id: string; name?: string; code?: string }>
+  }) => {
     if (suppressMenuInteraction) return
     const now = Date.now()
     if (
@@ -805,6 +820,8 @@ export default function EventsPage() {
                       openDocuments({
                         eventId: String(event.id),
                         eventCode: event.eventCode ?? null,
+                        eventIds: event.sourceEventIds,
+                        sourceEvents: event.sourceEvents,
                       })
                     }
                     showDocuments={!comandaPreparerOnly && canViewDocuments}
@@ -850,6 +867,8 @@ export default function EventsPage() {
       {docsEvent && (
         <EventDocumentsSheet
           eventId={docsEvent.eventId}
+          eventIds={docsEvent.eventIds}
+          sourceEvents={docsEvent.sourceEvents}
           eventCode={docsEvent.eventCode}
           open
           onOpenChange={closeDocuments}

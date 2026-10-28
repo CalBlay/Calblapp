@@ -6,8 +6,14 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
 import {
   isIsoDateDayParam,
+  queryStageCollectionDocsByDateFieldInRange,
   queryStageCollectionDocsInDateRange,
 } from '@/lib/firestoreStageRangeQuery'
+import {
+  buildMenuTastingOccurrence,
+  groupWeddingMenuTastingOccurrences,
+  MENU_TASTING_CONFIGS,
+} from '@/lib/calendar/menuTastingOccurrences'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
 import { documentHasInvalidZohoAttachments } from '@/services/zoho/attachments'
@@ -257,7 +263,7 @@ const getEventsListCached = unstable_cache(
       else deptsToUse = []
     }
 
-    const [stageDocs, finquesSnapshot] = await Promise.all([
+    const [stageDocs, finquesSnapshot, tastingDocsByConfig] = await Promise.all([
       queryStageCollectionDocsInDateRange(
         db,
         'stage_verd',
@@ -265,6 +271,24 @@ const getEventsListCached = unstable_cache(
         end.slice(0, 10)
       ),
       db.collection('finques').get(),
+      Promise.all(
+        MENU_TASTING_CONFIGS.map(async (config) => {
+          const docsByField = await Promise.all(
+            config.dateFields.map((field) =>
+              queryStageCollectionDocsByDateFieldInRange(
+                db,
+                'stage_verd',
+                field,
+                start.slice(0, 10),
+                end.slice(0, 10)
+              )
+            )
+          )
+          return Array.from(
+            new Map(docsByField.flat().map((doc) => [doc.id, doc] as const)).values()
+          )
+        })
+      ),
     ])
 
     const fincaAddressById = new Map<string, string>()
@@ -354,6 +378,7 @@ const getEventsListCached = unstable_cache(
       const lnValue = d?.LN != null && d.LN !== '' ? String(d.LN) : 'Altres'
       const responsableZoho =
         firstDocString(d, ['Responsable', 'RESPONSABLE', 'responsable']) || ''
+      const servei = String(d.Servei || d.Servicio || '')
 
       return {
         id: doc.id,
@@ -369,6 +394,7 @@ const getEventsListCached = unstable_cache(
         commercial,
         commercialInternal,
         responsableZoho,
+        servei,
         codeConfirmed,
         codeMatchScore,
         htmlLink: null,
@@ -401,6 +427,103 @@ const getEventsListCached = unstable_cache(
       }))
     })
 
+    const tastingOccurrences: Record<string, unknown>[] = []
+    tastingDocsByConfig.forEach((docs, configIndex) => {
+      const config = MENU_TASTING_CONFIGS[configIndex]
+      if (!config) return
+
+      docs.forEach((doc) => {
+        const d = doc.data() as StageVerdDoc
+        const rawSummary = String(d.NomEvent || '(Sense títol)')
+        const summary = rawSummary.split('/')[0].trim()
+        const rawLocation = String(d.Ubicacio || '')
+        const location = rawLocation
+          .split('(')[0]
+          .split('/')[0]
+          .replace(/^ZZRestaurant\s*/i, '')
+          .replace(/^ZZ\s*/i, '')
+          .trim()
+        const lnLabel = String(d.LN || 'Altres')
+
+        const occurrence = buildMenuTastingOccurrence({
+          sourceEvent: {
+            collection: 'stage_verd',
+            summary,
+            location,
+            lnKey: lnLabel.toLowerCase(),
+            lnLabel,
+            code: String(d.code || d.C_digo || ''),
+            servei: String(d.Servei || d.Servicio || ''),
+            comercial: String(d.Comercial || ''),
+            commercialInternal: String(
+              d.ComercialIntern || d.comercialIntern || d.Comercial_Interna || ''
+            ),
+            responsableZoho:
+              firstDocString(d, ['Responsable', 'RESPONSABLE', 'responsable']) || '',
+            hasDocuments: eventRecordHasAttachedDocuments(d),
+            hasInvalidZohoDocuments: documentHasInvalidZohoAttachments(d),
+          },
+          sourceData: d,
+          sourceEventId: doc.id,
+          config,
+          rangeStart: start.slice(0, 10),
+          rangeEnd: end.slice(0, 10),
+        })
+        if (occurrence) tastingOccurrences.push(occurrence)
+      })
+    })
+
+    const menuTastings = groupWeddingMenuTastingOccurrences(tastingOccurrences).map(
+      (occurrence) => {
+        const startIso = String(occurrence.start || '')
+        const day = String(occurrence.day || startIso.slice(0, 10))
+        const location = String(occurrence.location || '')
+        const sourceEventIds = Array.isArray(occurrence.sourceEventIds)
+          ? occurrence.sourceEventIds.map(String).filter(Boolean)
+          : [String(occurrence.sourceEventId || '')].filter(Boolean)
+        const sourceEvents = Array.isArray(occurrence.sourceEvents)
+          ? occurrence.sourceEvents
+          : undefined
+
+        return {
+          id: String(occurrence.id || ''),
+          summary: String(occurrence.summary || 'PM_Prova de menú'),
+          start: startIso,
+          end: String(occurrence.end || startIso),
+          day,
+          occurrenceKey: `${String(occurrence.id || '')}__${day}`,
+          location,
+          mapsLocation: fincaAddressByName.get(normalize(location)) || location,
+          pax: Number(occurrence.numPax) || 0,
+          importAmount: 0,
+          eventCode: String(occurrence.code || ''),
+          commercial: String(occurrence.comercial || occurrence.commercial || ''),
+          commercialInternal: String(occurrence.commercialInternal || ''),
+          responsableZoho: String(occurrence.responsableZoho || ''),
+          codeConfirmed: true,
+          codeMatchScore: null,
+          htmlLink: null,
+          lnKey: String(occurrence.lnKey || '').toLowerCase(),
+          lnLabel: String(occurrence.lnLabel || 'Altres'),
+          horaInici: String(occurrence.HoraInici || startIso.slice(11, 16)),
+          fincaId: null,
+          fincaCode: null,
+          servei: String(
+            occurrence.servei || occurrence.service || occurrence.Servei || 'Prova de menú'
+          ),
+          hasDocuments: occurrence.hasDocuments === true,
+          hasInvalidZohoDocuments: occurrence.hasInvalidZohoDocuments === true,
+          calendarOccurrenceType: occurrence.calendarOccurrenceType,
+          isMenuTasting: true,
+          sourceEventId: String(occurrence.sourceEventId || sourceEventIds[0] || ''),
+          sourceEventIds,
+          sourceEvents,
+        }
+      }
+    )
+
+    const eventsInRange = [...expandedByRange, ...menuTastings]
+
     await loadCollectionsMap()
     let collNames: string[] = []
     if (deptsToUse.length > 0) {
@@ -411,7 +534,9 @@ const getEventsListCached = unstable_cache(
 
     const responsablesSet: Set<string> = new Set()
     const responsablesMap: Map<string, Set<string>> = new Map()
+    const responsablesByEventId: Map<string, Set<string>> = new Map()
     const stateMap: Map<string, 'pending' | 'draft' | 'confirmed'> = new Map()
+    const stateByEventId: Map<string, 'pending' | 'draft' | 'confirmed'> = new Map()
     const responsablesDetailedSet: Set<string> = new Set()
     const myEvents: Set<string> = new Set()
 
@@ -427,6 +552,13 @@ const getEventsListCached = unstable_cache(
 
           if (!responsablesMap.has(c)) responsablesMap.set(c, new Set())
           responsablesMap.get(c)!.add(name)
+          if (q.eventId) {
+            const eventId = String(q.eventId)
+            if (!responsablesByEventId.has(eventId)) {
+              responsablesByEventId.set(eventId, new Set())
+            }
+            responsablesByEventId.get(eventId)!.add(name)
+          }
 
           responsablesSet.add(name)
           responsablesDetailedSet.add(JSON.stringify({ name, department: dept }))
@@ -450,6 +582,12 @@ const getEventsListCached = unstable_cache(
           }
 
           stateMap.set(c, q?.status === 'confirmed' ? 'confirmed' : 'draft')
+          if (q.eventId) {
+            stateByEventId.set(
+              String(q.eventId),
+              q?.status === 'confirmed' ? 'confirmed' : 'draft'
+            )
+          }
         }
       }
 
@@ -457,16 +595,23 @@ const getEventsListCached = unstable_cache(
     }
 
     const avisoMap = await fetchLatestAvisosByCodes(
-      expandedByRange.map((ev) => String(ev.eventCode || '').trim()).filter(Boolean)
+      eventsInRange.map((ev) => String(ev.eventCode || '').trim()).filter(Boolean)
     )
 
-    const enriched = expandedByRange.map((ev) => {
+    const enriched = eventsInRange.map((ev) => {
       const keyByCode = normCode(ev.eventCode || '')
       const responsablesForCode = Array.from(responsablesMap.get(keyByCode) || [])
+      const responsablesForEvent = Array.from(
+        responsablesByEventId.get(String(ev.id || '')) || []
+      )
       const fromZoho = String((ev as { responsableZoho?: string }).responsableZoho || '').trim()
-      const merged = [...new Set([fromZoho, ...responsablesForCode].filter(Boolean))]
+      const merged = [
+        ...new Set(
+          [fromZoho, ...responsablesForEvent, ...responsablesForCode].filter(Boolean)
+        ),
+      ]
       const responsableName = merged.join(', ')
-      const state = stateMap.get(keyByCode) || 'pending'
+      const state = stateByEventId.get(String(ev.id || '')) || stateMap.get(keyByCode) || 'pending'
       const aviso = ev.eventCode ? avisoMap.get(String(ev.eventCode).trim()) ?? null : null
       return { ...ev, responsableName, state, lastAviso: aviso }
     })
@@ -509,7 +654,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v4-space-addresses'],
+  ['api-events-list-v5-menu-tastings'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC }
 )
 

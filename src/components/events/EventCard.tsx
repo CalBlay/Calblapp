@@ -37,11 +37,13 @@ interface EventData {
   canChat?: boolean
   horaInici?: string
   commercial?: string | null
+  servei?: string
   responsableName?: string
   locationShort?: string
   warehouseBatches?: WarehouseComandaEventBatchChip[]
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
+  isMenuTasting?: boolean
 }
 
 interface Props {
@@ -198,16 +200,18 @@ export default function EventCard({
           )}
         </button>
       )}
-      <button
-        type="button"
-        aria-label="Obrir avisos de produccio"
-        onClick={(e) => {
-          e.stopPropagation()
-          onOpenAvisos?.()
-        }}
-      >
-        <Info className={hasAviso ? 'h-4 w-4 text-blue-600 lg:h-[18px] lg:w-[18px]' : 'h-4 w-4 text-gray-300 lg:h-[18px] lg:w-[18px]'} />
-      </button>
+      {!event.isMenuTasting ? (
+        <button
+          type="button"
+          aria-label="Obrir avisos de produccio"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenAvisos?.()
+          }}
+        >
+          <Info className={hasAviso ? 'h-4 w-4 text-blue-600 lg:h-[18px] lg:w-[18px]' : 'h-4 w-4 text-gray-300 lg:h-[18px] lg:w-[18px]'} />
+        </button>
+      ) : null}
     </>
   )
 
@@ -338,6 +342,12 @@ export default function EventCard({
             <span className="line-clamp-1">{event.commercial}</span>
           </div>
         )}
+        {event.servei ? (
+          <div className="flex items-start gap-1.5 text-slate-600 lg:basis-full">
+            <ClipboardList className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="line-clamp-2">{event.servei}</span>
+          </div>
+        ) : null}
 
         {event.responsableName && (
           <div className="hidden items-center gap-1.5 text-slate-600 lg:inline-flex xl:max-w-[11rem] xl:truncate 2xl:max-w-none">

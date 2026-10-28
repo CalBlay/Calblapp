@@ -24,6 +24,7 @@ export interface EventData {
   eventCode?: string | null
   state?: string
   commercial?: string | null
+  servei?: string
   chatUnread?: number
   canChat?: boolean
   horaInici?: string
@@ -35,6 +36,10 @@ export interface EventData {
   warehouseBatches?: WarehouseComandaEventBatchChip[]
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
+  isMenuTasting?: boolean
+  sourceEventId?: string
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name?: string; code?: string }>
 }
 
 interface Props {
@@ -97,12 +102,14 @@ export default function EventsDayGroup({
             comandaOnly={comandaOnly}
             onOpenMenu={comandaOnly ? undefined : () => onEventClick?.(event, 'menu')}
             onOpenAvisos={comandaOnly ? undefined : () => onEventClick?.(event, 'avisos')}
-            onOpenChat={() => onEventChat?.(event)}
-            onOpenComanda={() => onEventComanda?.(event)}
+            onOpenChat={event.isMenuTasting ? undefined : () => onEventChat?.(event)}
+            onOpenComanda={event.isMenuTasting ? undefined : () => onEventComanda?.(event)}
             onOpenDocuments={() => onEventDocuments?.(event)}
             showDocuments={showDocuments}
             showChat={
-              comandaOnly
+              event.isMenuTasting
+                ? false
+                : comandaOnly
                 ? true
                 : (() => {
                     const code = String(event.eventCode || '').trim()

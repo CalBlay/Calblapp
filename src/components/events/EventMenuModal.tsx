@@ -45,6 +45,7 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
 import type { EventLnKey } from '@/lib/events/eventsLnFilter'
+import { formatDateOnly } from '@/lib/date-format'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -80,6 +81,10 @@ interface EventMenuModalProps {
     fincaCode?: string | null
     pax?: number
     importAmount?: number
+    isMenuTasting?: boolean
+    sourceEventId?: string
+    sourceEventIds?: string[]
+    sourceEvents?: Array<{ id: string; name?: string; code?: string }>
   }
   user: {
     id?: string | number
@@ -285,6 +290,7 @@ const treballadorsPersons =
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)
   const lnKey: LnKey = event?.lnKey ?? deduceLnKeyFromSummary(event?.summary ?? '')
+  const isMenuTasting = event?.isMenuTasting === true
   const isAdmin = roleN === 'admin'
   const isDireccio = roleN === 'direccio'
   const isCapDept = roleN === 'cap' || (roleN.includes('cap') && roleN.includes('depart'))
@@ -388,15 +394,37 @@ const treballadorsPersons =
   const canOpenOperationalClosing = canCreateIncident || canCloseEventPerm
 
   const openDocuments = useCallback(() => {
-    if (event?.id) {
+    const sourceIds = Array.from(
+      new Set(
+        (event?.sourceEventIds || [])
+          .map((id) => String(id || '').trim())
+          .filter(Boolean)
+      )
+    )
+    const ids = sourceIds.length > 0
+      ? sourceIds
+      : [String(event?.sourceEventId || event?.id || '').trim()].filter(Boolean)
+    const sourceCodeById = new Map(
+      (event?.sourceEvents || []).map((source) => [String(source.id), source.code])
+    )
+    ids.forEach((id) => {
       prefetchEventDocuments(
-        String(event.id),
-        event.eventCode || event.code || undefined,
+        id,
+        sourceCodeById.get(id) || event?.eventCode || event?.code || undefined,
         'all'
       )
+    })
+    if (ids.length > 0) {
+      setPendingDocsOpen(true)
     }
-    setPendingDocsOpen(true)
-  }, [event?.id, event?.eventCode, event?.code])
+  }, [
+    event?.id,
+    event?.eventCode,
+    event?.code,
+    event?.sourceEventId,
+    event?.sourceEventIds,
+    event?.sourceEvents,
+  ])
 
   const navigateTo = useCallback(
     (path: string) => {
@@ -406,7 +434,10 @@ const treballadorsPersons =
     [onClose, router]
   )
 
-  const dateStr = useMemo(() => event?.start?.substring(0, 10) || '-', [event?.start])
+  const dateStr = useMemo(
+    () => formatDateOnly(event?.start?.substring(0, 10), '-'),
+    [event?.start]
+  )
   const eventRecord = (event ?? {}) as Record<string, unknown>
   const budgetPax = firstFiniteNumber(eventRecord, ['pax', 'NumPax', 'numPax'])
   const budgetAmount = firstFiniteNumber(eventRecord, ['importAmount', 'Import', 'import'])
@@ -440,7 +471,7 @@ const operativa = useMemo(
           }
         : null,
 
-      canSeeIncidents
+      canSeeIncidents && !isMenuTasting
         ? {
             key: 'view-incidents',
             label: 'Veure incidències',
@@ -451,7 +482,7 @@ const operativa = useMemo(
           }
         : null,
 
-      canCreateModificationPerm
+      canCreateModificationPerm && !isMenuTasting
         ? {
             key: 'create-mod',
             label: 'Registrar modificació',
@@ -462,7 +493,7 @@ const operativa = useMemo(
           }
         : null,
 
-      canSeeModifications
+      canSeeModifications && !isMenuTasting
         ? {
             key: 'view-mod',
             label: 'Veure modificacions',
@@ -474,7 +505,7 @@ const operativa = useMemo(
         : null,
 
       // 🔔 Avisos de Producció (visible només per Producció / Admin / Direcció)
-      canWriteAvisos
+      canWriteAvisos && !isMenuTasting
         ? {
             key: 'avisos',
             label: 'Avisos de Producció',
@@ -492,6 +523,7 @@ const operativa = useMemo(
     canCreateModificationPerm,
     canSeeModifications,
     canWriteAvisos,
+    isMenuTasting,
     onClose,
     onOpenAuditExecution,
   ]
@@ -501,7 +533,7 @@ const operativa = useMemo(
 const recursos = useMemo(
   () =>
     [
-    {
+    !isMenuTasting ? {
       key: 'espais',
       label: 'Espais',
       badge: 'Masies',
@@ -515,8 +547,7 @@ const recursos = useMemo(
   }
   setShowEspais(true)
 }
-,
-    },
+    } : null,
     {
       key: 'personnel',
       label: 'Veure personal assignat',
@@ -537,7 +568,7 @@ const recursos = useMemo(
           },
         }
       : null,
-      canSeeKitchenDocs
+      canSeeKitchenDocs && !isMenuTasting
         ? {
             key: 'docs-cuina',
             label: 'Adjuntar documents cuina',
@@ -547,7 +578,7 @@ const recursos = useMemo(
             onClick: () => setShowKitchenDocs(true),
           }
         : null,
-      canOpenVisitVideo
+      canOpenVisitVideo && !isMenuTasting
         ? {
             key: 'visit-video',
             label: canAttachVisitVideo ? 'Vídeo visita comercial' : 'Veure vídeo visita',
@@ -558,13 +589,21 @@ const recursos = useMemo(
           }
         : null,
     ].filter(Boolean) as MenuActionItem[],
-  [event, canSeeKitchenDocs, canDocs, canOpenVisitVideo, canAttachVisitVideo, openDocuments]
+  [
+    event,
+    canSeeKitchenDocs,
+    canDocs,
+    canOpenVisitVideo,
+    canAttachVisitVideo,
+    isMenuTasting,
+    openDocuments,
+  ]
 )
 
   const economic = useMemo(
     () =>
       [
-        canSeeBudgetContract
+        canSeeBudgetContract && !isMenuTasting
           ? {
               key: 'contract',
               label: 'Veure contracte',
@@ -578,7 +617,7 @@ const recursos = useMemo(
               },
             }
           : null,
-        canSeeBudgetContract
+        canSeeBudgetContract && !isMenuTasting
           ? {
               key: 'budget',
               label: 'Veure pressupost',
@@ -589,7 +628,7 @@ const recursos = useMemo(
             }
           : null,
       ].filter(Boolean) as MenuActionItem[],
-    [canSeeBudgetContract, event, navigateTo]
+    [canSeeBudgetContract, event, isMenuTasting, navigateTo]
   )
 
   if (!event || !event.id) return null
@@ -645,7 +684,9 @@ const recursos = useMemo(
           <div className="px-4 pb-4 sm:px-5 sm:pb-5 max-h-[min(72dvh,80svh)] overflow-y-auto overscroll-contain touch-pan-y">
             {pendingDocsOpen ? (
               <EventDocumentsSheet
-                eventId={String(event.id)}
+                eventId={String(event.sourceEventId || event.id)}
+                eventIds={event.sourceEventIds}
+                sourceEvents={event.sourceEvents}
                 eventCode={event.eventCode || event.code || null}
                 open
                 embedded

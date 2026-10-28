@@ -42,6 +42,12 @@ export interface EventData {
   horaInici?: string
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
+  servei?: string
+  isMenuTasting?: boolean
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  sourceEventId?: string
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name?: string; code?: string }>
   lastAviso?: {
     content: string
     department: string
@@ -79,6 +85,12 @@ interface EventPayload {
   hora?: string
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
+  servei?: string
+  isMenuTasting?: boolean
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  sourceEventId?: string
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name?: string; code?: string }>
   lastAviso?: {
     content: string
     department: string
@@ -182,6 +194,24 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
         undefined,
       hasDocuments: ev.hasDocuments === true,
       hasInvalidZohoDocuments: ev.hasInvalidZohoDocuments === true,
+      servei: typeof ev.servei === 'string' ? ev.servei : undefined,
+      isMenuTasting: ev.isMenuTasting === true,
+      calendarOccurrenceType: ev.calendarOccurrenceType,
+      sourceEventId:
+        typeof ev.sourceEventId === 'string' ? ev.sourceEventId : undefined,
+      sourceEventIds: Array.isArray(ev.sourceEventIds)
+        ? ev.sourceEventIds.map(String).filter(Boolean)
+        : undefined,
+      sourceEvents: Array.isArray(ev.sourceEvents)
+        ? ev.sourceEvents
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => ({
+              id: String(item.id || ''),
+              name: String(item.name || ''),
+              code: String(item.code || ''),
+            }))
+            .filter((item) => item.id)
+        : undefined,
     } as EventData
   })
 
