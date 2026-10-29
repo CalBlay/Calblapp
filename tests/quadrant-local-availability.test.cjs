@@ -3,6 +3,8 @@ const { test } = require('node:test')
 
 const {
   buildReservedForRoleLine,
+  collectConflictingVehicleIdsForRoleLine,
+  dedupeRoleLinePersonAssignments,
   findDuplicateRoleLinePersonKeys,
 } = require('../src/app/menu/quadrants/[id]/lib/quadrantPayloadShared')
 
@@ -72,4 +74,34 @@ test('same-day non-overlapping assignments follow the multiple-services premise'
 
   assert.equal(allowed.has('driver-1'), false)
   assert.equal(denied.has('driver-1'), true)
+})
+
+test('selecting the same driver in non-conflicting phases keeps both assignments', () => {
+  const delivery = line('delivery', '2026-11-04', '15:30', '18:00', 'driver-1')
+  const pickup = line('pickup', '2026-11-05', '15:30', '18:00', 'driver-1')
+
+  const result = dedupeRoleLinePersonAssignments(
+    [delivery, pickup],
+    pickup.slotId,
+    rules
+  )
+
+  assert.equal(result[0].personId, 'driver-1')
+  assert.equal(result[1].personId, 'driver-1')
+})
+
+test('the same vehicle is reusable in non-overlapping logistics phases', () => {
+  const delivery = line('delivery', '2026-11-04', '15:30', '18:00')
+  const pickup = line('pickup', '2026-11-05', '15:30', '18:00')
+  const reservations = [{ vehicleId: 'vehicle-1', line: delivery }]
+
+  const reusable = collectConflictingVehicleIdsForRoleLine(reservations, pickup, rules)
+  const overlapping = collectConflictingVehicleIdsForRoleLine(
+    reservations,
+    { ...pickup, serviceDate: '2026-11-04' },
+    rules
+  )
+
+  assert.equal(reusable.has('vehicle-1'), false)
+  assert.equal(overlapping.has('vehicle-1'), true)
 })

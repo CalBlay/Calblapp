@@ -244,6 +244,11 @@ export function useLogisticsPhasesState({
   const [phaseVehicleAssignments, setPhaseVehicleAssignments] = useState<
     Record<LogisticPhaseKey, VehicleAssignment[]>
   >(() => initialState.assignments)
+  const excludeVehicleEventId =
+    String(existingDraft?.eventId || '').trim() ||
+    String(event.id || '').trim().split('__')[0] ||
+    String(existingDraft?.id || '').trim().split('__')[0] ||
+    undefined
   const {
     vehicles: availableVehicles,
     loading: loadingVehicles,
@@ -253,6 +258,7 @@ export function useLogisticsPhasesState({
     endDate,
     endTime,
     department,
+    excludeEventId: excludeVehicleEventId,
     enabled:
       (department.toLowerCase() === 'logistica' || department.toLowerCase() === 'cuina') &&
       Boolean(startDate && startTime && endDate && endTime) &&

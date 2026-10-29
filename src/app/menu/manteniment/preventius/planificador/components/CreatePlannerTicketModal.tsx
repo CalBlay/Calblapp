@@ -1,20 +1,40 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
-import { X } from 'lucide-react'
+import { Camera, FileText, Paperclip, Trash2, X } from 'lucide-react'
 import {
   getMaintenanceLocationsForCenter,
   getMaintenanceZones,
 } from '@/lib/maintenanceLocationCatalog'
 import type { CenterRow, MachineRow } from '@/app/menu/manteniment/dades/types'
 import type { TicketPriority } from '@/app/menu/manteniment/tickets/types'
+import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import { compressVideoForUpload } from '@/lib/media/compressVideoForUpload'
+import {
+  DEFAULT_MAX_VIDEO_UPLOAD_BYTES,
+  formatTicketAttachmentLimitMb,
+  isTicketDocumentMime,
+  isTicketDocumentName,
+  isTicketImageMime,
+  isTicketVideoMime,
+  MAX_TICKET_ATTACHMENTS,
+  MAX_UPLOAD_DOCUMENT_BYTES,
+  MAX_UPLOAD_VIDEO_BYTES,
+  MAX_VIDEO_INPUT_BYTES,
+} from '@/lib/media/ticketAttachments'
 import { minutesFromTime, timeFromMinutes } from '../utils'
 
 type PlannerUser = {
   id: string
   name: string
   department?: string
+}
+
+type PendingAttachment = {
+  file: File
+  preview: string
+  kind: 'image' | 'video' | 'document'
 }
 
 type Props = {
@@ -62,8 +82,21 @@ export default function CreatePlannerTicketModal({
   const [startTime, setStartTime] = useState('08:00')
   const [duration, setDuration] = useState(60)
   const [workerIds, setWorkerIds] = useState<string[]>([])
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
+  const [preparingAttachments, setPreparingAttachments] = useState(false)
+  const attachmentsRef = useRef<PendingAttachment[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    attachmentsRef.current = attachments
+  }, [attachments])
+
+  useEffect(() => {
+    return () => {
+      attachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.preview))
+    }
+  }, [])
 
   const locationOptions = useMemo(
     () => getMaintenanceLocationsForCenter(centers, center),
@@ -111,11 +144,131 @@ export default function CreatePlannerTicketModal({
     )
   }
 
+  const handleAttachmentChange = async (fileList: FileList | null) => {
+    const selected = fileList ? Array.from(fileList) : []
+    if (!selected.length) return
+
+    const remainingSlots = MAX_TICKET_ATTACHMENTS - attachments.length
+    if (remainingSlots <= 0) {
+      setError(`Només pots adjuntar fins a ${MAX_TICKET_ATTACHMENTS} fitxers.`)
+      return
+    }
+
+    try {
+      setPreparingAttachments(true)
+      setError(null)
+      const prepared: PendingAttachment[] = []
+
+      for (const file of selected.slice(0, remainingSlots)) {
+        if (isTicketVideoMime(file.type)) {
+          if (file.size > MAX_VIDEO_INPUT_BYTES) {
+            throw new Error(
+              `El vídeo supera el límit de ${formatTicketAttachmentLimitMb(MAX_VIDEO_INPUT_BYTES)} abans de comprimir.`
+            )
+          }
+          const optimized = await compressVideoForUpload(file, DEFAULT_MAX_VIDEO_UPLOAD_BYTES)
+          if (optimized.size > MAX_UPLOAD_VIDEO_BYTES) {
+            throw new Error(
+              `El vídeo comprimit encara supera ${formatTicketAttachmentLimitMb(MAX_UPLOAD_VIDEO_BYTES)}.`
+            )
+          }
+          prepared.push({
+            file: optimized,
+            preview: URL.createObjectURL(optimized),
+            kind: 'video',
+          })
+          continue
+        }
+
+        if (isTicketImageMime(file.type)) {
+          const optimized = await compressRasterImageForUpload(file, DEFAULT_MAX_IMAGE_UPLOAD_BYTES)
+          if (optimized.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
+            throw new Error('Una imatge encara supera 1 MB després de comprimir-se.')
+          }
+          prepared.push({
+            file: optimized,
+            preview: URL.createObjectURL(optimized),
+            kind: 'image',
+          })
+          continue
+        }
+
+        if (isTicketDocumentMime(file.type) || isTicketDocumentName(file.name)) {
+          if (file.size > MAX_UPLOAD_DOCUMENT_BYTES) {
+            throw new Error(
+              `El fitxer supera el límit de ${formatTicketAttachmentLimitMb(MAX_UPLOAD_DOCUMENT_BYTES)}.`
+            )
+          }
+          prepared.push({
+            file,
+            preview: URL.createObjectURL(file),
+            kind: 'document',
+          })
+          continue
+        }
+
+        throw new Error('Només es permeten fotos, vídeos, PDF, Word, Excel o fitxers de text.')
+      }
+
+      setAttachments((current) =>
+        [...current, ...prepared].slice(0, MAX_TICKET_ATTACHMENTS)
+      )
+      if (selected.length > remainingSlots) {
+        setError(`Només s'han afegit els primers ${MAX_TICKET_ATTACHMENTS} fitxers.`)
+      }
+    } catch (attachmentError: unknown) {
+      setError(
+        attachmentError instanceof Error
+          ? attachmentError.message
+          : 'No s’han pogut preparar els adjunts.'
+      )
+    } finally {
+      setPreparingAttachments(false)
+    }
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((current) => {
+      const target = current[index]
+      if (target) URL.revokeObjectURL(target.preview)
+      return current.filter((_, currentIndex) => currentIndex !== index)
+    })
+    setError(null)
+  }
+
+  const uploadAttachments = async () => {
+    const uploaded = await Promise.all(
+      attachments.map(async (attachment) => {
+        const form = new FormData()
+        form.append('file', attachment.file)
+        const response = await fetch('/api/maintenance/upload-image', {
+          method: 'POST',
+          body: form,
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(String(payload?.error || "No s'ha pogut pujar un dels adjunts"))
+        }
+        return {
+          url: payload?.url || null,
+          path: payload?.path || null,
+          meta: payload?.meta || null,
+        }
+      })
+    )
+
+    return uploaded.filter((attachment) => attachment.url || attachment.path)
+  }
+
   const handleSubmit = async () => {
     setError(null)
     const unavailableSelected = selectedWorkers.filter((worker) => !availableIds.has(worker.id))
     if (!center || !machine.trim() || !description.trim()) {
       setError('Cal indicar centre, màquina o element i descripció.')
+      return
+    }
+    if (attachments.length < 1) {
+      setError(`Cal adjuntar com a mínim una foto o un fitxer (màxim ${MAX_TICKET_ATTACHMENTS}).`)
       return
     }
     if (dayIndex < 0 || dayIndex >= dayCount) {
@@ -140,6 +293,11 @@ export default function CreatePlannerTicketModal({
 
     try {
       setBusy(true)
+      const uploadedAttachments = await uploadAttachments()
+      if (uploadedAttachments.length < 1) {
+        throw new Error('Cal adjuntar com a mínim un adjunt vàlid.')
+      }
+      const primaryAttachment = uploadedAttachments[0]
       const response = await fetch('/api/maintenance/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -159,6 +317,10 @@ export default function CreatePlannerTicketModal({
           estimatedMinutes: Math.max(30, duration),
           assignedToIds: selectedWorkers.map((worker) => worker.id),
           assignedToNames: selectedWorkers.map((worker) => worker.name),
+          imageUrl: primaryAttachment?.url || null,
+          imagePath: primaryAttachment?.path || null,
+          imageMeta: primaryAttachment?.meta || null,
+          images: uploadedAttachments,
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -279,6 +441,82 @@ export default function CreatePlannerTicketModal({
             />
           </label>
 
+          <div className="space-y-3 md:col-span-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Fotos o fitxers * <span className="font-normal text-slate-500">(mín. 1, màx. {MAX_TICKET_ATTACHMENTS})</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Admet fotos, vídeos, PDF, Word, Excel i fitxers de text.
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <Paperclip className="h-4 w-4" />
+                Afegir foto o fitxer
+                <input
+                  type="file"
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                  multiple
+                  className="hidden"
+                  disabled={attachments.length >= MAX_TICKET_ATTACHMENTS || preparingAttachments || busy}
+                  onChange={(event) => {
+                    void handleAttachmentChange(event.target.files)
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
+              <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-800 hover:bg-emerald-100">
+                <Camera className="h-4 w-4" />
+                Fer una foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={attachments.length >= MAX_TICKET_ATTACHMENTS || preparingAttachments || busy}
+                  onChange={(event) => {
+                    void handleAttachmentChange(event.target.files)
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              {preparingAttachments ? 'Preparant adjunts…' : `${attachments.length}/${MAX_TICKET_ATTACHMENTS} adjunts`}
+            </p>
+
+            {attachments.length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {attachments.map((attachment, index) => (
+                  <div
+                    key={`${attachment.file.name}-${attachment.file.size}-${index}`}
+                    className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                  >
+                    <FileText className="h-5 w-5 shrink-0 text-slate-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-700">{attachment.file.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {attachment.kind === 'image' ? 'Foto' : attachment.kind === 'video' ? 'Vídeo' : 'Fitxer'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(index)}
+                      disabled={busy}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 disabled:opacity-50"
+                      aria-label={`Eliminar adjunt ${index + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <label className="space-y-1 text-sm font-medium text-slate-700">
             Prioritat
             <select
@@ -358,10 +596,10 @@ export default function CreatePlannerTicketModal({
           <button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={busy}
+            disabled={busy || preparingAttachments}
             className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {busy ? 'Creant...' : 'Crear i planificar'}
+            {busy ? 'Creant...' : preparingAttachments ? 'Preparant adjunts...' : 'Crear i planificar'}
           </button>
         </div>
       </div>

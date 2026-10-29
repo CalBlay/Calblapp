@@ -26,7 +26,11 @@ import {
   patchLogisticRoleLines,
   resizeLogisticPhaseToTotalPersonSlots,
 } from "../lib/logisticPhaseRoleLines"
-import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../lib/quadrantPayloadShared"
+import {
+  buildReservedForRoleLine,
+  collectConflictingVehicleIdsForRoleLine,
+  dedupeRoleLinePersonAssignments,
+} from "../lib/quadrantPayloadShared"
 import type { LocalPersonnelRules } from "../lib/quadrantPayloadShared"
 import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
@@ -37,6 +41,12 @@ import { IconActionButton } from '@/lib/iconActionButton'
 import SubtleTimeInput from './SubtleTimeInput'
 
 type LogisticaTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarLogistica>, "embedded">
+
+const VEHICLE_REUSE_RULES: LocalPersonnelRules = {
+  restHours: 0,
+  allowMultipleEventsSameDay: true,
+  maxFirstEventDurationHours: 24,
+}
 
 type Props = {
   phaseForms: Record<LogisticPhaseKey, LogisticPhaseForm>
@@ -95,21 +105,25 @@ export default function LogisticsPhasePanel({
   excludeEventId,
   logisticaTopBar,
 }: Props) {
-  const assignedVehicleIds = new Set(
-    Object.values(phaseVehicleAssignments)
-      .flat()
-      .map((assign) => assign.vehicleId)
-      .filter(Boolean)
-  )
-
   const buildAssignedVehicleIdsForLine = (
-    currentVehicleId?: string
+    currentLine: ReturnType<typeof ensureLogisticRoleLines>[number]
   ): Set<string> => {
-    const reserved = new Set<string>()
-    for (const id of assignedVehicleIds) {
-      if (id && id !== currentVehicleId) reserved.add(id)
-    }
-    return reserved
+    const reservations = logisticPhaseOptions.flatMap((phase) => {
+      const phaseAssignments = phaseVehicleAssignments[phase.key] || []
+      const phaseLines = ensureLogisticRoleLines(phaseForms[phase.key], phaseAssignments)
+      return phaseAssignments.map((assignment) => ({
+        vehicleId: assignment.vehicleId,
+        line:
+          phaseLines.find((line) => line.slotId === assignment.slotId) || {
+            slotId: assignment.slotId,
+          },
+      }))
+    })
+    return collectConflictingVehicleIdsForRoleLine(
+      reservations,
+      currentLine,
+      VEHICLE_REUSE_RULES
+    )
   }
 
   const availableVehicleCount = availableVehicles.filter((vehicle) => vehicle.available).length
@@ -178,6 +192,31 @@ export default function LogisticsPhasePanel({
             updatePhaseForm(phase.key, formPatch)
           }
 
+          const updatePhaseDefaults = (patch: Partial<LogisticPhaseForm>) => {
+            const { formPatch } = patchLogisticRoleLines(
+              form,
+              assignments,
+              (lines) =>
+                lines.map((entry) => ({
+                  ...entry,
+                  ...(patch.meetingPoint !== undefined && entry.meetingPoint === form.meetingPoint
+                    ? { meetingPoint: patch.meetingPoint }
+                    : {}),
+                  ...(patch.startTime !== undefined && entry.startTime === form.startTime
+                    ? { startTime: patch.startTime }
+                    : {}),
+                  ...(patch.endTime !== undefined && entry.endTime === form.endTime
+                    ? { endTime: patch.endTime }
+                    : {}),
+                  ...(patch.startDate !== undefined && entry.serviceDate === form.startDate
+                    ? { serviceDate: patch.startDate }
+                    : {}),
+                })),
+              roleLines
+            )
+            updatePhaseForm(phase.key, { ...formPatch, ...patch })
+          }
+
           const patchAssignmentForLine = (
             line: (typeof roleLines)[number],
             patch: Partial<VehicleAssignment>
@@ -197,7 +236,8 @@ export default function LogisticsPhasePanel({
                         }
                       : entry
                   ),
-                  line.slotId
+                  line.slotId,
+                  personnelRules
                 )
               )
               return
@@ -247,9 +287,7 @@ export default function LogisticsPhasePanel({
                       <div className="flex min-w-max items-end gap-1.5">
                         <Input
                           value={form?.meetingPoint || ""}
-                          onChange={(e) =>
-                            updatePhaseForm(phase.key, { meetingPoint: e.target.value })
-                          }
+                          onChange={(e) => updatePhaseDefaults({ meetingPoint: e.target.value })}
                           className={cn(
                             "w-[8.5rem] min-w-0 shrink-0 px-2",
                             compact ? "h-8 text-xs" : "h-9 text-sm"
@@ -261,26 +299,20 @@ export default function LogisticsPhasePanel({
                           id={`logistica-start-${phase.key}`}
                           label="Hora inici"
                           value={form?.startTime || ""}
-                          onChange={(value) =>
-                            updatePhaseForm(phase.key, { startTime: value })
-                          }
+                          onChange={(value) => updatePhaseDefaults({ startTime: value })}
                           compact={compact}
                         />
                         <SubtleTimeInput
                           id={`logistica-end-${phase.key}`}
                           label="Hora fi"
                           value={form?.endTime || ""}
-                          onChange={(value) =>
-                            updatePhaseForm(phase.key, { endTime: value })
-                          }
+                          onChange={(value) => updatePhaseDefaults({ endTime: value })}
                           compact={compact}
                         />
                         <Input
                           type="date"
                           value={form?.startDate || ""}
-                          onChange={(e) =>
-                            updatePhaseForm(phase.key, { startDate: e.target.value })
-                          }
+                          onChange={(e) => updatePhaseDefaults({ startDate: e.target.value })}
                           className={cn(
                             "w-[9rem] shrink-0 px-2",
                             compact ? "h-8 text-xs" : "h-9 text-sm"
@@ -387,9 +419,7 @@ export default function LogisticsPhasePanel({
                             department={department}
                             excludeEventId={excludeEventId}
                             availableVehicles={availableVehicles}
-                            assignedVehicleIds={buildAssignedVehicleIdsForLine(
-                              lineAssignment.vehicleId
-                            )}
+                            assignedVehicleIds={buildAssignedVehicleIdsForLine(line)}
                             canRemove={roleLines.length > 1}
                             compact={compact}
                             onLinePatch={(patch) =>
@@ -397,7 +427,11 @@ export default function LogisticsPhasePanel({
                                 const next = lines.map((entry) =>
                                   entry.slotId === line.slotId ? { ...entry, ...patch } : entry
                                 )
-                                return dedupeRoleLinePersonAssignments(next, line.slotId)
+                                return dedupeRoleLinePersonAssignments(
+                                  next,
+                                  line.slotId,
+                                  personnelRules
+                                )
                               })
                             }
                             onLineRemove={() =>

@@ -47,7 +47,7 @@ type SessionUser = {
 type TicketImagePayload = {
   url?: string | null
   path?: string | null
-  meta?: { size?: number; type?: string } | null
+  meta?: { size?: number; type?: string; name?: string } | null
 }
 
 type TicketPayload = {
@@ -578,7 +578,7 @@ export async function POST(req: Request) {
     const sourceChannelId =
       String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
     const images = normalizeTicketImages(body)
-    const requiresManualImages = !isPlannerDirect && !isWhatsBlapp && !isIncidencia
+    const requiresManualImages = !isWhatsBlapp && !isIncidencia
     const assignedToIds = Array.isArray(body.assignedToIds)
       ? Array.from(new Set(body.assignedToIds.map(String).map((value) => value.trim()).filter(Boolean)))
       : []
@@ -614,7 +614,7 @@ export async function POST(req: Request) {
     if (requiresManualImages) {
       if (images.length < 1) {
         return NextResponse.json(
-          { error: 'Cal adjuntar com a minim una foto o video (maxim 3).' },
+          { error: 'Cal adjuntar com a minim una foto o un fitxer (maxim 3).' },
           { status: 400 }
         )
       }

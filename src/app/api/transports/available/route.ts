@@ -12,6 +12,7 @@ import {
 } from '@/lib/commercialReservations'
 import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { isExcludedVehicleAvailabilityQuadrant } from '@/lib/vehicleAvailability'
 
 export const runtime = 'nodejs'
 
@@ -67,6 +68,7 @@ type QuadrantConductorRecord = {
 }
 
 type QuadrantRecord = Record<string, unknown> & {
+  eventId?: string
   conductors?: QuadrantConductorRecord[]
   startDate?: string
   endDate?: string
@@ -142,6 +144,7 @@ export async function POST(req: Request) {
       startTime?: string
       endDate?: string
       endTime?: string
+      excludeEventId?: string
     }
 
     try {
@@ -151,6 +154,7 @@ export async function POST(req: Request) {
     }
 
     const { startDate, startTime, endDate, endTime } = parsed
+    const excludeEventId = String(parsed.excludeEventId || '').trim()
 
     if (!startDate || !startTime || !endDate || !endTime) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -209,6 +213,13 @@ export async function POST(req: Request) {
 
       for (const doc of docs) {
         const q = doc.data() as QuadrantRecord
+        const quadrantEventId = String(q.eventId || '').trim()
+        if (isExcludedVehicleAvailabilityQuadrant(
+          { docId: doc.id, eventId: quadrantEventId },
+          excludeEventId
+        )) {
+          continue
+        }
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
         const quadrantStartDate =
           typeof q.startDate === 'string' && q.startDate.trim() ? q.startDate : undefined

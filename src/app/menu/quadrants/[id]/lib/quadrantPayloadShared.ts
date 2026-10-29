@@ -175,17 +175,21 @@ export function buildReservedForRoleLine(
 
 export function dedupeRoleLinePersonAssignments<T extends RoleLineReservation>(
   lines: T[],
-  preferredSlotId?: string
+  preferredSlotId?: string,
+  rules?: LocalPersonnelRules
 ): T[] {
   if (preferredSlotId) {
     const preferredLine = lines.find((line) => line.slotId === preferredSlotId)
     if (!preferredLine || !roleLineHasAssignedPerson(preferredLine)) {
-      return dedupeRoleLinePersonAssignments(lines)
+      return dedupeRoleLinePersonAssignments(lines, undefined, rules)
     }
     return lines.map((line) => {
       if (line.slotId === preferredSlotId) return line
       if (!roleLineHasAssignedPerson(line)) return line
-      if (linesShareSamePerson(line, preferredLine)) {
+      if (
+        linesShareSamePerson(line, preferredLine) &&
+        roleLineAssignmentsConflict(line, preferredLine, rules)
+      ) {
         return { ...line, personId: '', personName: '' }
       }
       return line
@@ -199,12 +203,37 @@ export function dedupeRoleLinePersonAssignments<T extends RoleLineReservation>(
       return line
     }
     const duplicate = kept.some(
-      (other) => roleLineHasAssignedPerson(other) && linesShareSamePerson(line, other)
+      (other) =>
+        roleLineHasAssignedPerson(other) &&
+        linesShareSamePerson(line, other) &&
+        roleLineAssignmentsConflict(line, other, rules)
     )
     kept.push(line)
     if (duplicate) return { ...line, personId: '', personName: '' }
     return line
   })
+}
+
+export type VehicleRoleLineReservation = {
+  vehicleId?: string
+  line: RoleLineReservation
+}
+
+/** Vehicles ocupats per altres files que realment se solapen amb la fila actual. */
+export function collectConflictingVehicleIdsForRoleLine(
+  reservations: VehicleRoleLineReservation[],
+  currentLine: RoleLineReservation,
+  rules: LocalPersonnelRules
+): Set<string> {
+  const reserved = new Set<string>()
+  for (const reservation of reservations) {
+    const vehicleId = String(reservation.vehicleId || '').trim()
+    if (!vehicleId) continue
+    if (roleLineAssignmentsConflict(currentLine, reservation.line, rules)) {
+      reserved.add(vehicleId)
+    }
+  }
+  return reserved
 }
 
 export function findDuplicateRoleLinePersonKeys(

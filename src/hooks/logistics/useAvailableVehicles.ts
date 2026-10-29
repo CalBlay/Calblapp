@@ -16,6 +16,7 @@ type UseAvailableVehiclesOptions = {
   endDate?: string
   endTime?: string
   department?: string
+  excludeEventId?: string
   enabled?: boolean
 }
 
@@ -32,7 +33,11 @@ export function invalidateAvailableVehiclesCache() {
   vehiclesCache.clear()
 }
 
-async function fetchVehicles(opts: Required<Pick<UseAvailableVehiclesOptions, 'startDate' | 'startTime' | 'endDate' | 'endTime'>> & Pick<UseAvailableVehiclesOptions, 'department'>) {
+type VehicleAvailabilityRequest = Required<
+  Pick<UseAvailableVehiclesOptions, 'startDate' | 'startTime' | 'endDate' | 'endTime'>
+> & Pick<UseAvailableVehiclesOptions, 'department' | 'excludeEventId'>
+
+async function fetchVehicles(opts: VehicleAvailabilityRequest) {
   const res = await fetch('/api/transports/available', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -42,6 +47,7 @@ async function fetchVehicles(opts: Required<Pick<UseAvailableVehiclesOptions, 's
       endDate: opts.endDate,
       endTime: opts.endTime,
       department: opts.department,
+      excludeEventId: opts.excludeEventId,
     }),
   })
 
@@ -60,7 +66,7 @@ function getCachedVehicles(key: string) {
   return null
 }
 
-async function loadVehicles(key: string, opts: Required<Pick<UseAvailableVehiclesOptions, 'startDate' | 'startTime' | 'endDate' | 'endTime'>> & Pick<UseAvailableVehiclesOptions, 'department'>) {
+async function loadVehicles(key: string, opts: VehicleAvailabilityRequest) {
   const existing = vehiclesCache.get(key)
   if (existing?.promise) return existing.promise
 
@@ -79,11 +85,19 @@ async function loadVehicles(key: string, opts: Required<Pick<UseAvailableVehicle
 }
 
 export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
-  const { startDate, startTime, endDate, endTime, department } = opts
+  const { startDate, startTime, endDate, endTime, department, excludeEventId } = opts
   const enabled = opts.enabled ?? true
   const key = useMemo(
-    () => [startDate || '', startTime || '', endDate || '', endTime || '', department || ''].join('|'),
-    [startDate, startTime, endDate, endTime, department]
+    () =>
+      [
+        startDate || '',
+        startTime || '',
+        endDate || '',
+        endTime || '',
+        department || '',
+        excludeEventId || '',
+      ].join('|'),
+    [startDate, startTime, endDate, endTime, department, excludeEventId]
   )
   const initialData = useMemo(() => (enabled ? getCachedVehicles(key) || [] : []), [enabled, key])
 
@@ -118,6 +132,7 @@ export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
         endDate: endDate!,
         endTime: endTime!,
         department,
+        excludeEventId,
       })
       setVehicles(data)
     } catch (err) {
@@ -126,7 +141,7 @@ export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
     } finally {
       setLoading(false)
     }
-  }, [canFetch, key, startDate, startTime, endDate, endTime, department])
+  }, [canFetch, key, startDate, startTime, endDate, endTime, department, excludeEventId])
 
   useEffect(() => {
     setVehicles(initialData)
