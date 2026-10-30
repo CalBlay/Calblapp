@@ -7,6 +7,7 @@ import { ca } from 'date-fns/locale'
 import type { GroupedQuadrantDay } from '@/lib/quadrantsGrouping'
 import type { UnifiedEvent } from '@/app/menu/quadrants/types'
 import QuadrantsEventGroup from './QuadrantsEventGroup'
+import DayPersonnelReorganization from './DayPersonnelReorganization'
 
 type Props = {
   groupedDays: GroupedQuadrantDay[]
@@ -80,10 +81,19 @@ export default function QuadrantsTable({
                 </span>
               </h2>
 
-              <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-100 px-2 py-[3px] text-xs font-semibold text-fuchsia-700 sm:text-sm">
-                <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
-                {totalPax} pax
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {events.some((event) => event.phases.some((phase) => Boolean(phase.draft))) ? (
+                  <DayPersonnelReorganization
+                    day={day}
+                    department={department}
+                    onApplied={onRefreshDrafts}
+                  />
+                ) : null}
+                <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-100 px-2 py-[3px] text-xs font-semibold text-fuchsia-700 sm:text-sm">
+                  <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
+                  {totalPax} pax
+                </span>
+              </div>
             </header>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

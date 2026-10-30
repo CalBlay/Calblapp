@@ -402,15 +402,13 @@ export function QuadrantEditor({
       toast.success('Quadrant reobert com a esborrany')
       window.dispatchEvent(new CustomEvent('quadrant:updated', { detail: { status: 'draft' } }))
       dirtyRef.current = false
-      await onSaved?.()
-      handleClose()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error reobrint el quadrant'
       toast.error(message)
     } finally {
       setReopening(false)
     }
-  }, [department, event.id, existingDraft?.id, handleClose, isConfirmed, onSaved, reopening])
+  }, [department, event.id, existingDraft?.id, isConfirmed, reopening])
 
   const handleDelete = useCallback(async () => {
     if (hasPersistedDraft) {

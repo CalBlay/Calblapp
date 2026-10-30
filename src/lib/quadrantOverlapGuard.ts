@@ -2,9 +2,13 @@ import {
   fetchQuadrantDocsByEndDate,
   type QuadrantDoc,
 } from '@/utils/personnelRest'
+import { getQuadrantOverlapCacheGeneration } from '@/lib/quadrantOverlapCacheState'
 
 const BUSY_DOCS_CACHE_TTL_MS = 90_000
-const busyDocsCache = new Map<string, { snapshot: OverlapBusySnapshot; ts: number }>()
+const busyDocsCache = new Map<
+  string,
+  { snapshot: OverlapBusySnapshot; ts: number; generation: number }
+>()
 
 type AssignmentRef = {
   id?: string | null
@@ -143,8 +147,13 @@ export async function preloadQuadrantOverlapBusyDocs(
   const deptKey = options?.department ? norm(options.department) : ''
   const cacheKey = deptKey ? `${start}|${end}|${deptKey}` : `${start}|${end}`
   const now = Date.now()
+  const generation = getQuadrantOverlapCacheGeneration()
   const cached = busyDocsCache.get(cacheKey)
-  if (cached && now - cached.ts < BUSY_DOCS_CACHE_TTL_MS) {
+  if (
+    cached &&
+    cached.generation === generation &&
+    now - cached.ts < BUSY_DOCS_CACHE_TTL_MS
+  ) {
     return cached.snapshot
   }
 
@@ -165,7 +174,7 @@ export async function preloadQuadrantOverlapBusyDocs(
     })
   )
   const snapshot = snapshots.flat()
-  busyDocsCache.set(cacheKey, { snapshot, ts: now })
+  busyDocsCache.set(cacheKey, { snapshot, ts: now, generation })
   return snapshot
 }
 
