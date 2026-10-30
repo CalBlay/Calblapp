@@ -2,7 +2,16 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { AlertTriangle, Check, Loader2, MessageSquareText, Pencil, Trash2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Loader2,
+  MessageSquareText,
+  Pencil,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,7 +26,11 @@ import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 import { IconActionButton } from '@/lib/iconActionButton'
-import { INCIDENT_ACTION_STATUS, type IncidentActionStatus } from '@/lib/incidentPolicy'
+import {
+  INCIDENT_ACTION_STATUS,
+  normalizeIncidentStatus,
+  type IncidentActionStatus,
+} from '@/lib/incidentPolicy'
 import { INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -155,6 +168,17 @@ function ActionRowStatusSelect({
 
 function toDateInputValue(value?: string | null) {
   return value ? String(value).slice(0, 10) : ''
+}
+
+function formatResolutionDate(value?: number | string | null) {
+  if (value === null || value === undefined || value === '') return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('ca-ES', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Europe/Madrid',
+  }).format(date)
 }
 
 interface Props {
@@ -562,6 +586,16 @@ export default function IncidentOperationsPanel({
   )
 
   const canEditIncidentsModule = !permsReady || canEditPath(INCIDENTS_UI_PATH)
+  const resolutionNote = String(incident.resolutionNote || '').trim()
+  const incidentIsResolved = ['resolt', 'tancat'].includes(normalizeIncidentStatus(incident.status))
+  const resolutionDate = formatResolutionDate(incident.resolvedAt)
+  const resolutionMeta = [
+    String(incident.maintenanceTicketCode || '').trim()
+      ? `Ticket ${String(incident.maintenanceTicketCode).trim()}`
+      : '',
+    String(incident.resolvedByName || '').trim(),
+    resolutionDate,
+  ].filter(Boolean)
 
   const canChangeActionStatus = useCallback(
     (action: IncidentActionRow) => {
@@ -587,6 +621,44 @@ export default function IncidentOperationsPanel({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>
+      ) : null}
+
+      {resolutionNote ? (
+        <section
+          className={cn(
+            'rounded-xl border p-3 sm:p-4',
+            incidentIsResolved
+              ? 'border-emerald-200 bg-emerald-50/70'
+              : 'border-amber-200 bg-amber-50/70'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className={cn(
+                'mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white',
+                incidentIsResolved ? 'text-emerald-700' : 'text-amber-700'
+              )}
+              aria-hidden
+            >
+              {incidentIsResolved ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <RotateCcw className="h-5 w-5" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-sm font-semibold text-slate-900">
+                {incidentIsResolved ? 'Resolució de manteniment' : 'Seguiment de la resolució'}
+              </h4>
+              {resolutionMeta.length > 0 ? (
+                <p className="mt-0.5 text-xs text-slate-500">{resolutionMeta.join(' · ')}</p>
+              ) : null}
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                {resolutionNote}
+              </p>
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {meetingSessionId ? (

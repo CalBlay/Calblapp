@@ -30,6 +30,12 @@ export interface Incident {
   serviceType?: string
   fincaId?: string
   resolutionNote?: string
+  resolvedAt?: number | string | null
+  resolvedById?: string | null
+  resolvedByName?: string | null
+  maintenanceTicketId?: string | null
+  maintenanceTicketCode?: string | null
+  resolvedFromMaintenanceTicket?: boolean
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null

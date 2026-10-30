@@ -62,6 +62,10 @@ import {
 } from '@/lib/maintenanceTicketOutlook'
 import admin from 'firebase-admin'
 import { isCuinaCentralMaintenanceTicket } from '@/lib/maintenanceTicketCreators'
+import {
+  buildReopenedIncidentPatch,
+  buildResolvedIncidentPatch,
+} from '@/lib/maintenanceIncidentSync'
 
 export const runtime = 'nodejs'
 
@@ -145,6 +149,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   operatorTitle?: string | null
   priority?: string
   source?: string
+  sourceIncidentId?: string | null
   workflowStage?: string | null
   externalized?: boolean
   plannedStart?: number | string | null
@@ -166,6 +171,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   creatorRejectionNote?: string | null
   capValidatedAt?: number | string | null
   resolvedByArea?: string | null
+  resolutionNote?: string | null
 }
 
 const normalizePriority = (value?: string) => {
@@ -558,7 +564,29 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             note: `Reobert pel creador: ${rejectionNote}`,
           }),
         }
-        await ref.set(creatorUpdates, { merge: true })
+        const linkedIncidentId = String(current.sourceIncidentId || '').trim()
+        if (linkedIncidentId) {
+          const incidentRef = db.collection('incidents').doc(linkedIncidentId)
+          const incidentSnap = await incidentRef.get()
+          const batch = db.batch()
+          batch.set(ref, creatorUpdates, { merge: true })
+          if (incidentSnap.exists) {
+            batch.set(
+              incidentRef,
+              buildReopenedIncidentPatch({
+                ticketId: id,
+                reopenedAt: now,
+                reopenedById: user.id,
+                reopenedByName: user.name || '',
+                reason: rejectionNote,
+              }),
+              { merge: true }
+            )
+          }
+          await batch.commit()
+        } else {
+          await ref.set(creatorUpdates, { merge: true })
+        }
 
         const reopenedPayload = {
           type: isDecoTicket
@@ -1067,7 +1095,35 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       })
     }
 
-    await ref.set(updates, { merge: true })
+    const linkedIncidentId = String(current.sourceIncidentId || '').trim()
+    if (becameDone && linkedIncidentId) {
+      const incidentRef = db.collection('incidents').doc(linkedIncidentId)
+      const incidentSnap = await incidentRef.get()
+      const batch = db.batch()
+      batch.set(ref, updates, { merge: true })
+      if (incidentSnap.exists) {
+        batch.set(
+          incidentRef,
+          buildResolvedIncidentPatch({
+            ticketId: id,
+            ticketCode: current.ticketCode || current.incidentNumber || null,
+            resolvedAt: Number(updates.resolvedAt || Date.now()),
+            resolvedById: user.id,
+            resolvedByName: user.name || '',
+            resolutionNote:
+              body.resolutionNote ||
+              body.statusNote ||
+              (updates.resolutionNote as string | null | undefined) ||
+              current.resolutionNote ||
+              null,
+          }),
+          { merge: true }
+        )
+      }
+      await batch.commit()
+    } else {
+      await ref.set(updates, { merge: true })
+    }
 
     const updatedSnap = await ref.get()
     const updated = (updatedSnap.data() || {}) as typeof current
