@@ -39,7 +39,7 @@ test('canAccessQuadrantsPremissesDepartment lets admin and direcció use any dep
   )
 })
 
-test('canAccessQuadrantsPremissesDepartment lets cap edit only their own department', () => {
+test('canAccessQuadrantsPremissesDepartment scopes non-global roles to their own department', () => {
   assert.equal(
     canAccessQuadrantsPremissesDepartment({
       role: 'cap',
@@ -61,6 +61,14 @@ test('canAccessQuadrantsPremissesDepartment lets cap edit only their own departm
       role: 'treballador',
       sessionDept: 'cuina',
       requestedDept: 'cuina',
+    }),
+    true
+  )
+  assert.equal(
+    canAccessQuadrantsPremissesDepartment({
+      role: 'treballador',
+      sessionDept: 'cuina',
+      requestedDept: 'serveis',
     }),
     false
   )

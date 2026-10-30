@@ -109,6 +109,14 @@ test('quadrants premisses department access is admin/direcció all depts, cap on
       sessionDept: 'cuina',
       requestedDept: 'cuina',
     }),
+    true
+  )
+  assert.equal(
+    canAccessQuadrantsPremissesDepartment({
+      role: 'treballador',
+      sessionDept: 'cuina',
+      requestedDept: 'serveis',
+    }),
     false
   )
 })

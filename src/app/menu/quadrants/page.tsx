@@ -36,12 +36,17 @@ import type { UnifiedEvent } from './types'
 import type { Draft } from './drafts/page'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
-import { QUADRANTS_ACTION, QUADRANTS_UI_PATH } from '@/lib/quadrantsPermissions'
+import {
+  QUADRANTS_ACTION,
+  QUADRANTS_UI_PATH,
+  canAccessQuadrantsPremissesDepartment,
+} from '@/lib/quadrantsPermissions'
 import { buildPendingExpandKey } from '@/lib/buildPendingQuadrantDraft'
 
 type SessionDepartmentSource = {
   department?: string
   dept?: string
+  role?: string
 }
 
 type QuadrantDraftDetails = {
@@ -123,11 +128,11 @@ export default function QuadrantsPage() {
   const { setContent, setOpen } = useFilters()
 
   const { data: session } = useSession()
-  const { ready: permsReady, hasAction } = useUiPermissions()
-  const canPremisses =
-    !permsReady ||
-    hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
+  const { ready: permsReady, hasAction, data: uiPermissions } = useUiPermissions()
   const sessionUser = session?.user as SessionDepartmentSource | undefined
+  const permissionDepartment = String(
+    uiPermissions?.profile?.department || sessionUser?.department || sessionUser?.dept || ''
+  )
   const qsDepartment = (searchParamsSafe.get('department') || '').toLowerCase().trim()
   const department = (qsDepartment === 'serveis' || qsDepartment === 'cuina' || qsDepartment === 'logistica'
     ? qsDepartment
@@ -139,17 +144,23 @@ export default function QuadrantsPage() {
         .toString()
         .toLowerCase()
   )
+  const canPremisses =
+    permsReady &&
+    hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)) &&
+    canAccessQuadrantsPremissesDepartment({
+      role: String(uiPermissions?.profile?.role || sessionUser?.role || ''),
+      sessionDept: permissionDepartment,
+      requestedDept: department,
+    })
   const openEventId = useMemo(() => {
     const raw = String(searchParamsSafe.get('openEventId') || '').trim()
     return raw ? raw.split('__')[0] : null
   }, [searchParamsSafe])
   const isCuinaDepartment = department === 'cuina'
-  const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(
-    isCuinaDepartment
-  )
+  const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(false)
 
   useEffect(() => {
-    setHideCuinaMinorServices(isCuinaDepartment)
+    setHideCuinaMinorServices(false)
   }, [isCuinaDepartment])
 
   const dashboardUrl = useMemo(() => {
@@ -230,6 +241,7 @@ export default function QuadrantsPage() {
     () => filteredEvents.filter((ev) => !shouldHideCuinaEvent(ev)),
     [filteredEvents, shouldHideCuinaEvent]
   )
+  const hiddenCuinaEventCount = filteredEvents.length - visibleFilteredEvents.length
 
   useEffect(() => {
     if (!expandedId || !isPendingExpandKey(expandedId)) return
@@ -693,7 +705,12 @@ export default function QuadrantsPage() {
               checked={hideCuinaMinorServices}
               onChange={(e) => setHideCuinaMinorServices(e.target.checked)}
             />
-            Amaga Coffee, Menu entregues i Cheers &lt; 200 PAX
+            <span>
+              Amaga Coffee, Menu entregues i Cheers &lt; 200 PAX
+              {hideCuinaMinorServices
+                ? ` (${hiddenCuinaEventCount} ${hiddenCuinaEventCount === 1 ? 'esdeveniment amagat' : 'esdeveniments amagats'})`
+                : ''}
+            </span>
           </label>
         )}
       </div>

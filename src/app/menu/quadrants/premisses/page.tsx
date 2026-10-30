@@ -200,18 +200,25 @@ const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
-  const { ready: permsReady, hasAction } = useUiPermissions()
+  const { ready: permsReady, hasAction, data: uiPermissions } = useUiPermissions()
   const canPremisses =
-    !permsReady ||
+    permsReady &&
     hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
   const sessionUser = session?.user as SessionUserData | undefined
-  const role = normalizeRole(String(sessionUser?.role || ''))
-  const rawSessionDept = norm(String(sessionUser?.department || ''))
+  const role = normalizeRole(String(uiPermissions?.profile?.role || sessionUser?.role || ''))
+  const rawSessionDept = norm(
+    String(uiPermissions?.profile?.department || sessionUser?.department || '')
+  )
   const sessionDept = ALLOWED_DEPARTMENTS.has(rawSessionDept) ? rawSessionDept : 'serveis'
   const canSelectDepartment = role === 'admin' || role === 'direccio'
   const lastSavedSnapshotRef = useRef('')
 
   const [department, setDepartment] = useState<string>('serveis')
+  const canLoadPremisses =
+    status === 'authenticated' &&
+    permsReady &&
+    canPremisses &&
+    (canSelectDepartment || department === sessionDept)
   const [premises, setPremises] = useState<Premises>(emptyPremises('serveis'))
   const [conditions, setConditions] = useState<EditableCondition[]>([])
   const [people, setPeople] = useState<PersonnelOption[]>([])
@@ -227,6 +234,7 @@ export default function QuadrantPremisesPage() {
   const [vestimentModelsText, setVestimentModelsText] = useState('')
   const [, setMeta] = useState<MetaState | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hasLoadedPremisses, setHasLoadedPremisses] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -247,10 +255,11 @@ export default function QuadrantPremisesPage() {
   useEffect(() => {
     setPeople([])
     setDriverCrews([])
+    setHasLoadedPremisses(false)
   }, [department])
 
   useEffect(() => {
-    if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
+    if (!canLoadPremisses || !department || !ALLOWED_DEPARTMENTS.has(department)) return
 
     let cancelled = false
 
@@ -278,6 +287,7 @@ export default function QuadrantPremisesPage() {
         setDefaultCharacteristicsText(nextDefaultCharacteristicsText)
         setVestimentModelsText(nextVestimentModelsText)
         setMeta(json?.meta || null)
+        setHasLoadedPremisses(true)
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error carregant premisses')
@@ -290,10 +300,10 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, department])
+  }, [canLoadPremisses, department])
 
   useEffect(() => {
-    if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
+    if (!canLoadPremisses || !department || !ALLOWED_DEPARTMENTS.has(department)) return
 
     let cancelled = false
 
@@ -350,26 +360,31 @@ export default function QuadrantPremisesPage() {
     }
     // Només les dades de premisses relacionades amb personal han de resincronitzar aquesta llista.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- la resta són edicions locals del formulari
-  }, [status, department, premises.department, premises.conditions, premises.driverCrews])
+  }, [canLoadPremisses, department, premises.department, premises.conditions, premises.driverCrews])
 
   useEffect(() => {
-    if (status !== 'authenticated') return
+    if (!canLoadPremisses) return
 
     let cancelled = false
 
     const run = async () => {
       try {
-        const res = await fetch('/api/quadrants/premises/finques', {
-          cache: 'no-store',
-        })
+        const res = await fetch(
+          `/api/quadrants/premises/finques?department=${encodeURIComponent(department)}`,
+          { cache: 'no-store' }
+        )
         const json = await res.json()
         if (!res.ok) throw new Error(json?.error || 'No s’han pogut carregar les finques')
         if (!cancelled) {
           setFinques(Array.isArray(json?.finques) ? (json.finques as FincaOption[]) : [])
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          console.error('No s’han pogut carregar les finques')
+          console.warn(
+            'No s’han pogut carregar les finques:',
+            err instanceof Error ? err.message : String(err)
+          )
+          setFinques([])
         }
       }
     }
@@ -378,7 +393,7 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-  }, [status])
+  }, [canLoadPremisses, department])
 
   const currentSnapshot = useMemo(
     () =>
@@ -405,7 +420,8 @@ export default function QuadrantPremisesPage() {
   const currentSnapshotRef = useRef(currentSnapshot)
   currentSnapshotRef.current = currentSnapshot
 
-  const dirty = !loading && currentSnapshot !== lastSavedSnapshotRef.current
+  const dirty =
+    hasLoadedPremisses && !loading && currentSnapshot !== lastSavedSnapshotRef.current
   const hasIncompleteEttProvider = (premises.ettProviders || []).some(
     (provider) => !provider.name.trim() || !provider.email.trim()
   )
@@ -777,6 +793,16 @@ export default function QuadrantPremisesPage() {
       setDepartment(nextDepartment)
     }
   }
+
+  if (status === 'loading' || !permsReady) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-10 text-sm text-slate-500">
+        Carregant permisos...
+      </main>
+    )
+  }
+
+  if (status !== 'authenticated' || !canPremisses) return null
 
   return (
     <main className="min-h-screen space-y-5 bg-slate-50 px-4 pb-10">

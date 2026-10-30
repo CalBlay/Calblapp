@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { requireQuadrantsPremissesEdit } from '@/lib/server/quadrantsApiAuth'
+import { QUADRANTS_ALLOWED_DEPARTMENTS } from '@/lib/quadrantsPermissions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
@@ -19,6 +20,9 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const requestedDept = norm(searchParams.get('department') || auth.user.department || 'serveis')
+    if (!QUADRANTS_ALLOWED_DEPARTMENTS.has(requestedDept)) {
+      return NextResponse.json({ error: 'Departament no vàlid' }, { status: 400 })
+    }
     const canAccess = await requireQuadrantsPremissesEdit(auth, requestedDept)
     if (!canAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

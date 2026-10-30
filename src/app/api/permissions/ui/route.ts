@@ -440,11 +440,15 @@ export async function GET() {
       true
   }
 
+  const quadrantsPremissesEffect = effectFor(
+    assignment,
+    PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)
+  )
   if (
     map[QUADRANTS_UI_PATH] === true &&
     edit[QUADRANTS_UI_PATH] === true &&
-    baseCanEditQuadrantsPremisses(accessUser) &&
-    effectFor(assignment, PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)) !== 'deny'
+    quadrantsPremissesEffect !== 'deny' &&
+    (baseCanEditQuadrantsPremisses(accessUser) || quadrantsPremissesEffect === 'allow')
   ) {
     actions[PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)] = true
   }
@@ -644,6 +648,7 @@ export async function GET() {
     profile: {
       isDepartmentRobaLead: Boolean(accessUser.isDepartmentRobaLead),
       department: String(accessUser.department || ''),
+      role: String(accessUser.role || ''),
     },
   })
 }

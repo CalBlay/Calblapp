@@ -12,6 +12,7 @@ export type UiPermissionsResponse = {
   profile?: {
     isDepartmentRobaLead?: boolean
     department?: string
+    role?: string
   }
 }
 

@@ -70,10 +70,10 @@ export function useQuadrantsDashboardPage() {
     .toString()
     .toLowerCase()
   const isCuinaDepartment = department === 'cuina'
-  const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(isCuinaDepartment)
+  const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(false)
 
   useEffect(() => {
-    setHideCuinaMinorServices(isCuinaDepartment)
+    setHideCuinaMinorServices(false)
   }, [isCuinaDepartment])
 
   const dashboardUrl = useMemo(() => {
@@ -147,6 +147,7 @@ export function useQuadrantsDashboardPage() {
     () => filteredEvents.filter((ev) => !shouldHideCuinaEvent(ev)),
     [filteredEvents, shouldHideCuinaEvent]
   )
+  const hiddenCuinaEventCount = filteredEvents.length - visibleFilteredEvents.length
 
   useEffect(() => {
     if (!expandedId || !isPendingExpandKey(expandedId)) return
@@ -246,6 +247,7 @@ export function useQuadrantsDashboardPage() {
     isCuinaDepartment,
     hideCuinaMinorServices,
     setHideCuinaMinorServices,
+    hiddenCuinaEventCount,
     totalVisible: visibleFilteredEvents.length,
     statusFilterActive: filters.status !== '__all__',
     hasContent: groupedDays.length > 0,

@@ -217,7 +217,12 @@ export default function QuadrantsOperativaPage() {
               checked={dashboard.hideCuinaMinorServices}
               onChange={(e) => dashboard.setHideCuinaMinorServices(e.target.checked)}
             />
-            Amaga Coffee, Menu entregues i Cheers &lt; 200 PAX
+            <span>
+              Amaga Coffee, Menu entregues i Cheers &lt; 200 PAX
+              {dashboard.hideCuinaMinorServices
+                ? ` (${dashboard.hiddenCuinaEventCount} ${dashboard.hiddenCuinaEventCount === 1 ? 'esdeveniment amagat' : 'esdeveniments amagats'})`
+                : ''}
+            </span>
           </label>
         ) : null}
       </div>

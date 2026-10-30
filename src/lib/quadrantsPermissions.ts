@@ -59,6 +59,8 @@ export function canAccessQuadrantsPremissesDepartment(params: {
   const sessionDept = normDept(params.sessionDept)
   const requestedDept = normDept(params.requestedDept)
   if (role === 'admin' || role === 'direccio') return true
-  if (role === 'cap') return sessionDept === requestedDept
-  return false
+  // Aquesta comprovació s'executa després d'haver validat l'acció
+  // `premisses:edit`. Un permís explícit també pot autoritzar altres rols,
+  // però mai fora del seu propi departament.
+  return Boolean(sessionDept && requestedDept && sessionDept === requestedDept)
 }
