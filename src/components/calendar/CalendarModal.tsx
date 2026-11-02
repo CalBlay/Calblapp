@@ -307,7 +307,7 @@ export default function CalendarModal({
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
     !readonly &&
-    !isMenuTasting &&
+    !isGroupedMenuTasting &&
     (isZohoVerd || isManual) &&
     canUpdate
   const canEditComercialIntern =
@@ -619,6 +619,10 @@ export default function CalendarModal({
                 ...buildMenuTastingManualUpdate(target.occurrenceType, editData, {
                   includePax: !isGroupedMenuTasting,
                 }),
+                ...(canEditCode ? { code: nextCode } : {}),
+                ...(canEditCode && (codeDirty || prevCode !== nextCode)
+                  ? { codeConfirmed: Boolean(nextCode) }
+                  : {}),
                 collection: COLLECTION,
                 updatedAt: new Date().toISOString(),
               }

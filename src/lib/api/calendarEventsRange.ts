@@ -159,7 +159,7 @@ export async function computeCalendarEventsInRange(
         lnLabel: lnValue,
         collection: coll,
 
-        code: d.code || d.Code || d.codi || '',
+        code: d.code || d.Code || d.C_digo || d.codi || d.Codi || '',
         codeConfirmed:
           typeof d.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined,
         codeMatchScore:
@@ -225,7 +225,7 @@ export async function computeCalendarEventsInRange(
           location,
           lnKey: lnValue.toLowerCase(),
           lnLabel: lnValue,
-          code: d.code || d.Code || d.codi || '',
+          code: d.code || d.Code || d.C_digo || d.codi || d.Codi || '',
           codeConfirmed:
             typeof d.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined,
           codeMatchScore:

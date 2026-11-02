@@ -17,6 +17,14 @@ test('events list builds menu tastings with the shared calendar grouping', () =>
   assert.match(source, /sourceEventIds/)
 })
 
+test('calendar PM reads the same event code including the Zoho C_digo field', () => {
+  const calendarRangeSource = read('src/lib/api/calendarEventsRange.ts')
+  assert.match(
+    calendarRangeSource,
+    /code: d\.code \|\| d\.Code \|\| d\.C_digo \|\| d\.codi \|\| d\.Codi \|\| ''/
+  )
+})
+
 test('events UI opens every source document for a grouped menu tasting', () => {
   const pageSource = read('src/app/menu/events/page.tsx')
   const modalSource = read('src/components/events/EventMenuModal.tsx')
