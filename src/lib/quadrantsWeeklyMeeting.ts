@@ -95,6 +95,7 @@ export type WeeklyMeetingRow = {
   servicesResponsible: string
   servicesTeam: string
   servicesClosing: string
+  servicesSetup: string
   logistica: { required: boolean; arrivalTime: string; saved: boolean }
   cuina: { required: boolean; arrivalTime: string; saved: boolean }
 }

@@ -1,3 +1,5 @@
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
+
 type JsonRecord = Record<string, unknown>
 
 const normalizePhase = (value: unknown) =>
@@ -10,6 +12,19 @@ const normalizePhase = (value: unknown) =>
 const normalizeEventId = (value: unknown) =>
   String(value || '').trim().split('__')[0].trim()
 
+export function matchesWeeklyMeetingQuadrantEvent(
+  quadrant: Record<string, unknown>,
+  eventId: string,
+  eventCode: string
+): boolean {
+  const quadrantId = normalizeEventId(quadrant.eventId)
+  const quadrantCode = String(quadrant.code || quadrant.eventCode || '')
+  return (
+    quadrantId === normalizeEventId(eventId) ||
+    (!!eventCode && quadrantCode === eventCode)
+  )
+}
+
 /**
  * Comprova si un document de quadrant pertany a la fila (esdeveniment + dia)
  * que s'està decidint a la reunió setmanal.
@@ -20,16 +35,58 @@ export function matchesWeeklyMeetingQuadrantDay(
   eventCode: string,
   eventDay: string
 ): boolean {
-  const quadrantId = normalizeEventId(quadrant.eventId)
-  const quadrantCode = String(quadrant.code || quadrant.eventCode || '')
-  const sameEvent =
-    quadrantId === normalizeEventId(eventId) ||
-    (!!eventCode && quadrantCode === eventCode)
-  if (!sameEvent) return false
+  if (!matchesWeeklyMeetingQuadrantEvent(quadrant, eventId, eventCode)) return false
 
   const start = String(quadrant.startDate || quadrant.phaseDate || '').slice(0, 10)
   const end = String(quadrant.endDate || quadrant.phaseDate || start).slice(0, 10)
   return (!start || start <= eventDay) && (!end || end >= eventDay)
+}
+
+const meetingDateLabel = (value: unknown) => {
+  const iso = String(value || '').slice(0, 10)
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : iso
+}
+
+const meetingTime = (value: unknown) => {
+  const time = String(value || '').trim().slice(0, 5)
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : ''
+}
+
+export function buildWeeklyMeetingServicesSetup(
+  quadrants: Record<string, unknown>[]
+): string {
+  const rows = new Map<string, { key: string; label: string; names: Set<string> }>()
+  quadrants.forEach((quadrant) => {
+    const phase = normalizePhase(
+      quadrant.phaseType || quadrant.phaseLabel || quadrant.id
+    )
+    if (!phase.includes('muntatge') && !phase.includes('montatge')) return
+
+    const day = String(quadrant.phaseDate || quadrant.startDate || '').slice(0, 10)
+    if (!day) return
+    const start = meetingTime(quadrant.startTime)
+    const end = meetingTime(quadrant.endTime)
+    const hours = start && end ? `${start}–${end}` : start || end
+    const key = `${day}|${start}|${end}`
+    const current = rows.get(key) || {
+      key,
+      label: `${meetingDateLabel(day)}${hours ? ` · ${hours}` : ''}`,
+      names: new Set<string>(),
+    }
+    collectQuadrantLinePersonnel(quadrant).forEach((person) => {
+      if (person.name) current.names.add(person.name)
+    })
+    rows.set(key, current)
+  })
+
+  return Array.from(rows.values())
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((row) => {
+      const names = Array.from(row.names).sort((a, b) => a.localeCompare(b, 'ca'))
+      return `${row.label}${names.length ? ` · ${names.join(', ')}` : ''}`
+    })
+    .join('\n')
 }
 
 export function isWeeklyMeetingEventPhase(

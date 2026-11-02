@@ -23,8 +23,10 @@ import {
   listMeetingEventNotes,
 } from '@/lib/server/quadrantsWeeklyMeetingStore'
 import {
+  buildWeeklyMeetingServicesSetup,
   buildWeeklyMeetingArrivalPatch,
   isWeeklyMeetingEventPhase,
+  matchesWeeklyMeetingQuadrantEvent,
   matchesWeeklyMeetingQuadrantDay,
 } from '@/lib/quadrantsWeeklyMeetingSync'
 
@@ -142,7 +144,10 @@ export async function GET(req: NextRequest) {
       const eventDay = event.day
       const matches = (quadrant: Record<string, unknown>) =>
         matchesWeeklyMeetingQuadrantDay(quadrant, eventId, event.code, eventDay)
+      const matchesEvent = (quadrant: Record<string, unknown>) =>
+        matchesWeeklyMeetingQuadrantEvent(quadrant, eventId, event.code)
       const serviceQuadrants = servicesResult.quadrants.filter(matches)
+      const allEventServiceQuadrants = servicesResult.quadrants.filter(matchesEvent)
       const logisticsQuadrants = logisticsResult.quadrants.filter(matches)
       const kitchenQuadrants = kitchenResult.quadrants.filter(matches)
       const services = buildServicesDetails(serviceQuadrants)
@@ -192,6 +197,7 @@ export async function GET(req: NextRequest) {
         servicesResponsible: services.responsible,
         servicesTeam: services.team,
         servicesClosing: services.closing,
+        servicesSetup: buildWeeklyMeetingServicesSetup(allEventServiceQuadrants),
         logistica: {
           required: logisticsDecision?.required !== false,
           arrivalTime: logisticsDecision?.arrivalTime || normalizeTime(logisticsExisting?.arrivalTime),

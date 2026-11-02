@@ -88,7 +88,7 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
   const body = rows.map((row) => `
     <tr>
       <td><strong>${escapeHtml(format(parseISO(row.eventDay), 'dd/MM/yyyy'))}</strong>${row.eventCode ? `<br><small>Codi: ${escapeHtml(row.eventCode)}</small>` : ''}${row.servicesResponsible ? `<br><strong>${escapeHtml(row.servicesResponsible)}</strong>` : ''}</td>
-      <td><strong>${escapeHtml(row.location || 'Ubicació pendent')}</strong>${row.eventName ? `<br><small>${escapeHtml(row.eventName)}</small>` : ''}${row.servicesTeam ? `<br><small>${escapeHtml(row.servicesTeam).replaceAll('\n', '<br>')}</small>` : ''}</td>
+      <td><strong>${escapeHtml(row.location || 'Ubicació pendent')}</strong>${row.eventName ? `<br><small>${escapeHtml(row.eventName)}</small>` : ''}${row.servicesSetup ? `<br><strong>Muntatge: ${escapeHtml(row.servicesSetup).replaceAll('\n', '<br>Muntatge: ')}</strong>` : ''}${row.servicesTeam ? `<br><small>${escapeHtml(row.servicesTeam).replaceAll('\n', '<br>')}</small>` : ''}</td>
       <td>${escapeHtml(row.pax)}</td>
       <td>${escapeHtml(row.scheduleNotes || row.eventSchedule).replaceAll('\n', '<br>')}</td>
       <td>${escapeHtml(departmentComment(row, 'serveis')).replaceAll('\n', '<br>')}</td>
@@ -581,7 +581,8 @@ export default function QuadrantsWeeklyMeetingPage() {
                   <td className="p-3">
                     <div className="text-base font-extrabold uppercase leading-tight text-indigo-800">{row.location || 'Ubicació pendent'}</div>
                     {row.eventName ? <div className="mt-1 font-medium text-slate-600">{row.eventName}</div> : null}
-                    {row.servicesTeam ? <div className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-600">{row.servicesTeam}</div> : <div className="mt-2 text-xs italic text-slate-400">Quadrant de Serveis pendent</div>}
+                    {row.servicesSetup ? <div className="mt-2 whitespace-pre-line rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-900">Muntatge: {row.servicesSetup}</div> : null}
+                    {row.servicesTeam ? <div className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-600">{row.servicesTeam}</div> : <div className="mt-2 text-xs italic text-slate-400">{row.servicesSetup ? 'Personal de l’esdeveniment pendent' : 'Quadrant de Serveis pendent'}</div>}
                     {row.servicesClosing ? <div className="mt-1 text-xs font-medium text-slate-700">Tancament: {row.servicesClosing}</div> : null}
                   </td>
                   <td className="p-2 text-center font-bold">{row.pax || '—'}</td>

@@ -2,8 +2,10 @@ const assert = require('node:assert/strict')
 const { test } = require('node:test')
 
 const {
+  buildWeeklyMeetingServicesSetup,
   buildWeeklyMeetingArrivalPatch,
   isWeeklyMeetingEventPhase,
+  matchesWeeklyMeetingQuadrantEvent,
   matchesWeeklyMeetingQuadrantDay,
 } = require('../src/lib/quadrantsWeeklyMeetingSync.ts')
 
@@ -113,5 +115,50 @@ test('weekly meeting can match legacy quadrant documents by event code', () => {
       '2026-10-06'
     ),
     true
+  )
+})
+
+test('weekly meeting matches setup phases by event even when setup is on another day', () => {
+  const setup = {
+    eventId: 'event-1',
+    phaseType: 'muntatge',
+    phaseDate: '2026-10-05',
+  }
+
+  assert.equal(matchesWeeklyMeetingQuadrantEvent(setup, 'event-1', 'E1'), true)
+  assert.equal(matchesWeeklyMeetingQuadrantDay(setup, 'event-1', 'E1', '2026-10-06'), false)
+})
+
+test('weekly meeting formats and deduplicates serveis setup day and hours', () => {
+  const setup = buildWeeklyMeetingServicesSetup([
+    {
+      id: 'event-1__muntatge__2026-10-05__group-a',
+      eventId: 'event-1',
+      phaseType: 'muntatge',
+      phaseDate: '2026-10-05',
+      startTime: '09:00',
+      endTime: '13:30',
+      conductors: [{ id: 'c1', name: 'Aaron Bouazza' }],
+      treballadors: [{ id: 'w1', name: 'Adri Alvarez' }],
+    },
+    {
+      id: 'event-1__muntatge__2026-10-05__group-a-copy',
+      eventId: 'event-1',
+      phaseLabel: 'Muntatge',
+      startDate: '2026-10-05',
+      startTime: '09:00',
+      endTime: '13:30',
+    },
+    {
+      eventId: 'event-1',
+      phaseType: 'event',
+      startDate: '2026-10-06',
+      startTime: '18:00',
+    },
+  ])
+
+  assert.equal(
+    setup,
+    '05/10/2026 · 09:00–13:30 · Aaron Bouazza, Adri Alvarez'
   )
 })
