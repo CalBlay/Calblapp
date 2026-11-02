@@ -90,7 +90,7 @@ function cleanSelections(value: unknown): PreparationArticleSelection[] {
   return [...unique.values()]
 }
 
-function cleanMissingArticles(value: unknown): PreparationMissingArticle[] {
+export function cleanPreparationMissingArticles(value: unknown): PreparationMissingArticle[] {
   const allowedReasons = new Set(['sense_estoc', 'trencat', 'no_localitzat', 'pendent', 'altre'])
   if (!Array.isArray(value)) return []
   return value.slice(0, 200).flatMap((raw) => {
@@ -101,7 +101,14 @@ function cleanMissingArticles(value: unknown): PreparationMissingArticle[] {
     if (!articleCode || !articleName || quantity < 1) return []
     const reason = allowedReasons.has(String(item.reason))
       ? (item.reason as PreparationMissingArticle['reason'])
-      : undefined
+      : 'pendent'
+    const loadingResolution =
+      item.loadingResolution === 'prepared' || item.loadingResolution === 'left_unprepared'
+        ? item.loadingResolution
+        : undefined
+    const loadingResolvedAt = Number(item.loadingResolvedAt) || undefined
+    const loadingResolvedByUserId = cleanText(item.loadingResolvedByUserId, 200) || undefined
+    const loadingResolvedByUserName = cleanText(item.loadingResolvedByUserName, 200) || undefined
     return [{
       articleCode,
       articleName,
@@ -109,13 +116,10 @@ function cleanMissingArticles(value: unknown): PreparationMissingArticle[] {
       reason,
       note: cleanText(item.note, 500),
       prepared: item.prepared === true,
-      loadingResolution:
-        item.loadingResolution === 'prepared' || item.loadingResolution === 'left_unprepared'
-          ? item.loadingResolution
-          : undefined,
-      loadingResolvedAt: Number(item.loadingResolvedAt) || undefined,
-      loadingResolvedByUserId: cleanText(item.loadingResolvedByUserId, 200) || undefined,
-      loadingResolvedByUserName: cleanText(item.loadingResolvedByUserName, 200) || undefined,
+      ...(loadingResolution ? { loadingResolution } : {}),
+      ...(loadingResolvedAt ? { loadingResolvedAt } : {}),
+      ...(loadingResolvedByUserId ? { loadingResolvedByUserId } : {}),
+      ...(loadingResolvedByUserName ? { loadingResolvedByUserName } : {}),
     }]
   })
 }
@@ -164,7 +168,7 @@ function sanitizeForm(
       raw.logisticsPacks ?? (raw as Partial<PreparationWarehouseForm> & { kits?: unknown }).kits
     ),
     palletJacks: cleanSelections(raw.palletJacks),
-    missingArticles: cleanMissingArticles(raw.missingArticles),
+    missingArticles: cleanPreparationMissingArticles(raw.missingArticles),
     notes: cleanText(raw.notes, 2000),
     status: raw.status === 'completed' ? 'completed' : 'draft',
   }
@@ -434,7 +438,7 @@ export async function resolvePreparationMissingArticlesForLoading(params: {
       const snap = await transaction.get(ref)
       if (!snap.exists) throw new Error('No s\'ha trobat la fitxa de preparació.')
       const data = snap.data() as Partial<PreparationWarehouseForm> & Record<string, unknown>
-      const missingArticles = cleanMissingArticles(data.missingArticles)
+      const missingArticles = cleanPreparationMissingArticles(data.missingArticles)
       let found = false
       const nextArticles = missingArticles.map((article) => {
         if (article.articleCode !== item.articleCode) return article

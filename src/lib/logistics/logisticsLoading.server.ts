@@ -52,11 +52,20 @@ export type LogisticsLoadingEvent = {
   loadedCount: number
   loadableCount: number
   pendingPreparationCount: number
+  preparationNotes: Array<{
+    key: string
+    warehouseCode: string
+    preparationName: string
+    notes: string
+    updatedByName?: string
+  }>
 }
 
 export type LogisticsPreparationDashboardWarehouse = {
   warehouseCode: string
   preparationCompleted: boolean
+  preparationNotes: string
+  preparationNotesUpdatedByName?: string
   pendingArticles: Array<{
     articleCode: string
     articleName: string
@@ -303,6 +312,7 @@ export async function listLogisticsLoadingEvents(start: string, end: string) {
       startKey: string
       endKey: string
       lines: Map<string, LoadingLineDraft>
+      preparationNotes: LogisticsLoadingEvent['preparationNotes']
     }
   >()
 
@@ -319,6 +329,7 @@ export async function listLogisticsLoadingEvents(start: string, end: string) {
       startKey,
       endKey,
       lines: new Map(),
+      preparationNotes: [] as LogisticsLoadingEvent['preparationNotes'],
     }
     if (!current.eventCode) current.eventCode = identity.eventCode
     if (current.eventName === 'Esdeveniment') current.eventName = identity.eventName
@@ -326,6 +337,16 @@ export async function listLogisticsLoadingEvents(start: string, end: string) {
     if (startKey && (!current.startKey || startKey < current.startKey)) current.startKey = startKey
     if (endKey && endKey > current.endKey) current.endKey = endKey
     addFormLines(current.lines, form)
+    const notes = text(form.notes)
+    if (notes) {
+      current.preparationNotes.push({
+        key: `${form.eventRowId}::${text(form.warehouseCode).toUpperCase()}`,
+        warehouseCode: text(form.warehouseCode).toUpperCase(),
+        preparationName: text(source.PreparacioNomEvent || source.ServiceName || source.NomEvent),
+        notes,
+        updatedByName: text(form.updatedByUserName) || undefined,
+      })
+    }
     groups.set(identity.eventKey, current)
   })
 
@@ -352,6 +373,7 @@ export async function listLogisticsLoadingEvents(start: string, end: string) {
         loadedCount: loadable.filter((line) => line.loaded).length,
         loadableCount: loadable.length,
         pendingPreparationCount: lines.filter((line) => !line.ready).length,
+        preparationNotes: group.preparationNotes,
       }
     })
     .sort((a, b) => a.startKey.localeCompare(b.startKey) || a.eventName.localeCompare(b.eventName, 'ca'))
@@ -446,6 +468,8 @@ export async function listLogisticsPreparationDashboardDetails(rowIds: string[])
     detail.warehouses.push({
       warehouseCode,
       preparationCompleted: form.status === 'completed',
+      preparationNotes: text(form.notes),
+      preparationNotesUpdatedByName: text(form.updatedByUserName) || undefined,
       pendingArticles,
       loadingLines: [],
     })
@@ -460,6 +484,7 @@ export async function listLogisticsPreparationDashboardDetails(rowIds: string[])
         warehouse = {
           warehouseCode,
           preparationCompleted: false,
+          preparationNotes: '',
           pendingArticles: [],
           loadingLines: [],
         }

@@ -99,6 +99,7 @@ function PrepLineCard({
     (total, warehouse) => total + warehouse.pendingArticles.length,
     0
   ) || 0
+  const preparationNotes = detail?.warehouses.filter((warehouse) => warehouse.preparationNotes) || []
 
   return (
     <article
@@ -163,6 +164,25 @@ function PrepLineCard({
               Càrrega {detail?.loadableCount ? `${detail.loadedCount}/${detail.loadableCount}` : ''}
             </button>
           </div>
+
+          {preparationNotes.length ? (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                Observacions dels preparadors
+              </div>
+              {preparationNotes.map((warehouse) => (
+                <div key={`${row.id}-notes-${warehouse.warehouseCode}`} className="rounded-lg bg-white/80 px-3 py-2">
+                  <div className="text-xs font-semibold text-amber-800">
+                    {PREPARATION_WAREHOUSE_LABELS[warehouse.warehouseCode as keyof typeof PREPARATION_WAREHOUSE_LABELS] || warehouse.warehouseCode}
+                    {warehouse.preparationNotesUpdatedByName ? ` · ${warehouse.preparationNotesUpdatedByName}` : ''}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">
+                    {warehouse.preparationNotes}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {view === 'preparers' ? (
             <div className="space-y-2">

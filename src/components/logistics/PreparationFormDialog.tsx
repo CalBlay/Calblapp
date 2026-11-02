@@ -404,6 +404,7 @@ export default function PreparationFormDialog({
   const [interval, setInterval] = useState<EventInterval>(EMPTY_INTERVAL)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [message, setMessage] = useState('')
   const selectedWarehouse = useMemo(() => allowedWarehouses.find((item) => item.code === warehouseCode), [allowedWarehouses, warehouseCode])
@@ -417,8 +418,10 @@ export default function PreparationFormDialog({
       if (!response.ok) throw new Error(String(json.error || 'No s’ha pogut carregar la fitxa.'))
       setForm(json.form as PreparationWarehouseForm)
       setInterval((json.interval || EMPTY_INTERVAL) as EventInterval)
+      setDirty(false)
     } catch (loadError) {
       setForm(emptyForm(event.id, warehouseCode))
+      setDirty(false)
       setMessage(loadError instanceof Error ? loadError.message : 'No s’ha pogut carregar la fitxa.')
     } finally {
       setLoading(false)
@@ -441,6 +444,7 @@ export default function PreparationFormDialog({
       const json = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(json.error || 'No s’ha pogut desar la fitxa.'))
       setForm(json.form as PreparationWarehouseForm)
+      setDirty(false)
       setMessage(status === 'completed' ? 'Preparació finalitzada i reservada correctament.' : 'Esborrany desat correctament.')
       onSaved?.()
     } catch (saveError) {
@@ -450,7 +454,22 @@ export default function PreparationFormDialog({
     }
   }
 
-  const updateCount = (key: keyof PreparationWarehouseForm, value: number) => setForm((current) => ({ ...current, [key]: value }))
+  const updateCount = (key: keyof PreparationWarehouseForm, value: number) => {
+    setDirty(true)
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const selectWarehouse = (code: PreparationWarehouseCode) => {
+    if (code === warehouseCode) return
+    if (dirty && !window.confirm('Hi ha canvis sense desar. Vols canviar de magatzem i descartar-los?')) return
+    setChatOpen(false)
+    setWarehouseCode(code)
+  }
+
+  const changeDialogOpen = (nextOpen: boolean) => {
+    if (!nextOpen && dirty && !window.confirm('Hi ha canvis sense desar. Vols tancar la fitxa i descartar-los?')) return
+    setOpen(nextOpen)
+  }
 
   if (!allowedWarehouses.length) return null
 
@@ -459,7 +478,7 @@ export default function PreparationFormDialog({
       <Button type="button" variant="outline" className="h-11 gap-2 border-emerald-300 bg-white text-emerald-800" onClick={() => setOpen(true)}>
         <ClipboardPen className="h-4 w-4" /> Fitxa de preparació
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={changeDialogOpen}>
         <DialogContent className="h-[96dvh] max-h-[96dvh] gap-0 overflow-hidden p-0 sm:max-w-[calc(100vw-2rem)] lg:max-w-6xl">
           <DialogHeader className="border-b bg-slate-50 px-4 py-4 text-left sm:px-6">
             <DialogTitle className="pr-8 text-xl">{getPreparationEventName(event) || 'Preparació'}</DialogTitle>
@@ -467,7 +486,7 @@ export default function PreparationFormDialog({
             <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-2 overflow-x-auto">
                 {allowedWarehouses.map((warehouse) => (
-                  <button key={warehouse.code} type="button" onClick={() => { setChatOpen(false); setWarehouseCode(warehouse.code) }} className={cn('min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold', warehouse.code === warehouseCode ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-700')}>
+                  <button key={warehouse.code} type="button" onClick={() => selectWarehouse(warehouse.code)} className={cn('min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold', warehouse.code === warehouseCode ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-700')}>
                     {warehouse.label}
                   </button>
                 ))}
@@ -509,28 +528,38 @@ export default function PreparationFormDialog({
                   </div>
                 </section>
 
-                <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="machinery" title="Maquinària" description="Només mostra les unitats disponibles durant l’horari de l’esdeveniment. Els articles nous reben codi MAQ." selected={form.machinery} onChange={(machinery) => setForm((current) => ({ ...current, machinery }))} allowCreate />
+                <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="machinery" title="Maquinària" description="Només mostra les unitats disponibles durant l’horari de l’esdeveniment. Els articles nous reben codi MAQ." selected={form.machinery} onChange={(machinery) => { setDirty(true); setForm((current) => ({ ...current, machinery })) }} allowCreate />
                 <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="small_machinery" title="Maquinària petita" description="Catàleg independent amb codis MAP. Inicialment només mostra els articles creats aquí." selected={form.smallMachinery} onChange={(smallMachinery) => setForm((current) => ({ ...current, smallMachinery }))} allowCreate />
-                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="logistics_pack" title="Packs de logística" description="Catàleg independent amb codis PKL, guardat al magatzem Mobiliari." selected={form.logisticsPacks} onChange={(logisticsPacks) => setForm((current) => ({ ...current, logisticsPacks }))} allowCreate />
-                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="pallet_jack" title="Transpalets" description="Selecciona o crea transpalets amb codis TRP dins del magatzem Maquinària." selected={form.palletJacks} onChange={(palletJacks) => setForm((current) => ({ ...current, palletJacks }))} allowCreate />
+                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="small_machinery" title="Maquinària petita" description="Catàleg independent amb codis MAP. Inicialment només mostra els articles creats aquí." selected={form.smallMachinery} onChange={(smallMachinery) => { setDirty(true); setForm((current) => ({ ...current, smallMachinery })) }} allowCreate />
+                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="logistics_pack" title="Packs de logística" description="Catàleg independent amb codis PKL, guardat al magatzem Mobiliari." selected={form.logisticsPacks} onChange={(logisticsPacks) => { setDirty(true); setForm((current) => ({ ...current, logisticsPacks })) }} allowCreate />
+                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="pallet_jack" title="Transpalets" description="Selecciona o crea transpalets amb codis TRP dins del magatzem Maquinària." selected={form.palletJacks} onChange={(palletJacks) => { setDirty(true); setForm((current) => ({ ...current, palletJacks })) }} allowCreate />
                 </div>
 
                 <section className="space-y-3 rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" /><div><h3 className="font-semibold text-slate-900">Articles no preparats</h3><p className="text-xs text-slate-500">Selecciona articles del magatzem {selectedWarehouse?.label} i indica’n el motiu.</p></div></div>
-                  <MissingArticlesEditor items={form.missingArticles} onChange={(missingArticles) => setForm((current) => ({ ...current, missingArticles }))} />
-                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="assigned" title="Cercar articles del magatzem" description="Selecciona un altre article per afegir-lo a la llista superior." selected={form.missingArticles} onChange={(items) => setForm((current) => ({ ...current, missingArticles: items.map((item) => ({ ...item, reason: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.reason || 'pendent', note: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.note || '', prepared: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.prepared === true })) }))} showSelectedItems={false} />
+                  <MissingArticlesEditor items={form.missingArticles} onChange={(missingArticles) => { setDirty(true); setForm((current) => ({ ...current, missingArticles })) }} />
+                  <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="assigned" title="Cercar articles del magatzem" description="Selecciona un altre article per afegir-lo a la llista superior." selected={form.missingArticles} onChange={(items) => { setDirty(true); setForm((current) => ({ ...current, missingArticles: items.map((item) => ({ ...item, reason: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.reason || 'pendent', note: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.note || '', prepared: current.missingArticles.find((row) => row.articleCode === item.articleCode)?.prepared === true })) })) }} showSelectedItems={false} />
                 </section>
 
-                <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-semibold text-slate-900">Observacions</h3>
+                  {event.PreparacioObservacions ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <div className="text-xs font-bold uppercase tracking-wide text-amber-800">Indicacions de planificació</div>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-amber-950">{event.PreparacioObservacions}</p>
+                    </div>
+                  ) : null}
                   <Label htmlFor={`preparation-notes-${event.id}-${warehouseCode}`} className="font-semibold">Observacions del preparador</Label>
-                  <Textarea id={`preparation-notes-${event.id}-${warehouseCode}`} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} className="min-h-28 text-base" placeholder="Incidències, material pendent o altres indicacions…" />
+                  <Textarea id={`preparation-notes-${event.id}-${warehouseCode}`} value={form.notes} onChange={(event) => { setDirty(true); setForm((current) => ({ ...current, notes: event.target.value })) }} className="min-h-28 text-base" placeholder="Incidències, material pendent o altres indicacions…" />
                 </section>
               </div>
             )}
           </div>
 
-          <div className="flex flex-col gap-2 border-t bg-white p-3 sm:flex-row sm:justify-end sm:p-4">
+          <div className="flex flex-col gap-2 border-t bg-white p-3 sm:flex-row sm:items-center sm:p-4">
+            <div className={cn('text-sm font-semibold sm:mr-auto', dirty ? 'text-amber-700' : message.includes('correctament') ? 'text-emerald-700' : 'text-slate-500')}>
+              {dirty ? 'Canvis sense desar' : message}
+            </div>
             <Button type="button" variant="outline" className="h-12 gap-2" disabled={saving || loading} onClick={() => void save('draft')}><Save className="h-4 w-4" /> Desar esborrany</Button>
             <Button type="button" className="h-12 bg-emerald-600 text-white hover:bg-emerald-700" disabled={saving || loading} onClick={() => void save('completed')}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Finalitzar preparació</Button>
           </div>

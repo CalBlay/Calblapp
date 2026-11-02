@@ -68,3 +68,32 @@ test('dashboard loading never mixes different parent events', () => {
   assert.equal(result.get('parent-1').find((line) => line.key === 'BODEGA:carts').quantity, 2)
   assert.equal(result.get('parent-2').find((line) => line.key === 'BODEGA:carts').quantity, 7)
 })
+
+test('unprepared articles remain visible as pending in truck loading', () => {
+  const pendingForm = form('service-a', 0)
+  pendingForm.missingArticles = [{
+    articleCode: 'ART-001',
+    articleName: 'Copa de vi',
+    quantity: 12,
+    reason: 'pendent',
+    prepared: false,
+  }]
+
+  const result = buildDashboardLoadingLinesByEventKey([
+    { eventKey: 'parent-1', form: pendingForm },
+  ], new Map())
+  const pendingLine = result
+    .get('parent-1')
+    .find((line) => line.key === 'missing:BODEGA:ART-001')
+
+  assert.ok(pendingLine)
+  assert.equal(pendingLine.label, 'Pendent de preparar · Copa de vi')
+  assert.equal(pendingLine.quantity, 12)
+  assert.equal(pendingLine.ready, false)
+  assert.equal(pendingLine.loaded, false)
+  assert.deepEqual(pendingLine.pendingRefs, [{
+    eventRowId: 'service-a',
+    warehouseCode: 'BODEGA',
+    articleCode: 'ART-001',
+  }])
+})

@@ -58,23 +58,26 @@ function LoadingLine({
 }) {
   if (!line.ready) {
     return (
-      <div className="flex min-h-16 items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
-        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-amber-950">{line.label}</div>
-          <div className="text-xs text-amber-800">
-            Quantitat: {line.quantity} ·{' '}
-            {line.pendingResolution === 'left_unprepared'
-              ? `Queda sense preparar${line.pendingResolvedByName ? ` · ${line.pendingResolvedByName}` : ''}`
-              : 'Cal decidir abans de carregar'}
+      <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <div className="break-words font-semibold leading-snug text-amber-950">{line.label}</div>
+            <div className="mt-1 text-xs leading-relaxed text-amber-800">
+              {line.pendingResolution === 'left_unprepared'
+                ? `Queda sense preparar${line.pendingResolvedByName ? ` · ${line.pendingResolvedByName}` : ''}`
+                : 'Cal decidir abans de carregar'}
+            </div>
+          </div>
+          <div className="min-w-12 shrink-0 rounded-lg bg-white px-3 py-2 text-center text-lg font-bold text-amber-950 shadow-sm">
+            {line.quantity}
           </div>
         </div>
         {line.pendingResolution !== 'left_unprepared' && line.pendingRefs?.length ? (
-          <div className="grid shrink-0 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
-              size="sm"
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              className="min-w-0 bg-emerald-600 text-white hover:bg-emerald-700"
               disabled={busy}
               onClick={() => onResolvePending(eventKey, line, 'prepared')}
             >
@@ -82,9 +85,8 @@ function LoadingLine({
             </Button>
             <Button
               type="button"
-              size="sm"
               variant="outline"
-              className="border-red-200 text-red-700 hover:bg-red-50"
+              className="min-w-0 border-red-200 bg-white text-red-700 hover:bg-red-50"
               disabled={busy}
               onClick={() => onResolvePending(eventKey, line, 'left_unprepared')}
             >
@@ -189,7 +191,29 @@ function LoadingEventCard({
           <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${pct}%` }} />
         </div>
       </header>
-      <div className="grid items-start gap-3 p-3 sm:p-4 lg:grid-cols-2 2xl:grid-cols-4">
+      {event.preparationNotes.length ? (
+        <section className="border-b border-slate-200 bg-amber-50 px-4 py-4 sm:px-5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-800">Observacions dels preparadors</h3>
+          <div className="mt-2 grid gap-2 lg:grid-cols-2">
+            {event.preparationNotes.map((note) => {
+              const warehouseName = isPreparationWarehouseCode(note.warehouseCode)
+                ? PREPARATION_WAREHOUSE_LABELS[note.warehouseCode]
+                : note.warehouseCode
+              return (
+                <div key={note.key} className="rounded-xl border border-amber-200 bg-white p-3">
+                  <div className="text-xs font-semibold text-amber-800">
+                    {warehouseName || 'Logística'}
+                    {note.preparationName ? ` · ${note.preparationName}` : ''}
+                    {note.updatedByName ? ` · ${note.updatedByName}` : ''}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{note.notes}</p>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      ) : null}
+      <div className="grid items-start gap-3 p-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))] sm:p-4">
         {orderedWarehouseGroups.map(([warehouseCode, lines]) => {
           const warehouseName = isPreparationWarehouseCode(warehouseCode)
             ? PREPARATION_WAREHOUSE_LABELS[warehouseCode]
