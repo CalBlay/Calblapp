@@ -5,6 +5,11 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import type { AccessUser } from '@/lib/accessControl'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import { normalizeAdaEventCode } from '@/services/sync/adaCodePolicy'
+import {
+  assertCalendarEventCodeAvailable,
+  CalendarCodeConflictError,
+} from '@/lib/calendar/eventCodeConflicts.server'
 
 export const runtime = 'nodejs'
 
@@ -49,7 +54,7 @@ export async function POST(req: Request) {
     const id = `manual_${Date.now()}`
 
     // 🧠 Prepara el payload final
-    const codeValue = String(data.code || '').trim()
+    const codeValue = normalizeAdaEventCode(String(data.code || ''))
     const hasManualCode = codeValue !== ''
 
     const payload: Record<string, unknown> = {
@@ -80,12 +85,31 @@ export async function POST(req: Request) {
     console.log('🔥 Event manual creat:', payload)
 
     // 🔥 Desa al Firestore amb docId personalitzat
-    await firestoreAdmin.collection('stage_verd').doc(id).set(payload)
+    const docRef = firestoreAdmin.collection('stage_verd').doc(id)
+    await firestoreAdmin.runTransaction(async (tx) => {
+      await assertCalendarEventCodeAvailable({
+        db: firestoreAdmin,
+        transaction: tx,
+        code: codeValue,
+      })
+      tx.create(docRef, payload)
+    })
 
     // 🟢 IMPORTANT — Retornem ID perquè CalendarNewEventModal pugui adjuntar fitxers
     return NextResponse.json({ success: true, id }, { status: 200 })
 
   } catch (err: unknown) {
+    if (err instanceof CalendarCodeConflictError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          reason: 'duplicate_event_code',
+          code: err.code,
+          conflicts: err.conflicts,
+        },
+        { status: 409 }
+      )
+    }
     console.error('❌ Error creant esdeveniment manual:', err)
     return NextResponse.json(
       { error: 'Error desant a Firestore', details: err instanceof Error ? err.message : 'Error intern' },

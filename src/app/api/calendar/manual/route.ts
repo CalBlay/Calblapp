@@ -5,6 +5,11 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import type { AccessUser } from '@/lib/accessControl'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import { normalizeAdaEventCode } from '@/services/sync/adaCodePolicy'
+import {
+  assertCalendarEventCodeAvailable,
+  CalendarCodeConflictError,
+} from '@/lib/calendar/eventCodeConflicts.server'
 
 export const runtime = 'nodejs'
 
@@ -42,7 +47,7 @@ export async function POST(req: Request) {
 
     const id = `manual_${Date.now()}`
 
-    const codeValue = String(body.code || '').trim()
+    const codeValue = normalizeAdaEventCode(String(body.code || ''))
     const hasManualCode = codeValue !== ''
 
     const newEvent: Record<string, unknown> = {
@@ -70,10 +75,29 @@ export async function POST(req: Request) {
       newEvent.codeConfirmed = true
     }
 
-    await db.collection('stage_verd').doc(id).set(newEvent)
+    const docRef = db.collection('stage_verd').doc(id)
+    await db.runTransaction(async (tx) => {
+      await assertCalendarEventCodeAvailable({
+        db,
+        transaction: tx,
+        code: codeValue,
+      })
+      tx.create(docRef, newEvent)
+    })
 
     return NextResponse.json({ ok: true, id })
   } catch (err: unknown) {
+    if (err instanceof CalendarCodeConflictError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          reason: 'duplicate_event_code',
+          code: err.code,
+          conflicts: err.conflicts,
+        },
+        { status: 409 }
+      )
+    }
     console.error('âŒ Error POST manual:', err)
     return NextResponse.json(
       { error: 'Error desant a Firestore', details: err instanceof Error ? err.message : 'Error intern' },

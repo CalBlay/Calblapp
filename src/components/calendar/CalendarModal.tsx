@@ -66,6 +66,14 @@ type CalendarEditData = {
   Responsable: string
 }
 
+type CalendarCodeConflict = {
+  id: string
+  collection: string
+  name: string
+  date: string
+  location: string
+}
+
 type CalendarDealRecord = Deal & Record<string, unknown>
 
 const toCalendarPax = (value: unknown): number | string | null => {
@@ -179,6 +187,7 @@ export default function CalendarModal({
   const [comercialPool, setComercialPool] = useState<ComercialCandidate[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
+  const [codeConflicts, setCodeConflicts] = useState<CalendarCodeConflict[]>([])
 
   // Helper per recuperar camps sense importar majúscules/minúscules
   const get = (obj: Record<string, unknown> | null | undefined, ...keys: string[]) => {
@@ -536,6 +545,7 @@ export default function CalendarModal({
     setInitialData(next)
     setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
+    setCodeConflicts([])
     setCancelled(deal.cancelled === true)
   }, [dealRecord, deal.cancelled])
 
@@ -558,6 +568,7 @@ export default function CalendarModal({
       return
     }
     if (field === 'code') {
+      setCodeConflicts([])
       const prevCode = String(initialData?.code || '').trim()
       const nextCode = String(value || '').trim()
       if (prevCode !== nextCode) setCodeDirty(true)
@@ -635,9 +646,39 @@ export default function CalendarModal({
         })
       )
 
-      if (responses.some((res) => !res.ok)) throw new Error('Error desant dades')
+      const responseResults = await Promise.all(
+        responses.map(async (response) => ({
+          response,
+          data: await response.json().catch(() => ({})),
+        }))
+      )
+      const codeConflictResult = responseResults.find(
+        ({ response, data }) =>
+          response.status === 409 && data?.reason === 'duplicate_event_code'
+      )
+      if (codeConflictResult) {
+        const conflicts = Array.isArray(codeConflictResult.data?.conflicts)
+          ? (codeConflictResult.data.conflicts as CalendarCodeConflict[])
+          : []
+        setCodeConflicts(conflicts)
+        const details = conflicts
+          .map((conflict) =>
+            [conflict.name, conflict.date, conflict.location].filter(Boolean).join(' · ')
+          )
+          .join('\n')
+        alert(
+          `${String(codeConflictResult.data?.error || 'Aquest codi ja existeix.')}\n\n${details}`.trim()
+        )
+        return
+      }
+
+      const failedResult = responseResults.find(({ response }) => !response.ok)
+      if (failedResult) {
+        throw new Error(String(failedResult.data?.error || 'Error desant dades'))
+      }
 
       alert('✅ Canvis desats correctament')
+      setCodeConflicts([])
       setOpen(false)
       onSaved?.()
       document.dispatchEvent(new CustomEvent('calendar:reload'))
@@ -834,7 +875,31 @@ export default function CalendarModal({
                 value={editData.code}
                 onChange={(e) => handleChange('code', e.target.value)}
                 placeholder="Codi intern o de document"
+                aria-invalid={codeConflicts.length > 0}
+                aria-describedby={
+                  codeConflicts.length > 0 ? `code-conflicts-${deal.id}` : undefined
+                }
               />
+              {codeConflicts.length > 0 && (
+                <div
+                  id={`code-conflicts-${deal.id}`}
+                  role="alert"
+                  className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800"
+                >
+                  <p className="font-semibold">Aquest codi ja el tenen:</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {codeConflicts.map((conflict) => (
+                      <li key={`${conflict.collection}-${conflict.id}`}>
+                        <span className="font-medium">{conflict.name}</span>
+                        {conflict.date
+                          ? ` · ${formatDateOnly(conflict.date, conflict.date)}`
+                          : ''}
+                        {conflict.location ? ` · ${conflict.location}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             editData.code && (

@@ -1,6 +1,13 @@
 // file: src/services/sync/adaSync.ts
 import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
 import { Agent, request } from 'node:https'
+import {
+  isRepeatablePmCode,
+  normalizeAdaEventCode,
+  reserveAdaEventCode,
+} from './adaCodePolicy'
+
+export { isRepeatablePmCode } from './adaCodePolicy'
 
 type AdaEvent = {
   codigo?: string
@@ -223,7 +230,22 @@ export async function syncAdaEventsToFirestore(opts?: {
   const adaEvents = await fetchAdaEvents(startDate, endDate)
 
   const adaByDate = new Map<string, AdaEvent[]>()
-  for (const ev of adaEvents) {
+  const uniqueAdaCodes = new Set<string>()
+  let duplicateAdaCodes = 0
+  const orderedAdaEvents = [...adaEvents].sort((a, b) => {
+    const dateDiff = dateKey(a.fechaInicio).localeCompare(dateKey(b.fechaInicio))
+    if (dateDiff) return dateDiff
+    return normalizeText(a.descripcion).localeCompare(normalizeText(b.descripcion))
+  })
+  for (const ev of orderedAdaEvents) {
+    const code = normalizeAdaEventCode(ev.codigo)
+    if (code && !isRepeatablePmCode(code)) {
+      if (uniqueAdaCodes.has(code)) {
+        duplicateAdaCodes++
+        continue
+      }
+      uniqueAdaCodes.add(code)
+    }
     const key = dateKey(ev.fechaInicio)
     if (!key) continue
     if (!adaByDate.has(key)) adaByDate.set(key, [])
@@ -236,11 +258,12 @@ export async function syncAdaEventsToFirestore(opts?: {
     .where('DataInici', '<=', endDate)
     .get()
 
-  const batch = firestore.batch()
+  let batch = firestore.batch()
   let pending = 0
   const flush = async () => {
     if (pending > 0) {
       await batch.commit()
+      batch = firestore.batch()
       pending = 0
     }
   }
@@ -253,24 +276,59 @@ export async function syncAdaEventsToFirestore(opts?: {
   let matched2 = 0
   let updated = 0
   let skippedConfirmedCode = 0
+  let repairedDuplicateCodes = 0
 
   const now = new Date().toISOString()
-  const confirmedCodeOwner = new Map<string, string | null>()
+  const codeOwner = new Map<string, string | null>()
 
-  const getConfirmedOwner = async (code: string) => {
-    if (confirmedCodeOwner.has(code)) return confirmedCodeOwner.get(code) || null
+  const getCodeOwner = async (code: string) => {
+    const normalizedCode = normalizeAdaEventCode(code)
+    if (!normalizedCode || isRepeatablePmCode(normalizedCode)) return null
+    if (codeOwner.has(normalizedCode)) {
+      return codeOwner.get(normalizedCode) || null
+    }
     const snap = await firestore
       .collection('stage_verd')
       .where('code', '==', code)
-      .where('codeConfirmed', '==', true)
       .limit(1)
       .get()
     const owner = snap.empty ? null : snap.docs[0].id
-    confirmedCodeOwner.set(code, owner)
+    codeOwner.set(normalizedCode, owner)
     return owner
   }
 
-  for (const doc of stageSnap.docs) {
+  const stageDocs = [...stageSnap.docs].sort((a, b) => {
+    const dateDiff = dateKey((a.data() as StageEvent).DataInici).localeCompare(
+      dateKey((b.data() as StageEvent).DataInici)
+    )
+    return dateDiff || a.id.localeCompare(b.id)
+  })
+
+  // Carrega primer els propietaris dels codis ja assignats dins del rang. Els manuals tenen
+  // prioritat i, entre els automatics antics duplicats, conservem de manera
+  // determinista el primer per data. La resta s'autocorregira en el bucle.
+  for (const manualFirst of [true, false]) {
+    for (const doc of stageDocs) {
+      const data = doc.data() as StageEvent
+      const currentCode = String(data.code || '').trim()
+      const isManual =
+        String(data.codeSource || '').toLowerCase() === 'manual' ||
+        data.manualOverrides?.code === true
+      if (
+        !currentCode ||
+        isRepeatablePmCode(currentCode) ||
+        isManual !== manualFirst
+      ) {
+        continue
+      }
+      const normalizedCode = normalizeAdaEventCode(currentCode)
+      if (!codeOwner.has(normalizedCode)) {
+        codeOwner.set(normalizedCode, doc.id)
+      }
+    }
+  }
+
+  for (const doc of stageDocs) {
     total++
     const data = doc.data() as StageEvent
     const stageDate = dateKey(data.DataInici)
@@ -286,9 +344,31 @@ export async function syncAdaEventsToFirestore(opts?: {
       skippedManual++
       continue
     }
+    const currentCode = String(data.code || '').trim()
+    const currentOwner = await getCodeOwner(currentCode)
+    if (currentCode && currentOwner && currentOwner !== doc.id) {
+      // Autocorreccio de duplicats creats per syncs anteriors. Els codis manuals
+      // no s'han d'alterar mai des d'una sincronitzacio automatica.
+      batch.update(firestore.collection('stage_verd').doc(doc.id), {
+        code: '',
+        codeConfirmed: false,
+        codeMatchScore: 0,
+        codeMatchFields: [],
+        codeSource: 'auto',
+        codeMatchedAt: now,
+      })
+      pending++
+      repairedDuplicateCodes++
+      if (pending >= 450) await flush()
+    } else if (currentCode) {
+      reserveAdaEventCode(codeOwner, currentCode, doc.id)
+    }
+
     if (data.codeConfirmed === true) {
-      skippedConfirmed++
-      continue
+      if (!currentOwner || currentOwner === doc.id) {
+        skippedConfirmed++
+        continue
+      }
     }
 
     const candidates = adaByDate.get(stageDate) || []
@@ -327,10 +407,16 @@ export async function syncAdaEventsToFirestore(opts?: {
     if (confirmed) matched3++
     else matched2++
 
-    const confirmedOwner = await getConfirmedOwner(code)
-    if (confirmedOwner && confirmedOwner !== doc.id) {
+    const existingOwner = await getCodeOwner(code)
+    if (existingOwner && existingOwner !== doc.id) {
       skippedConfirmedCode++
       continue
+    }
+
+    // Reserva immediata dins la mateixa execucio. Sense aquesta reserva, dos
+    // updates del mateix batch veien el codi com a lliure fins al commit.
+    if (!isRepeatablePmCode(code)) {
+      reserveAdaEventCode(codeOwner, code, doc.id)
     }
 
     const existingFields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
@@ -371,6 +457,8 @@ export async function syncAdaEventsToFirestore(opts?: {
     skippedManual,
     skippedConfirmed,
     skippedConfirmedCode,
+    repairedDuplicateCodes,
+    duplicateAdaCodes,
     adaCount: adaEvents.length,
   }
 }

@@ -22,6 +22,7 @@ import { displayCalendarFileName } from '@/lib/calendar/calendarFiles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
+import { formatDateOnly } from '@/lib/date-format'
 
 interface Props {
   date: string           // data de la casella clicada
@@ -76,6 +77,14 @@ type ComercialUserRow = Record<string, unknown>
 
 type ComercialCandidate = { name: string; department: string; roleBucket: string }
 
+type CalendarCodeConflict = {
+  id: string
+  collection: string
+  name: string
+  date: string
+  location: string
+}
+
 /**
  * CalendarNewEventModal
  * - Crea un nou esdeveniment a la col·leccio stage_verd
@@ -96,6 +105,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   >([])
   const [comercialOptions, setComercialOptions] = useState<string[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
+  const [codeConflicts, setCodeConflicts] = useState<CalendarCodeConflict[]>([])
 
   const sessionUser = session?.user as SessionUserFields | undefined
   const role = normLN(sessionUser?.role)
@@ -169,7 +179,10 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   const handleChange = (
     field: keyof EventFormData,
     value: EventFormData[keyof EventFormData]
-  ) => setFormData((prev) => ({ ...prev, [field]: value }))
+  ) => {
+    if (field === 'code') setCodeConflicts([])
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
 
   const currentComercial = useMemo(
     () => String(formData.Comercial || '').trim(),
@@ -363,6 +376,20 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       const data = await res.json()
       console.log('Resposta backend:', data)
 
+      if (res.status === 409 && data?.reason === 'duplicate_event_code') {
+        const conflicts = Array.isArray(data?.conflicts)
+          ? (data.conflicts as CalendarCodeConflict[])
+          : []
+        setCodeConflicts(conflicts)
+        const details = conflicts
+          .map((conflict) =>
+            [conflict.name, conflict.date, conflict.location].filter(Boolean).join(' · ')
+          )
+          .join('\n')
+        alert(`${String(data?.error || 'Aquest codi ja existeix.')}\n\n${details}`.trim())
+        return
+      }
+
       if (!res.ok || !data?.id) {
         throw new Error(data?.error || 'Error backend')
       }
@@ -389,6 +416,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       }
 
       alert('Esdeveniment creat correctament')
+      setCodeConflicts([])
       setOpen(false)
       onSaved?.()
     } catch (err) {
@@ -401,6 +429,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
 
   // Neteja el formulari
   const handleClear = () => {
+    setCodeConflicts([])
     setFormData({
       code: '',
       NomEvent: '',
@@ -510,7 +539,27 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               value={formData.code}
               onChange={(e) => handleChange('code', e.target.value)}
               placeholder="Codi intern o de document"
+              aria-invalid={codeConflicts.length > 0}
+              aria-describedby={codeConflicts.length > 0 ? 'new-event-code-conflicts' : undefined}
             />
+            {codeConflicts.length > 0 && (
+              <div
+                id="new-event-code-conflicts"
+                role="alert"
+                className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800"
+              >
+                <p className="font-semibold">Aquest codi ja el tenen:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {codeConflicts.map((conflict) => (
+                    <li key={`${conflict.collection}-${conflict.id}`}>
+                      <span className="font-medium">{conflict.name}</span>
+                      {conflict.date ? ` · ${formatDateOnly(conflict.date, conflict.date)}` : ''}
+                      {conflict.location ? ` · ${conflict.location}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div>

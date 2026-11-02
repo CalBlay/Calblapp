@@ -15,6 +15,13 @@ import {
   isManualOverrideChange,
   readManualOverrideValues,
 } from '@/lib/calendar/manualOverrides'
+import {
+  normalizeAdaEventCode,
+} from '@/services/sync/adaCodePolicy'
+import {
+  assertCalendarEventCodeAvailable,
+  CalendarCodeConflictError,
+} from '@/lib/calendar/eventCodeConflicts.server'
 
 function accessUserFromSession(user: {
   id: string
@@ -126,6 +133,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const safeData = pickCalendarManualPutFields(data, CALENDAR_MANUAL_OVERRIDE_FIELDS)
 
+    if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
+      safeData.code = normalizeAdaEventCode(String(safeData.code || ''))
+    }
+
     const docRef = db.collection(collection).doc(id)
     const now = new Date().toISOString()
     await db.runTransaction(async (tx) => {
@@ -145,6 +156,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         const prevCode = String(previous.code || '').trim()
         const nextCode = String(safeData.code || '').trim()
         if (prevCode !== nextCode) {
+          await assertCalendarEventCodeAvailable({
+            db,
+            transaction: tx,
+            code: nextCode,
+            exclude: { collection, id },
+          })
           codeMeta = {
             codeSource: 'manual',
             codeConfirmed: Boolean(nextCode),
@@ -196,6 +213,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     console.log(`✅ Esdeveniment ${id} actualitzat correctament a ${collection}`)
     return NextResponse.json({ ok: true })
   } catch (err) {
+    if (err instanceof CalendarCodeConflictError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          reason: 'duplicate_event_code',
+          code: err.code,
+          conflicts: err.conflicts,
+        },
+        { status: 409 }
+      )
+    }
     console.error('❌ Error actualitzant esdeveniment:', err)
     return NextResponse.json({ error: 'Error actualitzant esdeveniment' }, { status: 500 })
   }
