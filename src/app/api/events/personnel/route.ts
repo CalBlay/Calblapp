@@ -7,6 +7,7 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
 import { eventPersonnelIdentityKey } from '@/lib/eventPersonnelIdentity'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 export const runtime = 'nodejs'
 
@@ -81,6 +82,7 @@ type QRow = {
     noShow?: boolean
     leftEarly?: boolean
   }>
+  groups?: Array<Record<string, unknown>>
 }
 
 type PersonnelDoc = {
@@ -89,22 +91,6 @@ type PersonnelDoc = {
   mobile?: string
   tel?: string
   telephone?: string
-}
-
-type QuadrantLinePerson = {
-  id?: string
-  name?: string
-  meetingPoint?: string
-  time?: string
-  hour?: string
-  endTime?: string
-  endTimeReal?: string
-  sortidaNotes?: string
-  noShow?: boolean
-  leftEarly?: boolean
-  plate?: string
-  matricula?: string
-  vehiclePlate?: string
 }
 
 type PersonnelListEntry = {
@@ -296,52 +282,29 @@ export async function GET(req: NextRequest) {
 
     for (const q of filtered) {
       const dept = q.department
-      const qMeeting = q.meetingPoint
-      const qTime = q.startTime || q.hour || q.convocatoria
       const sourceUpdatedAt =
         toMillis(q.updatedAt) || toMillis(q.confirmedAt) || toMillis(q.createdAt)
-
-      if (q.responsableName) {
+      for (const person of collectQuadrantLinePersonnel(q)) {
+        const plate =
+          person.role === 'conductor'
+            ? String(person.plate || person.matricula || person.vehiclePlate || '')
+            : ''
         people.push({
-          name: q.responsableName,
-          role: 'responsable',
+          id: person.id,
+          name: person.name,
+          role: person.role,
           department: dept,
-          meetingPoint: qMeeting,
-          time: qTime,
+          meetingPoint: person.meetingPoint,
+          time: person.startTime,
+          endTime: person.endTime,
+          endTimeReal: String(person.endTimeReal || ''),
+          notes: String(person.sortidaNotes || ''),
+          noShow: person.noShow === true,
+          leftEarly: person.leftEarly === true,
           sourceUpdatedAt,
+          ...(plate ? { plate } : {}),
         })
       }
-
-      const each = (arr: QuadrantLinePerson[] | undefined, role: string) => {
-        if (!Array.isArray(arr)) return
-        for (const p of arr) {
-          const name = (p?.name || '').trim()
-          if (!name) continue
-          const plate =
-            role === 'conductor'
-              ? String(p.plate || p.matricula || p.vehiclePlate || '')
-              : ''
-          people.push({
-            id: p.id,
-            name,
-            role,
-            department: dept,
-            meetingPoint: p.meetingPoint || qMeeting,
-            time: p.time || p.hour || qTime,
-            endTime: p.endTime || q.endTime || '',
-            endTimeReal: p.endTimeReal || '',
-            notes: p.sortidaNotes || '',
-            noShow: !!p.noShow,
-            leftEarly: !!p.leftEarly,
-            sourceUpdatedAt,
-            ...(plate ? { plate: String(plate) } : {}),
-          })
-        }
-      }
-
-      each(q.conductors, 'conductor')
-      each(q.treballadors, 'treballador')
-      each(q.workers, 'treballador')
     }
 
     const dedupMap = new Map<string, PersonnelListEntry>()

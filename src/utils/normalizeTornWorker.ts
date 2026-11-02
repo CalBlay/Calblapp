@@ -12,6 +12,7 @@ export interface NormalizedWorker {
   meetingPoint: string
   department: string
   plate?: string
+  groupId?: string
 }
 
 /** Fila de treballador des d’API / Firestore (formes històriques diverses). */
@@ -32,6 +33,7 @@ export type TornWorkerInput = {
   matricula?: unknown
   vehiclePlate?: unknown
   vehicle?: { plate?: unknown } | null
+  groupId?: unknown
 }
 
 const norm = (s?: string | null): string =>
@@ -101,5 +103,6 @@ export function normalizeTornWorker(w?: TornWorkerInput | null): NormalizedWorke
     meetingPoint,
     department: dept || 'sense departament',
     plate: plate || undefined,
+    groupId: w?.groupId ? String(w.groupId) : undefined,
   }
 }

@@ -1,6 +1,7 @@
 // filename: src/services/tornsService.ts
 
 import { normalizeTornWorker, type NormalizedWorker } from '@/utils/normalizeTornWorker'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 export type Torn = {
   id: string
@@ -45,6 +46,7 @@ export interface RawWorker {
   matricula?: string
   vehiclePlate?: string
   vehicleType?: string
+  groupId?: string
 }
 
 // ───────────────── Helpers bàsics ─────────────────
@@ -155,6 +157,7 @@ type TornDoc = {
   responsableId?: string
   responsableName?: string
   groups?: Array<{
+    id?: string | null
     serviceDate?: string
     meetingPoint?: string
     startTime?: string
@@ -210,15 +213,6 @@ function mapDocToTorn(
   const vestimentModelRaw = String(doc.vestimentModel ?? '').trim()
   const vestimentModel = vestimentModelRaw || undefined
 
-  const arrTreballadors = Array.isArray(doc?.treballadors) ? doc.treballadors : []
-  const arrConductors = Array.isArray(doc?.conductors) ? doc.conductors : []
-  const arrResponsables = Array.isArray(doc?.responsables) ? doc.responsables : []
-  const responsableObj =
-    doc?.responsable ??
-    ((doc?.responsableName || doc?.responsableId)
-      ? { id: doc.responsableId as string, name: doc.responsableName as string }
-      : undefined)
-
   const unified: NormalizedWorker[] = []
   const rolePriority: Record<NormalizedWorker['role'], number> = {
     responsable: 3,
@@ -242,6 +236,8 @@ function mapDocToTorn(
 
     const normalizedName = norm(normalized.name)
     const existingIndex = unified.findIndex((candidate) => {
+      const sameGroup = (candidate.groupId || '') === (normalized.groupId || '')
+      if (!sameGroup) return false
       if (normalized.id && candidate.id && candidate.id === normalized.id) return true
       if (normalizedName && norm(candidate.name) === normalizedName) return true
       return false
@@ -268,10 +264,9 @@ function mapDocToTorn(
     unified[existingIndex] = merged
   }
 
-  for (const w of arrTreballadors) pushUnified(w, 'treballador')
-  for (const w of arrConductors) pushUnified(w, 'conductor')
-  for (const w of arrResponsables) pushUnified(w, 'responsable')
-  if (responsableObj) pushUnified(responsableObj as RawWorker, 'responsable')
+  for (const person of collectQuadrantLinePersonnel(d)) {
+    pushUnified(person as RawWorker, person.role)
+  }
 
   return {
     id: String(id || ''),
@@ -363,12 +358,17 @@ async function fetchDeptCollectionRange(
         seen.add(key)
 
         if (!rangesOverlap(gDate, gDate, startISO, endISO)) continue
-        const groupWorkers = Array.isArray(t.__rawWorkers)
-          ? t.__rawWorkers.map((w) => ({
+        const workersForGroup = Array.isArray(t.__rawWorkers)
+          ? t.__rawWorkers.filter(
+              (worker) => !worker.groupId || worker.groupId === String(g?.id || '')
+            )
+          : []
+        const groupWorkers = workersForGroup.length
+          ? workersForGroup.map((w) => ({
               ...w,
-              startTime: gStart || w.startTime,
-              endTime: gEnd || w.endTime,
-              meetingPoint: gMeeting || w.meetingPoint,
+              startTime: w.startTime || gStart,
+              endTime: w.endTime || gEnd,
+              meetingPoint: w.meetingPoint || gMeeting,
             }))
           : t.__rawWorkers
 

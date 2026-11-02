@@ -157,6 +157,11 @@ export type InternalWorkerLine = {
   name: string
   meetingPoint: string
   isJamonero?: boolean
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  arrivalTime?: string | null
 }
 
 export type ExternalWorkerLine = {
@@ -213,6 +218,17 @@ export type QuadrantSaveRequestBody = {
     driverNames?: string[]
     staffNames?: string[]
   }
+  manualWorkers?: Array<{
+    id?: string
+    name?: string
+    serviceDate?: string
+    startDate?: string
+    endDate?: string
+    meetingPoint?: string
+    startTime?: string
+    endTime?: string
+    arrivalTime?: string | null
+  }>
 }
 
 export type JamoneroAssignmentRaw = {

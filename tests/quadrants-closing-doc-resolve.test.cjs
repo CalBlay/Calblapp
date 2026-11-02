@@ -79,6 +79,29 @@ test('applyClosingUpdatesToQuadrantData writes endTimeReal onto phase-doc worker
   assert.equal(payload.updatedAt, '2026-07-26T12:00:00.000Z')
 })
 
+test('applyClosingUpdatesToQuadrantData also updates the matching role line', () => {
+  const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
+    data: {
+      groups: [
+        {
+          id: 'line-a',
+          roleLines: [
+            { personId: 'w1', personName: 'Anna', startTime: '10:00', endTime: '18:00' },
+          ],
+        },
+      ],
+    },
+    updates: [{ name: 'Anna', endTimeReal: '18:30', notes: 'ok' }],
+    department: 'serveis',
+    nowIso: '2026-11-02T12:00:00.000Z',
+    userId: 'user-1',
+  })
+
+  assert.equal(matchedPeople, 1)
+  assert.equal(payload.groups[0].roleLines[0].endTimeReal, '18:30')
+  assert.equal(payload.groups[0].roleLines[0].sortidaNotes, 'ok')
+})
+
 test('closing would miss phase docs if it only looked up collection.doc(eventId)', () => {
   const eventId = 'deal-999'
   const phaseOnly = selectClosingQuadrantDocs({

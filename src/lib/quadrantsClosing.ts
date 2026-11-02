@@ -49,6 +49,34 @@ function updateArray(
   return { next, matched }
 }
 
+function updateGroupRoleLines(
+  groups: ClosingRow[] | undefined,
+  updates: ClosingPersonUpdate[],
+  setter: (item: ClosingRow, upd: ClosingPersonUpdate) => void
+) {
+  if (!Array.isArray(groups)) return { next: groups, matched: 0 }
+  let matched = 0
+  const next = groups.map((group) => {
+    if (!Array.isArray(group.roleLines)) return group
+    const roleLines = (group.roleLines as ClosingRow[]).map((line) => {
+      const lineName =
+        typeof line.personName === 'string'
+          ? line.personName
+          : typeof line.name === 'string'
+            ? line.name
+            : undefined
+      const update = updates.find((item) => matchByName(item.name, lineName))
+      if (!update) return line
+      matched += 1
+      const cloned = { ...line }
+      setter(cloned, update)
+      return cloned
+    })
+    return { ...group, roleLines }
+  })
+  return { next, matched }
+}
+
 /**
  * Prefer docs discovered by `eventId` field (phase / per-day ids like
  * `${eventId}__event__2026-07-20__event`). Fall back to a legacy
@@ -115,12 +143,18 @@ export function applyClosingUpdatesToQuadrantData(params: {
     updates,
     setter
   )
+  const updatedGroups = updateGroupRoleLines(
+    Array.isArray(data.groups) ? (data.groups as ClosingRow[]) : undefined,
+    updates,
+    setter
+  )
 
   const matchedPeople =
     updatedResponsable.matched +
     updatedConductors.matched +
     updatedTreballadors.matched +
-    updatedWorkers.matched
+    updatedWorkers.matched +
+    updatedGroups.matched
 
   const payload: Record<string, unknown> = {
     updatedAt: nowIso,
@@ -135,6 +169,7 @@ export function applyClosingUpdatesToQuadrantData(params: {
   if (updatedConductors.next) payload.conductors = updatedConductors.next
   if (updatedTreballadors.next) payload.treballadors = updatedTreballadors.next
   if (updatedWorkers.next) payload.workers = updatedWorkers.next
+  if (updatedGroups.next) payload.groups = updatedGroups.next
 
   if (closeDept) {
     const prevRaw = data.closedByDept

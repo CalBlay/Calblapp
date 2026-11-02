@@ -1,6 +1,7 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
 import { getExternalWorkerTypeFromName, hasEttWorkerMarker } from '@/lib/quadrantExternalWorkers'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 import type {
   EventsWorkersDepartmentRow,
   EventsWorkersEntryRow,
@@ -74,6 +75,7 @@ type QuadrantDoc = {
   conductors?: QuadrantPersonLine[]
   treballadors?: QuadrantPersonLine[]
   workers?: QuadrantPersonLine[]
+  groups?: Array<Record<string, unknown>>
 }
 
 type PersonnelDoc = {
@@ -229,56 +231,27 @@ function collectPersonLines(doc: QuadrantDoc) {
   }> = []
 
   const department = String(doc.department || '').trim()
-  const docStart = String(doc.startTime || doc.hour || doc.convocatoria || '').trim()
-  const docEnd = String(doc.endTime || '').trim()
-
-  const push = (person: QuadrantPersonLine | null | undefined, role: string, isResponsible = false) => {
-    if (!person) return
-    const name = String(person.name || '').trim()
-    if (!name) return
+  for (const person of collectQuadrantLinePersonnel(doc)) {
+    const name = person.name
+    const externalType = String(person.externalType || '')
     lines.push({
       name,
-      role,
-      isResponsible,
+      role: person.role,
+      isResponsible: person.role === 'responsable',
       department,
-      plannedStartTime: String(person.startTime || person.time || person.hour || docStart || '').trim(),
-      plannedEndTime: String(person.endTime || docEnd || '').trim(),
+      plannedStartTime: person.startTime,
+      plannedEndTime: person.endTime,
       realEndTime: String(person.endTimeReal || '').trim(),
       noShow: person.noShow === true,
       leftEarly: person.leftEarly === true,
       isEtt:
-        person.externalType === 'ett' ||
+        externalType === 'ett' ||
         getExternalWorkerTypeFromName(name) === 'ett' ||
         hasEttWorkerMarker(name) ||
-        (person.isExternal === true && person.externalType !== 'centerExternalExtra'),
+        (person.isExternal === true && externalType !== 'centerExternalExtra'),
       notes: String(person.sortidaNotes || '').trim(),
     })
   }
-
-  push(doc.responsable, 'responsable', true)
-
-  if (!doc.responsable && doc.responsableName) {
-    push(
-      {
-        name: doc.responsableName,
-        startTime: docStart,
-        endTime: docEnd,
-      },
-      'responsable',
-      true
-    )
-  }
-
-  ;(Array.isArray(doc.responsables) ? doc.responsables : []).forEach((line) =>
-    push(line, 'responsable', true)
-  )
-  ;(Array.isArray(doc.conductors) ? doc.conductors : []).forEach((line) =>
-    push(line, 'conductor')
-  )
-  ;(Array.isArray(doc.treballadors) ? doc.treballadors : []).forEach((line) =>
-    push(line, 'treballador')
-  )
-  ;(Array.isArray(doc.workers) ? doc.workers : []).forEach((line) => push(line, 'treballador'))
 
   return lines
 }

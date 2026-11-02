@@ -6,6 +6,7 @@ import type {
   QuadrantSave,
   QuadrantSaveRequestBody,
 } from '@/lib/quadrantsPost/types'
+import { attachManualWorkerLineSchedules } from '@/lib/quadrantLinePersonnel'
 
 export function buildQuadrantSave(
   deptNorm: string,
@@ -48,11 +49,22 @@ export function buildQuadrantSave(
     ? bodyForSave.externalWorkers.filter((s) => s?.name)
     : []
   const staffClean = staffRaw.filter((s) => s.name !== 'Extra')
-  const internalWorkerLines: InternalWorkerLine[] = staffClean.map((s) => ({
-    name: s.name,
-    meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
-    isJamonero: s.isJamonero === true,
-  }))
+  const internalWorkerLines: InternalWorkerLine[] = attachManualWorkerLineSchedules(
+    staffClean.map((s) => ({
+      name: s.name,
+      meetingPoint: s.meetingPoint,
+      isJamonero: s.isJamonero === true,
+    })),
+    Array.isArray(bodyForSave.manualWorkers) ? bodyForSave.manualWorkers : [],
+    {
+      startDate: bodyForSave.startDate,
+      endDate: bodyForSave.endDate,
+      startTime: bodyForSave.startTime,
+      endTime: bodyForSave.endTime,
+      meetingPoint: bodyForSave.meetingPoint,
+      arrivalTime: bodyForSave.arrivalTime,
+    }
+  )
   const externalWorkerLines: ExternalWorkerLine[] = externalWorkersRaw.map((worker) => ({
     id: String(worker.id || '').trim(),
     groupId: String(worker.groupId || worker.ettGroupKey || '').trim(),
