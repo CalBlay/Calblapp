@@ -4,55 +4,17 @@ import {
   type OverlapBusySnapshot,
 } from '@/lib/quadrantOverlapGuard'
 import type { QuadrantSave } from '@/lib/quadrantsPost/types'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 export function extractOverlapAssignmentsFromQuadrantSave(doc: QuadrantSave) {
-  const assignments: Array<{
-    id?: string | null
-    name?: string | null
-    startDate: string
-    endDate?: string | null
-    startTime?: string | null
-    endTime?: string | null
-  }> = []
-  const push = (entry: {
-    id?: string | null
-    name?: string | null
-    startDate?: string | null
-    endDate?: string | null
-    startTime?: string | null
-    endTime?: string | null
-  }) => {
-    const id = String(entry.id || '').trim()
-    const name = String(entry.name || '').trim()
-    const startDate = String(entry.startDate || doc.startDate || '').trim()
-    const endDate = String(entry.endDate || doc.endDate || startDate).trim()
-    const startTime = String(entry.startTime || doc.startTime || '00:00').trim() || '00:00'
-    const endTime = String(entry.endTime || doc.endTime || '23:59').trim() || '23:59'
-    if ((!id && !name) || !startDate || !endDate) return
-    assignments.push({ id: id || null, name: name || null, startDate, endDate, startTime, endTime })
-  }
-
-  push({
-    name: doc.responsableName || doc.responsable?.name || null,
-    startDate: doc.startDate,
-    endDate: doc.endDate,
-    startTime: doc.startTime,
-    endTime: doc.endTime,
-  })
-  ;(doc.conductors || []).forEach((line) => push(line))
-  ;(doc.treballadors || []).forEach((line) => push(line))
-  ;(doc.groups || []).forEach((group) =>
-    push({
-      id: group.responsibleId || null,
-      name: group.responsibleName || null,
-      startDate: (group as { serviceDate?: string | null }).serviceDate || doc.startDate,
-      endDate: (group as { serviceDate?: string | null }).serviceDate || doc.endDate || doc.startDate,
-      startTime: group.startTime || doc.startTime,
-      endTime: group.endTime || doc.endTime,
-    })
-  )
-
-  return assignments
+  return collectQuadrantLinePersonnel(doc).map((person) => ({
+    id: person.id || null,
+    name: person.name || null,
+    startDate: person.startDate,
+    endDate: person.endDate,
+    startTime: person.startTime,
+    endTime: person.endTime,
+  }))
 }
 
 export function createOverlapGuard(

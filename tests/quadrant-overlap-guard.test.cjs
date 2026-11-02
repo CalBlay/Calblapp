@@ -198,7 +198,7 @@ test('extractOverlapAssignmentsFromQuadrantSave collects personnel and group res
   })
 
   assert.equal(assignments.length, 4)
-  assert.equal(assignments[0].name, 'Resp One')
+  assert.ok(assignments.some((assignment) => assignment.name === 'Resp One'))
   assert.deepEqual(
     assignments.find((a) => a.id === 'c1'),
     {
@@ -221,4 +221,101 @@ test('extractOverlapAssignmentsFromQuadrantSave collects personnel and group res
       endTime: '15:00',
     }
   )
+})
+
+test('overlap uses each busy role-line interval instead of the event header', async () => {
+  const busyDoc = {
+    collectionId: 'quadrants_serveis',
+    docId: 'busy-lines',
+    doc: {
+      eventId: 'other-event',
+      startDate: '2026-11-10',
+      endDate: '2026-11-10',
+      startTime: '08:00',
+      endTime: '22:00',
+      treballadors: [{ id: 'w1', name: 'Anna' }],
+      groups: [
+        {
+          id: 'line-a',
+          serviceDate: '2026-11-10',
+          startTime: '10:00',
+          endTime: '12:00',
+          roleLines: [
+            { personId: 'w1', personName: 'Anna', role: 'treballador' },
+          ],
+        },
+      ],
+    },
+  }
+
+  const outsideWorkerLine = await findQuadrantOverlapConflicts({
+    assignments: [
+      {
+        id: 'w1',
+        name: 'Anna',
+        startDate: '2026-11-10',
+        endDate: '2026-11-10',
+        startTime: '13:00',
+        endTime: '14:00',
+      },
+    ],
+    preloadedBusyDocs: [busyDoc],
+  })
+  assert.equal(outsideWorkerLine.length, 0)
+
+  const insideWorkerLine = await findQuadrantOverlapConflicts({
+    assignments: [
+      {
+        id: 'w1',
+        name: 'Anna',
+        startDate: '2026-11-10',
+        endDate: '2026-11-10',
+        startTime: '11:00',
+        endTime: '13:00',
+      },
+    ],
+    preloadedBusyDocs: [busyDoc],
+  })
+  assert.equal(insideWorkerLine.length, 1)
+  assert.equal(insideWorkerLine[0].busy.startTime, '10:00')
+  assert.equal(insideWorkerLine[0].busy.endTime, '12:00')
+})
+
+test('new overlap assignments take hours from the worker role line', () => {
+  const assignments = extractOverlapAssignmentsFromQuadrantSave({
+    eventId: 'new-event',
+    startDate: '2026-11-10',
+    endDate: '2026-11-10',
+    startTime: '08:00',
+    endTime: '22:00',
+    treballadors: [{ id: 'w1', name: 'Anna' }],
+    groups: [
+      {
+        id: 'line-a',
+        serviceDate: '2026-11-10',
+        startTime: '10:00',
+        endTime: '12:00',
+        roleLines: [
+          {
+            personId: 'w1',
+            personName: 'Anna',
+            role: 'treballador',
+            startTime: '10:30',
+            endTime: '11:45',
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.deepEqual(assignments, [
+    {
+      id: 'w1',
+      name: 'Anna',
+      startDate: '2026-11-10',
+      endDate: '2026-11-10',
+      startTime: '10:30',
+      endTime: '11:45',
+    },
+  ])
 })

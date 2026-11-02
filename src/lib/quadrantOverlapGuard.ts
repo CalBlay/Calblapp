@@ -3,6 +3,7 @@ import {
   type QuadrantDoc,
 } from '@/utils/personnelRest'
 import { getQuadrantOverlapCacheGeneration } from '@/lib/quadrantOverlapCacheState'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 const BUSY_DOCS_CACHE_TTL_MS = 90_000
 const busyDocsCache = new Map<
@@ -78,55 +79,21 @@ const parseRange = (entry: AssignmentRef) => {
   }
 }
 
-const pushBusyLine = (
-  lines: BusyLine[],
-  ref: AssignmentRef | null | undefined,
-  base: QuadrantDoc,
-  source: BusySource
-) => {
-  if (!ref) return
-  const id = String(ref.id || '').trim()
-  const name = String(ref.name || '').trim()
-  if (!id && !name) return
-  lines.push({
-    id: id || null,
-    name: name || null,
-    startDate: String(ref.startDate || base.startDate || '').trim(),
-    endDate: String(ref.endDate || base.endDate || base.startDate || '').trim(),
-    startTime: String(ref.startTime || base.startTime || '00:00').trim() || '00:00',
-    endTime: String(ref.endTime || base.endTime || '23:59').trim() || '23:59',
-    source,
-  })
-}
-
 const extractBusyLines = (
   doc: QuadrantDoc & { eventId?: string; status?: string },
   source: BusySource
 ) => {
-  const lines: BusyLine[] = []
-  pushBusyLine(lines, doc.responsable || null, doc, source)
-  if (doc.responsableName) {
-    pushBusyLine(lines, { name: doc.responsableName }, doc, source)
-  }
-  ;(doc.responsables || []).forEach((line) => pushBusyLine(lines, line, doc, source))
-  ;(doc.conductors || []).forEach((line) => pushBusyLine(lines, line, doc, source))
-  ;(doc.treballadors || []).forEach((line) => pushBusyLine(lines, line, doc, source))
-  ;(doc.groups || []).forEach((group) =>
-    pushBusyLine(
-      lines,
-      {
-        id: group.responsibleId || null,
-        name: group.responsibleName || null,
-        startDate: group.startDate || doc.startDate,
-        endDate: group.endDate || doc.endDate || doc.startDate,
-        startTime: group.startTime || doc.startTime,
-        endTime: group.endTime || doc.endTime,
-      },
-      doc,
-      source
-    )
+  return collectQuadrantLinePersonnel(doc).map(
+    (person): BusyLine => ({
+      id: person.id || null,
+      name: person.name || null,
+      startDate: person.startDate,
+      endDate: person.endDate,
+      startTime: person.startTime,
+      endTime: person.endTime,
+      source,
+    })
   )
-  return lines
 }
 
 export type OverlapBusySnapshot = Array<{

@@ -144,8 +144,14 @@ function scheduledPerson(params: {
     text(line.serviceDate || line.startDate) ||
     text(group.serviceDate || group.startDate) ||
     text(doc.phaseDate || doc.startDate || doc.date)
+  const hasLineDate = Boolean(
+    text(line.serviceDate || line.startDate || group.serviceDate || group.startDate)
+  )
   const endDate =
-    text(line.endDate) || text(group.endDate) || text(doc.endDate) || startDate
+    text(line.endDate) ||
+    text(group.endDate) ||
+    (hasLineDate ? startDate : text(doc.endDate)) ||
+    startDate
 
   return {
     ...base,
@@ -199,6 +205,34 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
       const baseKey = base ? identity(base) : ''
       if (baseKey) represented.add(baseKey)
     }
+
+    const pushLegacyGroupPerson = (
+      role: QuadrantPersonnelRole,
+      idValue: unknown,
+      nameValue: unknown
+    ) => {
+      const id = text(idValue)
+      const name = text(nameValue)
+      if (!id && !name) return
+      const alreadyInRoleLines = roleLines.some((line) => {
+        if (roleOf(line.role, 'treballador') !== role) return false
+        const lineId = text(line.personId || line.id)
+        if (id && lineId && id === lineId) return true
+        return Boolean(name && norm(line.personName || line.name) === norm(name))
+      })
+      if (alreadyInRoleLines) return
+
+      const line: UnknownRow = { personId: id, personName: name, role }
+      const base = findBasePerson(people, line)
+      const person = scheduledPerson({ doc, base, line, group, fallbackRole: role })
+      if (!person) return
+      result.push(person)
+      const baseKey = base ? identity(base) : ''
+      if (baseKey) represented.add(baseKey)
+    }
+
+    pushLegacyGroupPerson('responsable', group.responsibleId, group.responsibleName)
+    pushLegacyGroupPerson('conductor', group.driverId, group.driverName)
   }
 
   for (const base of people) {

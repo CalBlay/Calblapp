@@ -8,6 +8,7 @@ import { isResponsiblePerson } from '@/lib/personnelRoles'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { evaluateRangeEligibility } from '@/services/eligibility'
 import { worksInDepartment } from '@/lib/additionalWorkDepartments'
+import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 import {
   loadPersonnelRules,
   listQuadrantCollections,
@@ -268,48 +269,16 @@ export async function GET(request: NextRequest) {
             status: String(q?.status || '').trim() || undefined,
           }
 
-          addRangesFromRef(occupancyIndex, q.responsable || null, q, {
-            ...baseSource,
-            role: 'responsable',
-          })
-          if (q.responsableName)
-            addRangesFromRef(occupancyIndex, { name: q.responsableName }, q, {
+          collectQuadrantLinePersonnel(q).forEach((person) =>
+            addRangesFromRef(occupancyIndex, person, q, {
               ...baseSource,
-              role: 'responsableName',
+              role: `line.${person.role}`,
             })
-          if (Array.isArray(q.responsables))
-            q.responsables.forEach((line) =>
-              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'responsables' })
-            )
-          if (Array.isArray(q.conductors))
-            q.conductors.forEach((line) =>
-              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'conductors' })
-            )
-          if (Array.isArray(q.treballadors))
-            q.treballadors.forEach((line) =>
-              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'treballadors' })
-            )
+          )
           const legacyExternalWorkers = readLegacyExternalWorkersFromDoc(q)
           legacyExternalWorkers.forEach((line) =>
             addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'legacyExternalWorkers' })
           )
-          if (Array.isArray(q.groups)) {
-            q.groups.forEach((group) => {
-              addRangesFromRef(
-                occupancyIndex,
-                {
-                  id: group.responsibleId || undefined,
-                  name: group.responsibleName || undefined,
-                  startDate: group.startDate,
-                  startTime: group.startTime,
-                  endDate: group.endDate,
-                  endTime: group.endTime,
-                },
-                q,
-                { ...baseSource, role: 'groups.responsible' }
-              )
-            })
-          }
         })
       } catch (error) {
         console.error(`[available] Error reading ${colId}:`, error)
