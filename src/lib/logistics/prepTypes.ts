@@ -27,6 +27,8 @@ export type LogisticsEventPrepRow = {
   DataInici: string
   DataVisual?: string
   HoraInici?: string
+  DataFi?: string
+  HoraFi?: string
   EventDate?: string
   EventTime?: string
   ServiceName?: string
@@ -44,6 +46,44 @@ export type LogisticsEventPrepRow = {
   /** @deprecated Usa PreparacioMagatzems */
   PreparacioFetaAt?: string
   PreparacioMagatzems?: PreparationWarehouseCompletionMap
+}
+
+export type PreparationArticleSelection = {
+  articleCode: string
+  articleName: string
+  quantity: number
+}
+
+export type PreparationMissingArticle = PreparationArticleSelection & {
+  reason?: 'sense_estoc' | 'trencat' | 'no_localitzat' | 'pendent' | 'altre'
+  note?: string
+  prepared?: boolean
+  loadingResolution?: 'prepared' | 'left_unprepared'
+  loadingResolvedAt?: number
+  loadingResolvedByUserId?: string
+  loadingResolvedByUserName?: string
+}
+
+export type PreparationWarehouseForm = {
+  eventRowId: string
+  warehouseCode: PreparationWarehouseCode
+  carts: number
+  euroPallets: number
+  americanPallets: number
+  racks: number
+  gelPileBags: number
+  gelStoneBags: number
+  gelMojitoBags: number
+  machinery: PreparationArticleSelection[]
+  smallMachinery: PreparationArticleSelection[]
+  logisticsPacks: PreparationArticleSelection[]
+  palletJacks: PreparationArticleSelection[]
+  missingArticles: PreparationMissingArticle[]
+  notes: string
+  status: 'draft' | 'completed'
+  updatedAt?: number
+  updatedByUserId?: string
+  updatedByUserName?: string
 }
 
 export type LogisticsWarehousePrepRow = {

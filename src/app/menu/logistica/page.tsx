@@ -11,6 +11,7 @@ import {
   CalendarClock,
   Route,
   CarFront,
+  PackageCheck,
 } from 'lucide-react'
 import { getVisibleModules, MODULES } from '@/lib/accessControl'
 
@@ -21,6 +22,12 @@ const LOGISTICS_CARD_MAP = {
     title: 'Preparació',
     description: 'Planificació i preparació',
     icon: ClipboardCheck,
+    tone: 'emerald',
+  },
+  'carrega-camions': {
+    title: 'Càrrega de camions',
+    description: 'Checklist de càrrega per esdeveniment',
+    icon: PackageCheck,
     tone: 'emerald',
   },
   assignacions: {

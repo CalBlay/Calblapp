@@ -2,6 +2,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import type { Dispatch, SetStateAction } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
@@ -44,6 +45,11 @@ import {
 import PreparationWarehouseToggles, {
   type AllowedPreparationWarehouse,
 } from '@/components/logistics/PreparationWarehouseToggles'
+
+const PreparationFormDialog = dynamic(
+  () => import('@/components/logistics/PreparationFormDialog'),
+  { ssr: false }
+)
 import { cn } from '@/lib/utils'
 
 export type EditedFields = {
@@ -223,6 +229,7 @@ export default function LogisticsGrid({
             allowedWarehouses={displayWarehouses}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
+            onRefresh={onRefresh}
             onToggleWarehousePrepared={onToggleWarehousePrepared}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
@@ -350,6 +357,7 @@ function WorkerGroupedView({
   allowedWarehouses,
   currentUserId,
   currentUserName,
+  onRefresh,
   onToggleWarehousePrepared,
   onWarehouseComandaClick,
 }: {
@@ -359,6 +367,7 @@ function WorkerGroupedView({
   allowedWarehouses: AllowedPreparationWarehouse[]
   currentUserId?: string
   currentUserName?: string
+  onRefresh: () => void
   onToggleWarehousePrepared?: (
     rowId: string,
     warehouse: PreparationWarehouseCode,
@@ -517,6 +526,11 @@ function WorkerGroupedView({
                             allowedWarehouses={allowedWarehouses}
                             onToggle={onToggleWarehousePrepared}
                           />
+                          <PreparationFormDialog
+                            event={ev}
+                            allowedWarehouses={allowedWarehouses}
+                            onSaved={onRefresh}
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -584,6 +598,13 @@ function WorkerGroupedView({
                                 allowedWarehouses={allowedWarehouses}
                                 onToggle={onToggleWarehousePrepared}
                               />
+                              <div className="mt-2">
+                                <PreparationFormDialog
+                                  event={ev}
+                                  allowedWarehouses={allowedWarehouses}
+                                  onSaved={onRefresh}
+                                />
+                              </div>
                             </td>
                           ) : null}
                         </tr>

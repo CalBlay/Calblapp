@@ -6,9 +6,9 @@ import {
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
 import {
-  COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
 } from '@/lib/commercialReservations'
+import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
 import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
@@ -219,8 +219,8 @@ export async function GET(req: Request) {
       })
     }
 
-    const reservationSnap = await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get()
-    const reservationItems = reservationSnap.docs
+    const reservationDocs = await queryCommercialReservationDocsByRange(start, end)
+    const reservationItems = reservationDocs
       .map((doc): Item | null => {
         const reservation = doc.data() as CommercialReservationRecord
         const day = String(reservation.date || '').trim()

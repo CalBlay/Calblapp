@@ -9,6 +9,7 @@ import {
   isCommercialReservationVehicleReassignment,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
+import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
 import type { AccessUser } from '@/lib/accessControl'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { PERM } from '@/lib/permissionKeys'
@@ -102,9 +103,12 @@ async function createUserNotification(params: {
 }
 
 async function findAvailableCommercialVehicle(target: CommercialReservation) {
-  const [vehiclesSnap, reservationsSnap] = await Promise.all([
+  const [vehiclesSnap, reservationDocs] = await Promise.all([
     db.collection('transports').get(),
-    db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get(),
+    queryCommercialReservationDocsByRange(
+      target.date,
+      getCommercialReservationEndDate(target)
+    ),
   ])
 
   const vehicles = vehiclesSnap.docs
@@ -123,7 +127,7 @@ async function findAvailableCommercialVehicle(target: CommercialReservation) {
         )
     )
 
-  const confirmed = reservationsSnap.docs
+  const confirmed = reservationDocs
     .map((doc) => mapReservation(doc.id, doc.data() as ReservationDoc))
     .filter((reservation) => reservation.status === 'confirmed' && reservation.assignedVehicleId)
 
@@ -137,9 +141,12 @@ async function findAvailableCommercialVehicle(target: CommercialReservation) {
 }
 
 async function findCommercialVehicleById(targetVehicleId: string, target: CommercialReservation) {
-  const [vehicleSnap, reservationsSnap] = await Promise.all([
+  const [vehicleSnap, reservationDocs] = await Promise.all([
     db.collection('transports').doc(targetVehicleId).get(),
-    db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get(),
+    queryCommercialReservationDocsByRange(
+      target.date,
+      getCommercialReservationEndDate(target)
+    ),
   ])
 
   if (!vehicleSnap.exists) return { error: 'Vehicle no trobat' as const }
@@ -158,7 +165,7 @@ async function findCommercialVehicleById(targetVehicleId: string, target: Commer
     return { error: 'El vehicle seleccionat no està disponible' as const }
   }
 
-  const confirmed = reservationsSnap.docs
+  const confirmed = reservationDocs
     .map((doc) => mapReservation(doc.id, doc.data() as ReservationDoc))
     .filter((reservation) => reservation.status === 'confirmed' && reservation.assignedVehicleId)
 

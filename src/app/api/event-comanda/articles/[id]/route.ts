@@ -15,12 +15,19 @@ export async function PATCH(
   if (forbidden) return forbidden.res
 
   const { id } = await params
-  const body = (await req.json()) as { unit?: string; warehouseId?: string | null }
+  const body = (await req.json()) as {
+    unit?: string
+    warehouseId?: string | null
+    preparationReservable?: boolean
+    preparationStock?: number
+  }
 
   try {
     const article = await updateEventComandaArticle(id, {
       unit: body.unit,
       warehouseId: body.warehouseId,
+      preparationReservable: body.preparationReservable,
+      preparationStock: body.preparationStock,
       userId: auth.user.id,
     })
     return NextResponse.json({ article })

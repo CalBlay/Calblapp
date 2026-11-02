@@ -65,56 +65,6 @@ async function resolveAllowedWarehouseIds(userId: string, role?: string | null) 
   return new Set(assignedWarehouseIds.map((id) => warehouseDocId(id)))
 }
 
-async function queryOrderEventIdsByWarehouseField(warehouseIds: string[]): Promise<string[]> {
-  const ids = new Set<string>()
-  const uniqueWarehouseIds = [...new Set(warehouseIds.map((id) => warehouseDocId(id)).filter(Boolean))]
-
-  for (let offset = 0; offset < uniqueWarehouseIds.length; offset += 10) {
-    const chunk = uniqueWarehouseIds.slice(offset, offset + 10)
-    if (!chunk.length) continue
-
-    const snap = await db
-      .collection(ORDERS_COL)
-      .where('preparerVisibleWarehouseIds', 'array-contains-any', chunk)
-      .get()
-    for (const doc of snap.docs) {
-      ids.add(doc.id)
-    }
-  }
-
-  return [...ids]
-}
-
-async function listActiveOrderEventIds(allowed: Set<string> | null): Promise<string[]> {
-  if (allowed && allowed.size === 0) return []
-
-  if (allowed === null) {
-    const snap = await db.collection(ORDERS_COL).where('sentAt', '>', 0).select('sentAt').get()
-    return snap.docs.map((doc) => doc.id)
-  }
-
-  const indexedIds = await queryOrderEventIdsByWarehouseField([...allowed])
-  if (indexedIds.length) return indexedIds
-
-  const snap = await db.collection(ORDERS_COL).where('sentAt', '>', 0).get()
-  const eventIds: string[] = []
-
-  for (const doc of snap.docs) {
-    const data = doc.data() as OrderDoc
-    const batches = Array.isArray(data.batches) ? data.batches : []
-    const hasVisible = batches.some((batch) => {
-      const warehouseId = warehouseDocId(batch.warehouseId || '')
-      const lineCount = Array.isArray(batch.lines) ? batch.lines.length : 0
-      if (!lineCount || !allowed.has(warehouseId)) return false
-      const status = normalizeEventComandaBatchStatus(batch.status)
-      return PREPARER_VISIBLE_BATCH_STATUSES.has(status)
-    })
-    if (hasVisible) eventIds.push(doc.id)
-  }
-
-  return [...new Set(eventIds)]
-}
-
 function resolveOrderedAt(batch: EventComandaOrderBatch, order: OrderDoc) {
   if (batch.kind === 'revision') {
     return Number(batch.statusUpdatedAt) || Number(order.updatedAt) || Number(order.sentAt) || 0
@@ -150,26 +100,29 @@ export async function listWarehousePrepTasksForUser(params: {
   const { deliveryStart, deliveryEnd } = deliveryDateRangeForPrepViewWindow(rangeStart, rangeEnd)
   if (!deliveryStart || !deliveryEnd) return []
 
-  const orderEventIds = await listActiveOrderEventIds(allowed)
-  if (!orderEventIds.length) return []
+  const orderSnap = await db
+    .collection(ORDERS_COL)
+    .where('deliveryDate', '>=', deliveryStart)
+    .where('deliveryDate', '<=', deliveryEnd)
+    .get()
+  const orderDocs = orderSnap.docs.filter((doc) => {
+    const order = doc.data() as OrderDoc
+    if (!order.sentAt) return false
+    const batches = Array.isArray(order.batches) ? order.batches : []
+    return batches.some((batch) => batchIsVisibleToUser(batch, allowed))
+  })
+  if (!orderDocs.length) return []
 
   const tasks: LogisticsWarehousePrepTask[] = []
 
-  for (let offset = 0; offset < orderEventIds.length; offset += 100) {
-    const chunk = orderEventIds.slice(offset, offset + 100)
-    const orderRefs = chunk.map((eventId) => db.collection(ORDERS_COL).doc(eventId))
-    const stageRefs = chunk.map((eventId) => db.collection(STAGE_COL).doc(eventId))
-    const [orderSnaps, stageSnaps] = await Promise.all([
-      db.getAll(...orderRefs),
-      db.getAll(...stageRefs),
-    ])
+  for (let offset = 0; offset < orderDocs.length; offset += 100) {
+    const chunk = orderDocs.slice(offset, offset + 100)
+    const stageRefs = chunk.map((orderDoc) => db.collection(STAGE_COL).doc(orderDoc.id))
+    const stageSnaps = await db.getAll(...stageRefs)
 
     for (let index = 0; index < chunk.length; index += 1) {
-      const eventId = chunk[index]
-      const orderSnap = orderSnaps[index]
-      if (!orderSnap.exists) continue
-
-      const order = orderSnap.data() as OrderDoc
+      const eventId = chunk[index].id
+      const order = chunk[index].data() as OrderDoc
       if (!order.sentAt) continue
 
       const deliveryDate = parseIsoDateKey(order.deliveryDate || '')

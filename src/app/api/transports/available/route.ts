@@ -7,9 +7,9 @@ import {
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
 import {
-  COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
 } from '@/lib/commercialReservations'
+import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
 import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { isExcludedVehicleAvailabilityQuadrant } from '@/lib/vehicleAvailability'
@@ -300,7 +300,7 @@ export async function POST(req: Request) {
 
     let reservationDocs: QueryDocumentSnapshot[] = []
     try {
-      reservationDocs = (await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get()).docs
+      reservationDocs = await queryCommercialReservationDocsByRange(startDate, endDate)
     } catch (err) {
       console.warn('[transports/available] reservations fetch', err)
     }

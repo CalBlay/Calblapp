@@ -6,9 +6,11 @@ import type { AccessUser } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationDayKeys,
   getCommercialReservationEndDate,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
+import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
 import { PERM } from '@/lib/permissionKeys'
 import { normalizeRole } from '@/lib/roles'
 import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
@@ -96,7 +98,7 @@ async function createUserNotification(params: {
   await notifyReservaComercialUser(params)
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
@@ -106,8 +108,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
     }
 
-    const snap = await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get()
-    const reservations = snap.docs
+    const { searchParams } = new URL(req.url)
+    const start = String(searchParams.get('start') || '').trim()
+    const end = String(searchParams.get('end') || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) {
+      return NextResponse.json({ error: 'Cal indicar un rang de dates vàlid.' }, { status: 400 })
+    }
+
+    const docs = await queryCommercialReservationDocsByRange(start, end)
+    const reservations = docs
       .map((doc) => mapReservation(doc.id, doc.data() as ReservationDoc))
       .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
 
@@ -154,6 +163,10 @@ export async function POST(req: Request) {
     if (`${endDate}T${endTime}:00` <= `${date}T${startTime}:00`) {
       return NextResponse.json({ error: 'La franja horària no és vàlida' }, { status: 400 })
     }
+    const dayKeys = getCommercialReservationDayKeys({ date, endDate })
+    if (dayKeys.length > 370) {
+      return NextResponse.json({ error: 'La reserva no pot superar els 370 dies.' }, { status: 400 })
+    }
 
     const now = admin.firestore.Timestamp.now()
     const ref = await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).add({
@@ -163,6 +176,7 @@ export async function POST(req: Request) {
       requesterDepartment: String(user?.department || ''),
       date,
       endDate,
+      dayKeys,
       startTime,
       endTime,
       destination,

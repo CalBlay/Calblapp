@@ -44,6 +44,33 @@ interface TransportApiItem {
   monthlyMileage?: TransportMonthlyMileageEntry[]
 }
 
+type TransportsApiResponse = TransportApiItem[] | { data?: TransportApiItem[] }
+
+const TRANSPORTS_CACHE_MS = 30_000
+let transportsPayloadCache: { at: number; value: TransportsApiResponse } | null = null
+let transportsPayloadRequest: Promise<TransportsApiResponse> | null = null
+
+async function loadTransportsPayload(force = false): Promise<TransportsApiResponse> {
+  if (!force && transportsPayloadCache && Date.now() - transportsPayloadCache.at < TRANSPORTS_CACHE_MS) {
+    return transportsPayloadCache.value
+  }
+  if (!force && transportsPayloadRequest) return transportsPayloadRequest
+
+  const request = fetch('/api/transports')
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const value = (await res.json()) as TransportsApiResponse
+      transportsPayloadCache = { at: Date.now(), value }
+      return value
+    })
+    .finally(() => {
+      if (transportsPayloadRequest === request) transportsPayloadRequest = null
+    })
+
+  transportsPayloadRequest = request
+  return request
+}
+
 export interface Transport {
   id: string
   plate: string
@@ -86,22 +113,17 @@ export function useTransports(): UseTransportsResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchTransports = useCallback(async () => {
+  const fetchTransports = useCallback(async (force = false) => {
     try {
       setLoading(true)
       setError(null)
 
-      const res = await fetch('/api/transports')
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
-      }
-
-      const json = await res.json()
+      const json = await loadTransportsPayload(force)
 
       // Acceptem formats flexibles: { data: [...] } o directament [...]
       const list: TransportApiItem[] = Array.isArray(json)
         ? json
-        : Array.isArray(json?.data)
+        : !Array.isArray(json) && Array.isArray(json?.data)
         ? json.data
         : []
 
@@ -188,14 +210,14 @@ export function useTransports(): UseTransportsResult {
   }, [])
 
   useEffect(() => {
-    fetchTransports()
+    void fetchTransports()
   }, [fetchTransports])
 
   return {
     data,
     loading,
     error,
-    refetch: fetchTransports,
+    refetch: () => fetchTransports(true),
   }
 }
 

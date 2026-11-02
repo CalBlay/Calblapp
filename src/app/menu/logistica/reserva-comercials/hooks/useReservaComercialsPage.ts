@@ -1,7 +1,7 @@
 'use client'
 
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
@@ -233,6 +233,19 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const [keysAssignmentItems, setKeysAssignmentItems] = useState<AssignmentItem[]>([])
   const [keysLoading, setKeysLoading] = useState(false)
   const todayIso = useMemo(() => isoDate(new Date()), [])
+  const reservationRange = useMemo(() => {
+    const month = monthBounds(monthDate)
+    const starts = [month.start, filters.start, requestFilters.start, canKeys ? keysFilters.start : '']
+      .filter(Boolean)
+      .sort()
+    const ends = [month.end, filters.end, requestFilters.end, canKeys ? keysFilters.end : '']
+      .filter(Boolean)
+      .sort()
+    return {
+      start: starts[0] || month.start,
+      end: ends[ends.length - 1] || month.end,
+    }
+  }, [canKeys, filters.end, filters.start, keysFilters.end, keysFilters.start, monthDate, requestFilters.end, requestFilters.start])
 
   const { data: transports = [] } = useTransports()
   const commercialFleet = useMemo(
@@ -249,11 +262,12 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     return map
   }, [commercialFleet])
 
-  const loadReservations = async () => {
+  const loadReservations = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const res = await fetch('/api/logistica/reserva-comercials', { cache: 'no-store' })
+      const params = new URLSearchParams(reservationRange)
+      const res = await fetch(`/api/logistica/reserva-comercials?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) throw new Error('No s han pogut carregar les reserves')
       const data = await res.json()
       setReservations(Array.isArray(data?.reservations) ? data.reservations : [])
@@ -263,7 +277,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     } finally {
       setLoading(false)
     }
-  }
+  }, [reservationRange])
 
   const loadAssignmentItems = async (targetMonth: Date) => {
     try {
@@ -300,7 +314,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
   useEffect(() => {
     void loadReservations()
-  }, [])
+  }, [loadReservations])
 
   useEffect(() => {
     if (!user.id) return

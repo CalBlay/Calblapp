@@ -22,6 +22,8 @@
     "migrate:passwords:dry-run": "node scripts/migrate-passwords-to-bcrypt.mjs --dry-run",
     "backfill:notification-unread": "node scripts/backfillNotificationUnread.mjs",
     "backfill:notification-unread:dry-run": "node scripts/backfillNotificationUnread.mjs --dry-run",
+    "backfill:commercial-reservation-days": "node scripts/backfillCommercialReservationDayKeys.mjs --apply",
+    "backfill:commercial-reservation-days:dry-run": "node scripts/backfillCommercialReservationDayKeys.mjs",
     "analyze": "cross-env ANALYZE=true next build"
   },
   "dependencies": {

@@ -65,6 +65,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   articles: 'Articles comanda',
   serveis: 'Serveis',
   preparacio: 'Preparació',
+  'carrega-camions': 'Càrrega de camions',
   assignacions: 'Assignacions',
   disponibilitat: 'Disponibilitat',
   'reserva-comercials': 'Reserva comercials',

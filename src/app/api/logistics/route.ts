@@ -27,7 +27,9 @@ type RawEvent = {
   numPax?: number
   Pax?: number
   DataInici?: unknown
+  DataFi?: unknown
   HoraInici?: string
+  HoraFi?: string
   PreparacioData?: string
   PreparacioHora?: string
   PreparacioFeta?: boolean
@@ -61,6 +63,8 @@ type LogisticsEvent = {
   DataInici: string
   DataVisual: string
   HoraInici: string
+  DataFi: string
+  HoraFi: string
   EventDate: string
   EventTime: string
   ServiceName: string
@@ -206,18 +210,12 @@ async function loadStageVerdRange(start: string, end: string) {
     preparationSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
-  if (docs.size > 0) return Array.from(docs.values())
+  const attempts = [stringSnap, dateSnap, preparationSnap]
+  if (attempts.every((result) => result.status === 'rejected')) {
+    throw new Error('No s\'ha pogut consultar cap índex de dates de stage_verd.')
+  }
 
-  const fullSnap = await db.collection('stage_verd').get()
-  return fullSnap.docs.filter((doc) => {
-    const ev = doc.data() as RawEvent
-    return isPreparationPlanningDateInRange(
-      ev.PreparacioData,
-      normalizeDataInici(ev.DataInici),
-      start,
-      end
-    )
-  })
+  return Array.from(docs.values())
 }
 
 async function loadServiceRange(start: string, end: string) {
@@ -235,20 +233,12 @@ async function loadServiceRange(start: string, end: string) {
     preparationSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
-  if (docs.size > 0) {
-    return Array.from(docs.values())
+  const attempts = [stringSnap, preparationSnap]
+  if (attempts.every((result) => result.status === 'rejected')) {
+    throw new Error('No s\'ha pogut consultar cap índex de dates dels serveis de preparació.')
   }
 
-  const fullSnap = await db.collection('logistics_preparation_services').get()
-  return fullSnap.docs.filter((doc) => {
-    const row = doc.data() as RawEvent
-    return isPreparationPlanningDateInRange(
-      row.PreparacioData,
-      normalizeDataInici(row.ServiceDate ?? row.DataInici),
-      start,
-      end
-    )
-  })
+  return Array.from(docs.values())
 }
 
 export async function GET(req: NextRequest) {
@@ -274,6 +264,7 @@ export async function GET(req: NextRequest) {
     ])
     const events: LogisticsEvent[] = []
     const codesWithServices = new Set<string>()
+    const stageById = new Map(stageDocs.map((doc) => [doc.id, doc.data() as RawEvent]))
 
     serviceDocs.forEach((doc) => {
       const row = doc.data() as RawEvent
@@ -302,6 +293,7 @@ export async function GET(req: NextRequest) {
       if (!dataInici) return
 
       const horaServei = String(row.ServiceTime ?? row.HoraInici ?? '').trim()
+      const parent = stageById.get(String(row.ParentEventId ?? '').trim())
       events.push({
         id: doc.id,
         sourceCollection: 'logistics_preparation_services',
@@ -315,6 +307,8 @@ export async function GET(req: NextRequest) {
         DataInici: dataIniciIso,
         DataVisual: dataIniciIso,
         HoraInici: horaServei,
+        DataFi: normalizeDataInici(parent?.DataFi ?? parent?.DataInici ?? row.DataFi ?? row.DataInici),
+        HoraFi: String(parent?.HoraFi ?? parent?.HoraInici ?? row.HoraFi ?? horaServei).trim(),
         EventDate: normalizeDataInici(row.ParentEventDate ?? ''),
         EventTime: String(row.ParentEventTime ?? '').trim(),
         ServiceName: String(row.ServiceName ?? row.Servei ?? '').trim(),
@@ -373,6 +367,8 @@ export async function GET(req: NextRequest) {
         DataInici: dataIniciIso,
         DataVisual: dateToIso(dataVisual),
         HoraInici: horaInici,
+        DataFi: normalizeDataInici(ev.DataFi ?? ev.DataInici),
+        HoraFi: String(ev.HoraFi || ev.HoraInici || '').trim(),
         EventDate: dataIniciIso,
         EventTime: horaInici,
         ServiceName: String(ev.ServiceName ?? ev.Servei ?? '').trim(),

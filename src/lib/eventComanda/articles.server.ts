@@ -267,6 +267,8 @@ export type EventComandaArticleRecord = {
   erpFamilyName?: string | null
   erpSubfamilyCode?: string | null
   erpSubfamilyName?: string | null
+  preparationReservable?: boolean
+  preparationStock?: number
 }
 
 type ArticleDocData = {
@@ -283,6 +285,8 @@ type ArticleDocData = {
   erpFamilyName?: string
   erpSubfamilyCode?: string
   erpSubfamilyName?: string
+  preparationReservable?: boolean
+  preparationStock?: number
 }
 
 const mapArticleFromDoc = (
@@ -312,6 +316,12 @@ const mapArticleFromDoc = (
     erpFamilyName: data.erpFamilyName ? String(data.erpFamilyName).trim() : null,
     erpSubfamilyCode: data.erpSubfamilyCode ? String(data.erpSubfamilyCode).trim() : null,
     erpSubfamilyName: data.erpSubfamilyName ? String(data.erpSubfamilyName).trim() : null,
+    preparationReservable:
+      data.preparationReservable === undefined ? undefined : data.preparationReservable === true,
+    preparationStock:
+      data.preparationStock === undefined
+        ? undefined
+        : Math.max(0, Number(data.preparationStock) || 0),
   }
 }
 
@@ -417,6 +427,8 @@ export async function updateEventComandaArticle(
   params: {
     unit?: string
     warehouseId?: string | null
+    preparationReservable?: boolean
+    preparationStock?: number
     userId?: string
   }
 ) {
@@ -451,6 +463,17 @@ export async function updateEventComandaArticle(
     patch.warehouseSource = warehouseId ? 'manual' : null
   }
 
+  if (params.preparationReservable !== undefined) {
+    patch.preparationReservable = Boolean(params.preparationReservable)
+  }
+  if (params.preparationStock !== undefined) {
+    const stock = Math.floor(Number(params.preparationStock))
+    if (!Number.isFinite(stock) || stock < 0) {
+      throw new Error('Les unitats disponibles han de ser un nombre positiu.')
+    }
+    patch.preparationStock = stock
+  }
+
   await ref.set(patch, { merge: true })
   const updated = await ref.get()
   const data = updated.data() as Record<string, unknown>
@@ -472,5 +495,11 @@ export async function updateEventComandaArticle(
     erpFamilyName: data.erpFamilyName ? String(data.erpFamilyName).trim() : null,
     erpSubfamilyCode: data.erpSubfamilyCode ? String(data.erpSubfamilyCode).trim() : null,
     erpSubfamilyName: data.erpSubfamilyName ? String(data.erpSubfamilyName).trim() : null,
+    preparationReservable:
+      data.preparationReservable === undefined ? undefined : data.preparationReservable === true,
+    preparationStock:
+      data.preparationStock === undefined
+        ? undefined
+        : Math.max(0, Number(data.preparationStock) || 0),
   } satisfies EventComandaArticleRecord
 }

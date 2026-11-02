@@ -379,6 +379,11 @@ export const MODULES: ModuleDef[] = [
         roles: ['admin','direccio','cap','treballador'],
       },
       {
+        label: 'Càrrega de camions',
+        path: '/menu/logistica/carrega-camions',
+        roles: ['admin','direccio','cap','treballador'],
+      },
+      {
         label: 'Assignacions',
         path: '/menu/logistica/assignacions',
         roles: ['admin','direccio','cap'],

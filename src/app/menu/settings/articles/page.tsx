@@ -37,6 +37,8 @@ type Article = {
   erpFamilyName?: string | null
   erpSubfamilyCode?: string | null
   erpSubfamilyName?: string | null
+  preparationReservable?: boolean
+  preparationStock?: number
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -250,7 +252,15 @@ export default function EventComandaArticlesConfigPage() {
     }
   }
 
-  const updateArticle = async (article: Article, patch: { unit?: string; warehouseId?: string | null }) => {
+  const updateArticle = async (
+    article: Article,
+    patch: {
+      unit?: string
+      warehouseId?: string | null
+      preparationReservable?: boolean
+      preparationStock?: number
+    }
+  ) => {
     setBusy(true)
     setError('')
     try {
@@ -566,6 +576,8 @@ export default function EventComandaArticlesConfigPage() {
                   <col className="w-[17%]" />
                   <col className="w-[3.75rem]" />
                   <col className="w-[3.75rem]" />
+                  <col className="w-[4.5rem]" />
+                  <col className="w-[5rem]" />
                   <col className="w-[4.25rem]" />
                 </colgroup>
                 <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -577,6 +589,8 @@ export default function EventComandaArticlesConfigPage() {
                     <th className="px-3 py-2">Subfamília</th>
                     <th className="px-3 py-2">U.</th>
                     <th className="px-3 py-2">Mag.</th>
+                    <th className="px-3 py-2">Reserva</th>
+                    <th className="px-3 py-2">Unitats</th>
                     <th className="px-3 py-2">Orig.</th>
                   </tr>
                 </thead>
@@ -694,8 +708,14 @@ function ArticleRow({
   warehouses: Warehouse[]
   units: PurchaseUnit[]
   busy: boolean
-  onUpdate: (patch: { unit?: string; warehouseId?: string | null }) => void
+  onUpdate: (patch: {
+    unit?: string
+    warehouseId?: string | null
+    preparationReservable?: boolean
+    preparationStock?: number
+  }) => void
 }) {
+  const [preparationStock, setPreparationStock] = useState(article.preparationStock ?? 1)
   const unitCodes = new Set(units.map((unit) => unit.code))
   const unitValue = unitCodes.has(article.qtyUnit) ? article.qtyUnit : `__erp__${article.qtyUnit}`
   const warehouseIds = new Set(warehouses.map((warehouse) => warehouse.id))
@@ -791,6 +811,33 @@ function ArticleRow({
             ))}
           </SelectContent>
         </Select>
+      </td>
+      <td className="px-3 py-1.5 text-center align-middle">
+        <input
+          type="checkbox"
+          aria-label={`Reservable a preparació: ${article.articleName}`}
+          checked={article.preparationReservable !== false}
+          disabled={busy}
+          onChange={(event) => onUpdate({ preparationReservable: event.target.checked })}
+          className="h-5 w-5 accent-emerald-600"
+        />
+      </td>
+      <td className="px-2 py-1.5 align-middle">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          aria-label={`Unitats disponibles de ${article.articleName}`}
+          value={preparationStock}
+          disabled={busy}
+          onChange={(event) => setPreparationStock(Math.max(0, Number(event.target.value) || 0))}
+          onBlur={() => {
+            if (preparationStock !== (article.preparationStock ?? 1)) {
+              onUpdate({ preparationStock })
+            }
+          }}
+          className="h-8 w-16 text-center"
+        />
       </td>
       <td className={catalogCellClass('text-xs text-slate-500')}>{warehouseSourceLabel}</td>
     </tr>
