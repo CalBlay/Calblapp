@@ -24,6 +24,7 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 import { formatDateOnly } from '@/lib/date-format'
+import { buildMenuTastingManualUpdate } from '@/lib/calendar/menuTastingManualUpdate'
 
 interface Props {
   deal: Deal
@@ -130,7 +131,27 @@ export default function CalendarModal({
   backLabel = 'Tornar',
 }: Props) {
   const dealRecord = deal as CalendarDealRecord
-  const readonly = readonlyProp || Boolean(deal.calendarOccurrenceType)
+  const readonly = Boolean(readonlyProp)
+  const isMenuTasting = Boolean(deal.calendarOccurrenceType)
+  const sourceEventIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(deal.sourceEventIds) ? deal.sourceEventIds : []),
+        deal.sourceEventId,
+      ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    )
+  )
+  const mutationTargets = isMenuTasting
+    ? Array.isArray(deal.sourceTastings) && deal.sourceTastings.length > 0
+      ? deal.sourceTastings
+      : sourceEventIds.map((id) => ({
+          id,
+          occurrenceType: deal.calendarOccurrenceType || 'menu_tasting_1',
+        }))
+    : [{ id: deal.id, occurrenceType: undefined }]
+  const mutationDocIds = mutationTargets.map((target) => target.id)
+  const mutationDocId = mutationDocIds[0] || deal.id
+  const isGroupedMenuTasting = isMenuTasting && mutationDocIds.length > 1
   const { data: session } = useSession()
   const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)
@@ -196,7 +217,14 @@ export default function CalendarModal({
 
   // Fitxers (file1, file2, ...) llegits del deal
   const [files, setFiles] = useState<
-    Array<{ key: string; url: string; name?: string; source?: string }>
+    Array<{
+      key: string
+      url: string
+      name?: string
+      source?: string
+      docId?: string
+      field?: string
+    }>
   >([])
   const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
   const [sendCancellationOpen, setSendCancellationOpen] = useState(false)
@@ -279,10 +307,11 @@ export default function CalendarModal({
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
     !readonly &&
+    !isMenuTasting &&
     (isZohoVerd || isManual) &&
     canUpdate
   const canEditComercialIntern =
-    !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
+    !readonly && !isMenuTasting && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
   const canDeleteDocuments =
     !readonly &&
@@ -296,12 +325,15 @@ export default function CalendarModal({
     return uiActions[CALENDAR_PERM.manageMailGroups] === true
   }, [permsReady, uiActions])
   const canCancelEvent =
-    !readonly && permsReady && uiActions[CALENDAR_PERM.cancelEvent] === true
+    !readonly && !isMenuTasting && permsReady && uiActions[CALENDAR_PERM.cancelEvent] === true
   const canSendCancellation =
     permsReady && uiActions[CALENDAR_PERM.sendCancellation] === true
   const canSendDocuments = canSendEmail && files.length > 0
   const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
-  const canDeleteEvent = canEdit && canDeleteManual && !isProductionOperationalWorker
+  const canDeleteEvent =
+    !isMenuTasting && canEdit && canDeleteManual && !isProductionOperationalWorker
+  const canEditEventFields = canEdit && !isMenuTasting
+  const canEditMenuTastingFields = canEdit && isMenuTasting
 
   const emailRecipientCandidates = useMemo(() => {
     const items = [
@@ -551,7 +583,7 @@ export default function CalendarModal({
       const normalizedDataFi = multiDay
         ? endDate || startDate || null
         : startDate || null
-      const payload: Record<string, unknown> = {
+      const regularPayload: Record<string, unknown> = {
         ...editData,
         DataFi: normalizedDataFi,
         // 🔧 FIX: si ve buit, deixem null (igual que abans però més robust)
@@ -563,7 +595,7 @@ export default function CalendarModal({
         updatedAt: new Date().toISOString(),
       }
       if (!canEdit) {
-        Object.keys(payload).forEach((key) => {
+        Object.keys(regularPayload).forEach((key) => {
           if (
             ![
               'code',
@@ -572,21 +604,34 @@ export default function CalendarModal({
               'updatedAt',
             ].includes(key)
           ) {
-            delete payload[key]
+            delete regularPayload[key]
           }
         })
       }
       if (canEditCode && (codeDirty || prevCode !== nextCode)) {
-        payload.codeConfirmed = Boolean(nextCode)
+        regularPayload.codeConfirmed = Boolean(nextCode)
       }
 
-      const res = await fetch(`/api/calendar/manual/${deal.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const responses = await Promise.all(
+        mutationTargets.map((target) => {
+          const payload = isMenuTasting && target.occurrenceType
+            ? {
+                ...buildMenuTastingManualUpdate(target.occurrenceType, editData, {
+                  includePax: !isGroupedMenuTasting,
+                }),
+                collection: COLLECTION,
+                updatedAt: new Date().toISOString(),
+              }
+            : regularPayload
+          return fetch(`/api/calendar/manual/${target.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        })
+      )
 
-      if (!res.ok) throw new Error('Error desant dades')
+      if (responses.some((res) => !res.ok)) throw new Error('Error desant dades')
 
       alert('✅ Canvis desats correctament')
       setOpen(false)
@@ -599,19 +644,25 @@ export default function CalendarModal({
   }
 
   // 🗑️ Eliminar un enllaç (fileN) de Firestore
-  const handleDeleteFile = async (key: string) => {
+  const handleDeleteFile = async (file: {
+    key: string
+    docId?: string
+    field?: string
+  }) => {
     if (!canDeleteDocuments || deletingFileKey) return
     if (!confirm('Vols eliminar aquest enllaç del document?')) return
 
+    const field = file.field || file.key
+    const docId = file.docId || mutationDocId
     try {
-      setDeletingFileKey(key)
+      setDeletingFileKey(file.key)
       const res = await fetch(
-        `/api/calendar/manual/${deal.id}/attachments/${encodeURIComponent(key)}?collection=${encodeURIComponent(COLLECTION)}`,
+        `/api/calendar/manual/${docId}/attachments/${encodeURIComponent(field)}?collection=${encodeURIComponent(COLLECTION)}`,
         { method: 'DELETE' }
       )
       if (!res.ok) throw new Error('Error eliminant l’enllaç')
 
-      setFiles((prev) => prev.filter((f) => f.key !== key))
+      setFiles((prev) => prev.filter((f) => f.key !== file.key))
       onSaved?.()
       document.dispatchEvent(new CustomEvent('calendar:reload'))
     } catch (err) {
@@ -632,7 +683,7 @@ export default function CalendarModal({
 
     try {
       setUpdatingCancellation(true)
-      const res = await fetch(`/api/calendar/manual/${deal.id}/cancel`, {
+      const res = await fetch(`/api/calendar/manual/${mutationDocId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ collection: COLLECTION, cancelled: nextCancelled }),
@@ -660,7 +711,7 @@ export default function CalendarModal({
 
     try {
       const res = await fetch(
-        `/api/calendar/manual/${deal.id}?collection=${COLLECTION}`,
+        `/api/calendar/manual/${mutationDocId}?collection=${COLLECTION}`,
         { method: 'DELETE' }
       )
       if (!res.ok) throw new Error('Error eliminant')
@@ -740,7 +791,7 @@ export default function CalendarModal({
             <label className="block text-xs text-gray-500 mb-1">
               Línia de negoci
             </label>
-            {canEdit ? (
+            {canEditEventFields ? (
               <select
                 value={editData.LN}
                 onChange={(e) => handleChange('LN', e.target.value)}
@@ -761,7 +812,7 @@ export default function CalendarModal({
           {/* Nom */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Nom</label>
-            {canEdit ? (
+            {canEditEventFields ? (
               <Input
                 value={editData.NomEvent}
                 onChange={(e) => handleChange('NomEvent', e.target.value)}
@@ -793,7 +844,7 @@ export default function CalendarModal({
           {/* Data inici */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Data</label>
-            {(isManual || canEditStageVerd) && !readonly ? (
+            {(canEditEventFields || canEditMenuTastingFields) ? (
               <Input
                 type="date"
                 value={editData.DataInici}
@@ -805,7 +856,7 @@ export default function CalendarModal({
           </div>
 
           {/* Multi-dia + Data fi editable */}
-          {(isManual || canEditStageVerd) && !readonly ? (
+          {canEditEventFields ? (
             <>
               <div className="flex items-center gap-2">
                 <input
@@ -844,7 +895,7 @@ export default function CalendarModal({
           {/* Hora inici (manual o Zoho confirmat editable) */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Hora inici</label>
-            {(isManual || canEditStageVerd) && !readonly ? (
+            {(canEditEventFields || canEditMenuTastingFields) ? (
               <Input
                 type="time"
                 value={editData.HoraInici || ''}
@@ -858,7 +909,7 @@ export default function CalendarModal({
           {/* Hora fi */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Hora fi</label>
-            {(isManual || canEditStageVerd) && !readonly ? (
+            {canEditEventFields ? (
               <Input
                 type="time"
                 value={editData.HoraFi || ''}
@@ -870,7 +921,7 @@ export default function CalendarModal({
           </div>
 
           {/* Data fi (només lectura si no es pot editar) */}
-          {!((isManual || canEditStageVerd) && !readonly) &&
+          {!canEditEventFields &&
             editData.DataFi &&
             editData.DataFi !== editData.DataInici && (
             <div>
@@ -884,7 +935,7 @@ export default function CalendarModal({
           {/* Ubicació */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Ubicació</label>
-            {canEdit ? (
+            {(canEditEventFields || canEditMenuTastingFields) ? (
               <SearchFincaInput
                 value={editData.Ubicacio}
                 onChange={(val) => {
@@ -902,7 +953,7 @@ export default function CalendarModal({
             <label className="block text-xs text-gray-500 mb-1">
               Tipus de Servei
             </label>
-            {canEdit ? (
+            {canEditEventFields ? (
               <SearchServeiInput
                 value={editData.Servei}
                 onChange={(val) => handleChange('Servei', val)}
@@ -917,7 +968,7 @@ export default function CalendarModal({
             <label className="block text-xs text-gray-500 mb-1">
               Nombre de Pax
             </label>
-            {canEdit ? (
+            {(canEditEventFields || (canEditMenuTastingFields && !isGroupedMenuTasting)) ? (
               <div className="relative">
                 <Input
                   type="number"
@@ -940,7 +991,7 @@ export default function CalendarModal({
               Comercial
               <span className="text-gray-400 font-normal"> (oportunitat)</span>
             </label>
-            {canEdit ? (
+            {canEditEventFields ? (
               <select
                 value={editData.Comercial}
                 onChange={(e) => handleChange('Comercial', e.target.value)}
@@ -983,7 +1034,7 @@ export default function CalendarModal({
               Responsable
               <span className="text-gray-400 font-normal"> (seguiment)</span>
             </label>
-            {canEdit ? (
+            {canEditEventFields ? (
               <Input
                 value={editData.Responsable}
                 onChange={(e) => handleChange('Responsable', e.target.value)}
@@ -1004,12 +1055,20 @@ export default function CalendarModal({
               <div className="mt-2">
                 <AttachFileButton
                   collection={COLLECTION}
-                  docId={deal.id}
-                  existingKeys={files.map((f) => f.key)}
+                  docId={mutationDocId}
+                  existingKeys={files
+                    .filter((file) => !file.docId || file.docId === mutationDocId)
+                    .map((file) => file.field || file.key)}
                   onAdded={(att) => {
                     setFiles((prev) => [
                       ...prev,
-                      { key: att.key, url: att.url, name: att.name },
+                      {
+                        key: att.key,
+                        field: att.key,
+                        docId: mutationDocId,
+                        url: att.url,
+                        name: att.name,
+                      },
                     ])
                   }}
                 />
@@ -1025,19 +1084,23 @@ export default function CalendarModal({
               </p>
             ) : (
               <ul className="space-y-1">
-                {files.map(({ key, url, name }) => (
+                {files.map((file) => (
                   <li
-                    key={`${key}-${url}`}
+                    key={`${file.key}-${file.url}`}
                     className="flex items-center justify-between text-sm bg-white px-2 py-1 rounded-md shadow-sm hover:bg-gray-100"
                   >
                     <a
-                      href={url}
+                      href={file.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline flex-1 break-all flex items-center gap-1"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      {displayCalendarFileName({ key, url, name })}
+                      {displayCalendarFileName({
+                        key: file.field || file.key,
+                        url: file.url,
+                        name: file.name,
+                      })}
                     </a>
 
                     {canDeleteDocuments && (
@@ -1046,12 +1109,16 @@ export default function CalendarModal({
                         size="sm"
                         variant="ghost"
                         className="shrink-0 text-red-500 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => handleDeleteFile(key)}
+                        onClick={() => handleDeleteFile(file)}
                         disabled={deletingFileKey !== null}
-                        aria-label={`Eliminar ${displayCalendarFileName({ key, url, name })}`}
+                        aria-label={`Eliminar ${displayCalendarFileName({
+                          key: file.field || file.key,
+                          url: file.url,
+                          name: file.name,
+                        })}`}
                         title="Eliminar document"
                       >
-                        {deletingFileKey === key ? (
+                        {deletingFileKey === file.key ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <Trash2 className="h-4 w-4" />
@@ -1144,7 +1211,7 @@ export default function CalendarModal({
     <CalendarSendDocumentsDialog
       open={sendDocumentsOpen}
       onOpenChange={setSendDocumentsOpen}
-      eventId={deal.id}
+      eventId={mutationDocId}
       collection={COLLECTION}
       eventTitle={editData.NomEvent}
       eventCode={editData.code}
@@ -1160,7 +1227,7 @@ export default function CalendarModal({
       open={sendCancellationOpen}
       onOpenChange={setSendCancellationOpen}
       mode="cancellation"
-      eventId={deal.id}
+      eventId={mutationDocId}
       collection={COLLECTION}
       eventTitle={editData.NomEvent}
       eventCode={editData.code}

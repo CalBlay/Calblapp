@@ -1,3 +1,5 @@
+import { MENU_TASTING_MANUAL_OVERRIDE_FIELDS } from '@/lib/calendar/menuTastingManualUpdate'
+
 export const CALENDAR_MANUAL_OVERRIDE_FIELDS = new Set([
   'LN',
   'code',
@@ -12,6 +14,7 @@ export const CALENDAR_MANUAL_OVERRIDE_FIELDS = new Set([
   'Comercial',
   'ComercialIntern',
   'Responsable',
+  ...MENU_TASTING_MANUAL_OVERRIDE_FIELDS,
 ])
 
 type CalendarDocument = Record<string, unknown>

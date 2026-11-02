@@ -30,6 +30,8 @@ const structuredEventFiles = (
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
     .map(([key, url]) => ({
       key: `${sourceEventId}:${key}`,
+      field: key,
+      docId: sourceEventId,
       url: String(url),
       name: typeof data[`${key}Name`] === 'string' ? data[`${key}Name`] : undefined,
       source: typeof data[`${key}Source`] === 'string' ? data[`${key}Source`] : undefined,

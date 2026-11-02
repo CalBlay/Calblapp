@@ -311,6 +311,10 @@ test('groups simultaneous Casaments tastings by time and location', () => {
     { id: 'z1', name: 'Casament A', code: 'CEU0001' },
     { id: 'z2', name: 'Casament B', code: 'CEU0002' },
   ])
+  assert.deepEqual(grouped[0].sourceTastings, [
+    { id: 'z1', occurrenceType: 'menu_tasting_1' },
+    { id: 'z2', occurrenceType: 'menu_tasting_1' },
+  ])
   assert.deepEqual(
     grouped[0].files.map((file) => file.name),
     ['Casament A · A.pdf', 'Casament B · B.pdf']

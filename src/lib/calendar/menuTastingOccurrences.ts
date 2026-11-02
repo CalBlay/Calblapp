@@ -309,12 +309,17 @@ export function groupWeddingMenuTastingOccurrences(
       name: String(item.sourceEventName || ''),
       code: String(item.code || ''),
     })).filter((event) => event.id)
+    const sourceTastings = items.map((item) => ({
+      id: String(item.sourceEventId || ''),
+      occurrenceType: item.calendarOccurrenceType as MenuTastingOccurrenceType,
+    })).filter((tasting) => tasting.id)
     if (items.length === 1) {
       return {
         ...first,
         id: weddingTastingGroupId(first),
         sourceEventIds: eventIds,
         sourceEvents,
+        sourceTastings,
       }
     }
 
@@ -344,6 +349,7 @@ export function groupWeddingMenuTastingOccurrences(
       sourceEventId: eventIds[0] || first.sourceEventId,
       sourceEventIds: eventIds,
       sourceEvents,
+      sourceTastings,
       sourceEventName: eventNames.join(' + '),
       code: codes.join(', '),
       Servei: combinedService,

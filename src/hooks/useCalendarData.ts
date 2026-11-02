@@ -36,8 +36,22 @@ export interface Deal {
   cancelledByName?: string
   cancellationNoticeSentAt?: string
   sourceEventId?: string
+  sourceEventIds?: string[]
+  sourceEvents?: Array<{ id: string; name: string; code: string }>
+  groupedMenuTasting?: boolean
   calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
-  files?: { key: string; url: string; name?: string; source?: string }[]
+  sourceTastings?: Array<{
+    id: string
+    occurrenceType: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  }>
+  files?: {
+    key: string
+    url: string
+    name?: string
+    source?: string
+    docId?: string
+    field?: string
+  }[]
 }
 
 export function useCalendarData(filters?: {
@@ -118,7 +132,14 @@ export function useCalendarData(filters?: {
           }))
         const structuredFiles = Array.isArray(ev.files)
           ? ev.files.filter(
-              (file): file is { key: string; url: string; name?: string; source?: string } =>
+              (file): file is {
+                key: string
+                url: string
+                name?: string
+                source?: string
+                docId?: string
+                field?: string
+              } =>
                 Boolean(
                   file &&
                     typeof file === 'object' &&
@@ -218,6 +239,40 @@ export function useCalendarData(filters?: {
               : undefined,
           sourceEventId:
             typeof ev.sourceEventId === 'string' ? ev.sourceEventId : undefined,
+          sourceEventIds: Array.isArray(ev.sourceEventIds)
+            ? ev.sourceEventIds.map(String).filter(Boolean)
+            : undefined,
+          sourceEvents: Array.isArray(ev.sourceEvents)
+            ? ev.sourceEvents
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => {
+                  const source = item as Record<string, unknown>
+                  return {
+                    id: String(source.id || ''),
+                    name: String(source.name || ''),
+                    code: String(source.code || ''),
+                  }
+                })
+                .filter((item) => item.id)
+            : undefined,
+          sourceTastings: Array.isArray(ev.sourceTastings)
+            ? ev.sourceTastings
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => {
+                  const source = item as Record<string, unknown>
+                  const occurrenceType = source.occurrenceType
+                  return {
+                    id: String(source.id || ''),
+                    occurrenceType:
+                      occurrenceType === 'menu_tasting_2' ||
+                      occurrenceType === 'menu_tasting_company'
+                        ? occurrenceType
+                        : 'menu_tasting_1' as const,
+                  }
+                })
+                .filter((item) => item.id)
+            : undefined,
+          groupedMenuTasting: ev.groupedMenuTasting === true,
           calendarOccurrenceType:
             ev.calendarOccurrenceType === 'menu_tasting_1' ||
             ev.calendarOccurrenceType === 'menu_tasting_2' ||
