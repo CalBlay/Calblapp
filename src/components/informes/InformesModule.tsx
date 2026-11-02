@@ -49,6 +49,13 @@ const EventsWorkersInformesPanel = dynamic(
     })),
   { loading: panelLoadingFallback }
 )
+const IncidentsInformesPanel = dynamic(
+  () =>
+    import('./domains/IncidentsInformesPanel').then((mod) => ({
+      default: mod.IncidentsInformesPanel,
+    })),
+  { loading: panelLoadingFallback }
+)
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
@@ -82,12 +89,18 @@ export function InformesModule() {
   }, [active, enabledDomains, permissionsReady])
 
   const visibleDomains = useMemo(
-    () =>
-      INFORMES_DOMAINS.filter(
+    () => {
+      const availableDomains = INFORMES_DOMAINS.filter((domain) => !domain.comingSoon)
+      const hasFullReportsAccess = availableDomains.every((domain) =>
+        enabledDomains.some((enabled) => enabled.id === domain.id)
+      )
+
+      return INFORMES_DOMAINS.filter(
         (domain) =>
-          (domain.comingSoon && enabledDomains.length > 0) ||
+          (domain.comingSoon && hasFullReportsAccess) ||
           enabledDomains.some((enabled) => enabled.id === domain.id)
-      ),
+      )
+    },
     [enabledDomains]
   )
 
@@ -135,6 +148,7 @@ export function InformesModule() {
         {permissionsReady && active === 'audits' && enabledDomains.some((d) => d.id === 'audits') ? <AuditInformesPanel /> : null}
         {permissionsReady && active === 'transports' && enabledDomains.some((d) => d.id === 'transports') ? <TransportsInformesPanel /> : null}
         {permissionsReady && active === 'maintenance' && enabledDomains.some((d) => d.id === 'maintenance') ? <MaintenanceInformesPanel /> : null}
+        {permissionsReady && active === 'incidents' && enabledDomains.some((d) => d.id === 'incidents') ? <IncidentsInformesPanel /> : null}
         {permissionsReady && active === 'events' && enabledDomains.some((d) => d.id === 'events') ? <EventsWorkersInformesPanel /> : null}
         {permissionsReady && active === 'finances' ? <ComingSoonPanel label="Finances" /> : null}
         {permissionsReady && active === 'compres' ? <ComingSoonPanel label="Compres" /> : null}

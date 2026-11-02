@@ -13,6 +13,7 @@ const ROUTES = [
   'src/app/api/reports/maintenance/filter-options/route.ts',
   'src/app/api/reports/events-workers/overview/route.ts',
   'src/app/api/reports/events-workers/filter-options/route.ts',
+  'src/app/api/reports/incidents/overview/route.ts',
 ]
 
 test('cada API d informes exigeix el permis especific de la seva pestanya', () => {
@@ -21,7 +22,7 @@ test('cada API d informes exigeix el permis especific de la seva pestanya', () =
     assert.match(source, /await requireAuth\(\)/, `${relativePath} ha d'exigir sessio`)
     assert.match(
       source,
-      /canViewReportsDomain\(auth\.user, '(rrhh|transports|maintenance|events)'\)/,
+      /canViewReportsDomain\(auth\.user, '(rrhh|transports|maintenance|events|incidents)'\)/,
       `${relativePath} ha d'exigir el permis de la pestanya d'informes`
     )
     assert.doesNotMatch(

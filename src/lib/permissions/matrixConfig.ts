@@ -107,6 +107,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: REPORTS_DOMAIN_PERMISSIONS.audits, label: 'Auditories' },
       { key: REPORTS_DOMAIN_PERMISSIONS.transports, label: 'Transports' },
       { key: REPORTS_DOMAIN_PERMISSIONS.maintenance, label: 'Manteniment' },
+      { key: REPORTS_DOMAIN_PERMISSIONS.incidents, label: 'Incidències' },
       { key: REPORTS_DOMAIN_PERMISSIONS.events, label: 'Esdeveniments' },
     ],
   },

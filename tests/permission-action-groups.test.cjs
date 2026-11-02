@@ -29,10 +29,10 @@ test('comanda and preparation action groups stay visible with view-only access',
   assert.equal(byId.eventsComanda.requireViewOnly, true)
   assert.equal(byId.reportsTabs.requireViewOnly, true)
   assert.equal(byId.reportsTabs.defaultAllowed, true)
-  assert.equal(byId.reportsTabs.actions.length, 5)
+  assert.equal(byId.reportsTabs.actions.length, 6)
   assert.deepEqual(
     byId.reportsTabs.actions.map((action) => action.label),
-    ['RRHH', 'Auditories', 'Transports', 'Manteniment', 'Esdeveniments']
+    ['RRHH', 'Auditories', 'Transports', 'Manteniment', 'Incidències', 'Esdeveniments']
   )
   assert.equal(byId.logisticsPreparationActions.requireViewOnly, true)
   assert.equal(byId.logisticsPreparationWarehouses.requireViewOnly, true)
