@@ -118,6 +118,7 @@ type QuadrantRecord = Record<string, unknown> & {
 
 type CommercialReservationRecord = Record<string, unknown> & {
   requesterName?: string
+  requestedForName?: string
   date?: string
   endDate?: string
   startTime?: string
@@ -234,7 +235,9 @@ export async function GET(req: Request) {
 
         const startTime = String(reservation.startTime || '').trim()
         const endTime = String(reservation.endTime || '').trim() || startTime
-        const requesterName = String(reservation.requesterName || '').trim()
+        const requesterName = String(
+          reservation.requestedForName || reservation.requesterName || ''
+        ).trim()
         const plate = String(reservation.assignedVehiclePlate || '').trim()
         const reason = String(reservation.reason || '').trim() || 'Reserva comercial'
         const destination = String(reservation.destination || '').trim() || 'Sense destinació'

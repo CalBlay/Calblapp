@@ -46,9 +46,16 @@ export type ReservationTimelineSlot = {
   totalVehicles: number
 }
 
+export type ReservationDepartmentUser = {
+  id: string
+  name: string
+  department: string
+}
+
 export type ReservationPageState = {
   tab: TabId
   canRequest: boolean
+  canManageDepartment: boolean
   canValidate: boolean
   canKeys: boolean
   filters: FiltersState
@@ -66,6 +73,8 @@ export type ReservationPageState = {
   destination: string
   reason: string
   notes: string
+  requestedForId: string
+  departmentUsers: ReservationDepartmentUser[]
   saving: boolean
   days: Date[]
   myReservations: CommercialReservation[]

@@ -202,7 +202,8 @@ export function buildKeysHandoverRowsForDay({
       id: `reservation:${reservation.id}`,
       date: dayKey,
       plate: plate || '—',
-      personName: String(reservation.requesterName || '').trim() || '—',
+      personName:
+        String(reservation.requestedForName || reservation.requesterName || '').trim() || '—',
       startTime,
       endTime,
       destination: String(reservation.destination || '').trim() || '—',

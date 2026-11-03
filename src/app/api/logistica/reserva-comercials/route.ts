@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 
 import { requireAuth, type SessionUserForApi } from '@/lib/server/apiAuth'
-import type { AccessUser } from '@/lib/accessControl'
+import { normalizeDept, type AccessUser } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
@@ -13,7 +13,10 @@ import {
 import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
 import { PERM } from '@/lib/permissionKeys'
 import { normalizeRole } from '@/lib/roles'
-import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import {
+  RESERVA_COMERCIALS_ACTION,
+  RESERVA_COMERCIALS_UI_PATH,
+} from '@/lib/reservaComercialsPermissions'
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import { notifyReservaComercialUser } from '@/lib/logistica/reservaComercialNotifications'
 
@@ -47,12 +50,20 @@ function todayIsoDate() {
 }
 
 function mapReservation(id: string, data: ReservationDoc): CommercialReservation {
+  const requesterId = String(data.requesterId || '')
+  const requesterName = String(data.requesterName || '')
+  const requesterRole = String(data.requesterRole || '')
+  const requesterDepartment = String(data.requesterDepartment || '')
   return {
     id,
-    requesterId: String(data.requesterId || ''),
-    requesterName: String(data.requesterName || ''),
-    requesterRole: String(data.requesterRole || ''),
-    requesterDepartment: String(data.requesterDepartment || ''),
+    requesterId,
+    requesterName,
+    requesterRole,
+    requesterDepartment,
+    requestedForId: String(data.requestedForId || requesterId),
+    requestedForName: String(data.requestedForName || requesterName),
+    requestedForRole: String(data.requestedForRole || requesterRole),
+    requestedForDepartment: String(data.requestedForDepartment || requesterDepartment),
     date: String(data.date || ''),
     endDate: data.endDate ? String(data.endDate) : null,
     startTime: String(data.startTime || ''),
@@ -120,7 +131,45 @@ export async function GET(req: Request) {
       .map((doc) => mapReservation(doc.id, doc.data() as ReservationDoc))
       .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
 
-    return NextResponse.json({ reservations })
+    let departmentUsers: Array<{ id: string; name: string; department: string }> = []
+    if (searchParams.get('includeDepartmentUsers') === '1') {
+      const canManageDepartment = await isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.action(
+          RESERVA_UI_PATH,
+          RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT
+        ),
+      })
+      if (canManageDepartment) {
+        const department = normalizeDept(auth.user.department)
+        const usersSnap = await db.collection('users').get()
+        departmentUsers = usersSnap.docs
+          .map((doc) => {
+            const data = doc.data() as Record<string, unknown>
+            return {
+              id: doc.id,
+              name: String(data.name || '').trim(),
+              department: String(data.department || '').trim(),
+              departmentNorm: normalizeDept(
+                String(data.departmentLower || data.department || '')
+              ),
+            }
+          })
+          .filter(
+            (candidate) =>
+              candidate.name &&
+              candidate.departmentNorm === department
+          )
+          .map(({ id, name, department: userDepartment }) => ({
+            id,
+            name,
+            department: userDepartment,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ca', { sensitivity: 'base' }))
+      }
+    }
+
+    return NextResponse.json({ reservations, departmentUsers })
   } catch (error) {
     console.error('[api/logistica/reserva-comercials GET]', error)
     return NextResponse.json({ error: 'Error intern' }, { status: 500 })
@@ -134,7 +183,7 @@ export async function POST(req: Request) {
     const accessUser = accessUserFromAuth(auth.user)
     const canRequest = await isUiPermissionGranted({
       user: accessUser,
-      permission: PERM.action(RESERVA_UI_PATH, 'request'),
+      permission: PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.REQUEST),
     })
     if (!canRequest) {
       return NextResponse.json({ error: 'Sense permisos de sol·licitud' }, { status: 403 })
@@ -142,6 +191,57 @@ export async function POST(req: Request) {
     const user = auth.user
 
     const body = (await req.json()) as Partial<CommercialReservation>
+    const requestedForId = String(body.requestedForId || user.id).trim()
+    const targetIsRequester = requestedForId === user.id
+    if (!targetIsRequester) {
+      const canManageDepartment = await isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.action(
+          RESERVA_UI_PATH,
+          RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT
+        ),
+      })
+      if (!canManageDepartment) {
+        return NextResponse.json(
+          { error: 'Sense permisos per demanar vehicles per a altres persones' },
+          { status: 403 }
+        )
+      }
+    }
+
+    const targetSnap = await db.collection('users').doc(requestedForId).get()
+    if (!targetSnap.exists && !targetIsRequester) {
+      return NextResponse.json(
+        { error: 'La persona seleccionada no existeix' },
+        { status: 400 }
+      )
+    }
+    const targetData = targetSnap.exists
+      ? (targetSnap.data() as Record<string, unknown>)
+      : {}
+    const requesterSnap = targetIsRequester
+      ? targetSnap
+      : await db.collection('users').doc(user.id).get()
+    const requesterData = requesterSnap.exists
+      ? (requesterSnap.data() as Record<string, unknown>)
+      : {}
+    const requesterName = String(requesterData.name || user.name || '').trim()
+    const requesterRole = String(requesterData.role || user.role || '').trim()
+    const requesterDepartment = String(
+      requesterData.department || user.department || ''
+    ).trim()
+    const targetDepartment = String(targetData.department || user.department || '').trim()
+    if (
+      !targetIsRequester &&
+      normalizeDept(targetDepartment) !== normalizeDept(requesterDepartment)
+    ) {
+      return NextResponse.json(
+        { error: 'Només pots demanar vehicles per al teu departament' },
+        { status: 403 }
+      )
+    }
+    const requestedForName = String(targetData.name || requesterName).trim()
+    const requestedForRole = String(targetData.role || requesterRole).trim()
     const date = String(body.date || '').trim()
     const rawEndDate = String(body.endDate || '').trim()
     const endDate = rawEndDate || date
@@ -171,9 +271,13 @@ export async function POST(req: Request) {
     const now = admin.firestore.Timestamp.now()
     const ref = await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).add({
       requesterId: String(user?.id || ''),
-      requesterName: String(user?.name || ''),
-      requesterRole: String(user?.role || ''),
-      requesterDepartment: String(user?.department || ''),
+      requesterName,
+      requesterRole,
+      requesterDepartment,
+      requestedForId,
+      requestedForName,
+      requestedForRole,
+      requestedForDepartment: targetDepartment,
       date,
       endDate,
       dayKeys,
@@ -197,13 +301,24 @@ export async function POST(req: Request) {
         createUserNotification({
           userId,
           title: 'Nova reserva de comercial',
-          body: `${String(user?.name || 'Un comercial')} ha fet una sol·licitud per al ${date}.`,
+          body: `${requestedForName || requesterName || 'Un comercial'} necessita un vehicle per al ${date}${targetIsRequester ? '.' : ` (sol·licitat per ${requesterName || 'un gestor'}).`}`,
           type: 'commercial_vehicle_request',
           url: '/menu/logistica/reserva-comercials?tab=validacio',
           reservationId: ref.id,
         })
       )
     )
+
+    if (!targetIsRequester) {
+      await createUserNotification({
+        userId: requestedForId,
+        title: 'Nova reserva de vehicle per a tu',
+        body: `${requesterName || 'Un gestor'} ha fet una sol·licitud de vehicle per a tu per al ${date}.`,
+        type: 'commercial_vehicle_validation',
+        url: '/menu/logistica/reserva-comercials?tab=sollicitud',
+        reservationId: ref.id,
+      })
+    }
 
     const snap = await ref.get()
     const reservation = mapReservation(snap.id, snap.data() as ReservationDoc)

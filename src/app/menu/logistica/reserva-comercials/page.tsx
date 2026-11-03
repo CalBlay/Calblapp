@@ -177,6 +177,10 @@ export default function ReservaComercialsPage() {
         setReason={page.setReason}
         notes={page.notes}
         setNotes={page.setNotes}
+        canManageDepartment={page.canManageDepartment}
+        requestedForId={page.requestedForId}
+        setRequestedForId={page.setRequestedForId}
+        departmentUsers={page.departmentUsers}
         isMultiDaySelection={page.isMultiDaySelection}
         saving={page.saving}
         onSubmit={page.handleSubmit}

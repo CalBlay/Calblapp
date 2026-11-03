@@ -201,6 +201,12 @@ export default function RequestTab({
                     ) : null}
                   </div>
                   <div className="mt-2 font-semibold text-slate-900">{reservation.reason}</div>
+                  {reservation.requestedForId !== reservation.requesterId ? (
+                    <div className="mt-1 text-sm text-slate-600">
+                      Per a <span className="font-medium">{reservation.requestedForName}</span>
+                      {' · '}demanada per {reservation.requesterName}
+                    </div>
+                  ) : null}
                   <div className="mt-1 text-sm text-slate-600">{reservationDateLabel(reservation)}</div>
                   {getCommercialReservationEndDate(reservation) !== reservation.date ? (
                     <div className="mt-1 text-xs font-medium text-slate-500">

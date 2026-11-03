@@ -246,12 +246,16 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     id: 'reservaComercialsActions',
     title: 'Reserva comercials · Accions',
     subtitle:
-      'Per defecte: Sol·licitud si pot veure el submòdul; Validació només admin i cap de transports. Marca/desmarca per override.',
+      'Per defecte: Sol·licitud si pot veure el submòdul; el gestor pot demanar per al seu departament; validació només admin i cap de transports.',
     visibleWhen: { path: '/menu/logistica/reserva-comercials' },
     actions: [
       {
         key: PERM.action('/menu/logistica/reserva-comercials', 'request'),
         label: 'Sol·licitud (crear i anul·lar pròpies)',
+      },
+      {
+        key: PERM.action('/menu/logistica/reserva-comercials', 'manage-department'),
+        label: 'Gestor de vehicles (demanar per al departament)',
       },
       {
         key: PERM.action('/menu/logistica/reserva-comercials', 'validate'),

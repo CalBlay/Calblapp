@@ -169,8 +169,13 @@ export default function ValidationTab({
                             Comercial
                           </div>
                           <div className="mt-1 text-sm font-medium text-slate-800">
-                            {reservation.requesterName}
+                            {reservation.requestedForName || reservation.requesterName}
                           </div>
+                          {reservation.requestedForId !== reservation.requesterId ? (
+                            <div className="mt-1 text-xs text-slate-500">
+                              Demanada per {reservation.requesterName}
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">

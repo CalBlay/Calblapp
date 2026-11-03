@@ -5,6 +5,7 @@ import { getVisibleModules, MODULES, type AccessUser } from '@/lib/accessControl
 import {
   baseCanKeysHandoverReservaComercials,
   baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_ACTION,
   RESERVA_COMERCIALS_UI_PATH,
 } from '@/lib/reservaComercialsPermissions'
 import {
@@ -170,8 +171,10 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/quadrants', action: 'draft:delete' },
   { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.REOPEN },
   { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.PREMISSES_EDIT },
-  { path: RESERVA_COMERCIALS_UI_PATH, action: 'request' },
-  { path: RESERVA_COMERCIALS_UI_PATH, action: 'validate' },
+  { path: RESERVA_COMERCIALS_UI_PATH, action: RESERVA_COMERCIALS_ACTION.REQUEST },
+  { path: RESERVA_COMERCIALS_UI_PATH, action: RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT },
+  { path: RESERVA_COMERCIALS_UI_PATH, action: RESERVA_COMERCIALS_ACTION.VALIDATE },
+  { path: RESERVA_COMERCIALS_UI_PATH, action: RESERVA_COMERCIALS_ACTION.KEYS },
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_EXPORT },
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_CREATE },
   { path: SPACES_BBDD_ACTION_PATH, action: SPACES_ACTION.BBDD_UPDATE },
@@ -606,9 +609,9 @@ export async function GET() {
 
   // Reserva comercials: veure el submòdul implica sol·licitud; validació només admin / cap transports
   if (map[RESERVA_COMERCIALS_UI_PATH] === true) {
-    const requestKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'request')
-    const validateKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'validate')
-    const keysKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'keys')
+    const requestKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, RESERVA_COMERCIALS_ACTION.REQUEST)
+    const validateKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, RESERVA_COMERCIALS_ACTION.VALIDATE)
+    const keysKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, RESERVA_COMERCIALS_ACTION.KEYS)
     if (effectFor(assignment, requestKey) !== 'deny') actions[requestKey] = true
     if (
       baseCanValidateReservaComercials({

@@ -10,6 +10,10 @@ export interface CommercialReservation {
   requesterName: string
   requesterRole?: string
   requesterDepartment?: string
+  requestedForId: string
+  requestedForName: string
+  requestedForRole?: string
+  requestedForDepartment?: string
   date: string
   endDate?: string | null
   startTime: string

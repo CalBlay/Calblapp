@@ -13,7 +13,10 @@ import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservati
 import type { AccessUser } from '@/lib/accessControl'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { PERM } from '@/lib/permissionKeys'
-import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import {
+  RESERVA_COMERCIALS_ACTION,
+  RESERVA_COMERCIALS_UI_PATH,
+} from '@/lib/reservaComercialsPermissions'
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import { notifyReservaComercialUser } from '@/lib/logistica/reservaComercialNotifications'
 
@@ -47,12 +50,20 @@ function normalizeTimestamp(ts: unknown): string {
 }
 
 function mapReservation(id: string, data: ReservationDoc): CommercialReservation {
+  const requesterId = String(data.requesterId || '')
+  const requesterName = String(data.requesterName || '')
+  const requesterRole = String(data.requesterRole || '')
+  const requesterDepartment = String(data.requesterDepartment || '')
   return {
     id,
-    requesterId: String(data.requesterId || ''),
-    requesterName: String(data.requesterName || ''),
-    requesterRole: String(data.requesterRole || ''),
-    requesterDepartment: String(data.requesterDepartment || ''),
+    requesterId,
+    requesterName,
+    requesterRole,
+    requesterDepartment,
+    requestedForId: String(data.requestedForId || requesterId),
+    requestedForName: String(data.requestedForName || requesterName),
+    requestedForRole: String(data.requestedForRole || requesterRole),
+    requestedForDepartment: String(data.requestedForDepartment || requesterDepartment),
     date: String(data.date || ''),
     endDate: data.endDate ? String(data.endDate) : null,
     startTime: String(data.startTime || ''),
@@ -199,11 +210,11 @@ export async function PATCH(
 
     const canRequest = await isUiPermissionGranted({
       user: accessUser,
-      permission: PERM.action(RESERVA_UI_PATH, 'request'),
+      permission: PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.REQUEST),
     })
     const canValidate = await isUiPermissionGranted({
       user: accessUser,
-      permission: PERM.action(RESERVA_UI_PATH, 'validate'),
+      permission: PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.VALIDATE),
     })
 
     const { id } = await ctx.params
@@ -222,13 +233,14 @@ export async function PATCH(
     const body = (await req.json()) as Partial<CommercialReservation>
     const nextStatus = String(body.status || '').trim() as CommercialReservation['status']
     const actorIsRequester = String(user?.id || '') === current.requesterId
+    const actorIsBeneficiary = String(user?.id || '') === current.requestedForId
 
     if (nextStatus === 'confirmed' || nextStatus === 'rejected') {
       if (!canValidate) {
         return NextResponse.json({ error: 'Sense permisos de validació' }, { status: 403 })
       }
     } else if (nextStatus === 'cancelled') {
-      if (actorIsRequester) {
+      if (actorIsRequester || actorIsBeneficiary) {
         if (!canRequest) {
           return NextResponse.json({ error: 'Sense permisos per anul·lar aquesta reserva' }, { status: 403 })
         }
@@ -294,25 +306,34 @@ export async function PATCH(
         : patch.status === 'rejected'
           ? 'Reserva rebutjada'
           : 'Reserva anul·lada'
+    const reservationOwner =
+      current.requestedForId !== current.requesterId && current.requestedForName
+        ? `La reserva de ${current.requestedForName}`
+        : 'La teva reserva'
     const bodyText =
       vehicleWasChanged
-        ? `S'ha canviat el vehicle de la teva reserva ${dateLabel}: ${previousVehiclePlate || 'vehicle anterior'} → ${String(patch.assignedVehiclePlate || 'nou vehicle')}.`
+        ? `${reservationOwner}: s'ha canviat el vehicle ${dateLabel}: ${previousVehiclePlate || 'vehicle anterior'} → ${String(patch.assignedVehiclePlate || 'nou vehicle')}.`
         : patch.status === 'confirmed'
-        ? `La teva reserva ${dateLabel} ha estat confirmada${patch.assignedVehiclePlate ? ` amb ${String(patch.assignedVehiclePlate)}` : ''}.`
+        ? `${reservationOwner} ${dateLabel} ha estat confirmada${patch.assignedVehiclePlate ? ` amb ${String(patch.assignedVehiclePlate)}` : ''}.`
         : patch.status === 'rejected'
-          ? `La teva reserva ${dateLabel} no ha estat validada.`
-          : actorIsRequester
-            ? `Has anul·lat la reserva ${dateLabel}.`
-            : `La teva reserva ${dateLabel} ha estat anul·lada per transports.`
+          ? `${reservationOwner} ${dateLabel} no ha estat validada.`
+          : actorIsRequester || actorIsBeneficiary
+            ? `${reservationOwner} ${dateLabel} ha estat anul·lada.`
+            : `${reservationOwner} ${dateLabel} ha estat anul·lada per transports.`
 
-    await createUserNotification({
-      userId: current.requesterId,
-      title,
-      body: bodyText,
-      type: 'commercial_vehicle_validation',
-      url: '/menu/logistica/reserva-comercials?tab=sollicitud',
-      reservationId,
-    })
+    const recipientIds = [...new Set([current.requesterId, current.requestedForId].filter(Boolean))]
+    await Promise.all(
+      recipientIds.map((userId) =>
+        createUserNotification({
+          userId,
+          title,
+          body: bodyText,
+          type: 'commercial_vehicle_validation',
+          url: '/menu/logistica/reserva-comercials?tab=sollicitud',
+          reservationId,
+        })
+      )
+    )
 
     const updated = await ref.get()
     return NextResponse.json({

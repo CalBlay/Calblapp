@@ -3,6 +3,13 @@ import { normalizeRole } from '@/lib/roles'
 
 export const RESERVA_COMERCIALS_UI_PATH = '/menu/logistica/reserva-comercials'
 
+export const RESERVA_COMERCIALS_ACTION = {
+  REQUEST: 'request',
+  MANAGE_DEPARTMENT: 'manage-department',
+  VALIDATE: 'validate',
+  KEYS: 'keys',
+} as const
+
 /** Per defecte: només admin i cap de transports (isTransportLead). */
 export function baseCanValidateReservaComercials(user?: {
   role?: string | null

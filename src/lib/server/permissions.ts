@@ -14,6 +14,7 @@ import {
 import {
   baseCanKeysHandoverReservaComercials,
   baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_ACTION,
   RESERVA_COMERCIALS_UI_PATH,
 } from '@/lib/reservaComercialsPermissions'
 import {
@@ -222,14 +223,15 @@ export async function isUiPermissionGranted(params: {
   if (parsed?.path === RESERVA_COMERCIALS_UI_PATH) {
     const canView = await canViewUiPath({ user: params.user, path: parsed.path })
     if (!canView) return false
-    if (parsed.action === 'request') return true
-    if (parsed.action === 'validate') {
+    if (parsed.action === RESERVA_COMERCIALS_ACTION.REQUEST) return true
+    if (parsed.action === RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT) return false
+    if (parsed.action === RESERVA_COMERCIALS_ACTION.VALIDATE) {
       return baseCanValidateReservaComercials({
         role: params.user.role,
         isTransportLead: params.user.isTransportLead,
       })
     }
-    if (parsed.action === 'keys') {
+    if (parsed.action === RESERVA_COMERCIALS_ACTION.KEYS) {
       return baseCanKeysHandoverReservaComercials({
         role: params.user.role,
         department: params.user.department,

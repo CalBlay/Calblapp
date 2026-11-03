@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { ReservationTimelineSlot } from '../types'
+import type { ReservationDepartmentUser, ReservationTimelineSlot } from '../types'
 import { prettyDate, STANDARD_DAY_END, STANDARD_DAY_START } from '../utils'
 
 type Props = {
@@ -33,6 +33,10 @@ type Props = {
   setReason: React.Dispatch<React.SetStateAction<string>>
   notes: string
   setNotes: React.Dispatch<React.SetStateAction<string>>
+  canManageDepartment: boolean
+  requestedForId: string
+  setRequestedForId: React.Dispatch<React.SetStateAction<string>>
+  departmentUsers: ReservationDepartmentUser[]
   isMultiDaySelection: boolean
   saving: boolean
   onSubmit: () => Promise<void>
@@ -56,6 +60,10 @@ export default function ReservationDialog({
   setReason,
   notes,
   setNotes,
+  canManageDepartment,
+  requestedForId,
+  setRequestedForId,
+  departmentUsers,
   isMultiDaySelection,
   saving,
   onSubmit,
@@ -73,6 +81,22 @@ export default function ReservationDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          {canManageDepartment ? (
+            <Field label="Vehicle per a">
+              <select
+                value={requestedForId}
+                onChange={(event) => setRequestedForId(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {departmentUsers.map((departmentUser) => (
+                  <option key={departmentUser.id} value={departmentUser.id}>
+                    {departmentUser.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
           <Field label="Dia">
             <Input value={prettyDate(selectedDay)} readOnly />
           </Field>

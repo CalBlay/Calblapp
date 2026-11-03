@@ -15,12 +15,17 @@ import {
   type CommercialReservationStatus,
 } from '@/lib/commercialReservations'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { baseCanKeysHandoverReservaComercials, baseCanValidateReservaComercials } from '@/lib/reservaComercialsPermissions'
+import {
+  baseCanKeysHandoverReservaComercials,
+  baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_ACTION,
+} from '@/lib/reservaComercialsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type {
   AssignmentItem,
   AssignmentRow,
   ReservationPageState,
+  ReservationDepartmentUser,
   SessionUser,
   TabId,
 } from '../types'
@@ -46,6 +51,7 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   setDestination: React.Dispatch<React.SetStateAction<string>>
   setReason: React.Dispatch<React.SetStateAction<string>>
   setNotes: React.Dispatch<React.SetStateAction<string>>
+  setRequestedForId: React.Dispatch<React.SetStateAction<string>>
   setFilters: React.Dispatch<React.SetStateAction<FiltersState>>
   setRequestFilters: React.Dispatch<React.SetStateAction<FiltersState>>
   setSelectedVehicleByReservation: React.Dispatch<React.SetStateAction<Record<string, string>>>
@@ -171,17 +177,30 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
   const canRequest = useMemo(() => {
     if (!permsReady) return true
-    return uiActions[PERM.action(RESERVA_UI_PATH, 'request')] === true
+    return (
+      uiActions[PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.REQUEST)] === true
+    )
+  }, [permsReady, uiActions])
+
+  const canManageDepartment = useMemo(() => {
+    if (!permsReady) return false
+    return (
+      uiActions[
+        PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT)
+      ] === true
+    )
   }, [permsReady, uiActions])
 
   const canValidate = useMemo(() => {
     if (!permsReady) return legacyCanValidate
-    return uiActions[PERM.action(RESERVA_UI_PATH, 'validate')] === true
+    return (
+      uiActions[PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.VALIDATE)] === true
+    )
   }, [permsReady, uiActions, legacyCanValidate])
 
   const canKeys = useMemo(() => {
     if (!permsReady) return legacyCanKeys
-    return uiActions[PERM.action(RESERVA_UI_PATH, 'keys')] === true
+    return uiActions[PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.KEYS)] === true
   }, [permsReady, uiActions, legacyCanKeys])
 
   const initialFilters = useMemo<FiltersState>(() => {
@@ -227,6 +246,8 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const [destination, setDestination] = useState('')
   const [reason, setReason] = useState('')
   const [notes, setNotes] = useState('')
+  const [requestedForId, setRequestedForId] = useState('')
+  const [departmentUsers, setDepartmentUsers] = useState<ReservationDepartmentUser[]>([])
   const [saving, setSaving] = useState(false)
   const [selectedVehicleByReservation, setSelectedVehicleByReservation] = useState<Record<string, string>>({})
   const [keysFilters, setKeysFilters] = useState<FiltersState>(initialKeysFilters)
@@ -267,17 +288,24 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
       setLoading(true)
       setError(null)
       const params = new URLSearchParams(reservationRange)
+      if (canManageDepartment) params.set('includeDepartmentUsers', '1')
       const res = await fetch(`/api/logistica/reserva-comercials?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) throw new Error('No s han pogut carregar les reserves')
       const data = await res.json()
       setReservations(Array.isArray(data?.reservations) ? data.reservations : [])
+      setDepartmentUsers(Array.isArray(data?.departmentUsers) ? data.departmentUsers : [])
     } catch (err) {
       setReservations([])
+      setDepartmentUsers([])
       setError(err instanceof Error ? err.message : 'Error carregant reserves')
     } finally {
       setLoading(false)
     }
-  }, [reservationRange])
+  }, [canManageDepartment, reservationRange])
+
+  useEffect(() => {
+    if (!requestedForId && user.id) setRequestedForId(user.id)
+  }, [requestedForId, user.id])
 
   const loadAssignmentItems = async (targetMonth: Date) => {
     try {
@@ -587,7 +615,11 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   }, [assignmentRows, commercialFleet, occupiedPlatesByDayAndSlot, reservations, slotKeys, vehicleWeightByPlate])
 
   const myReservations = useMemo(
-    () => reservations.filter((reservation) => reservation.requesterId === user.id),
+    () =>
+      reservations.filter(
+        (reservation) =>
+          reservation.requesterId === user.id || reservation.requestedForId === user.id
+      ),
     [reservations, user.id]
   )
 
@@ -672,6 +704,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     if (dayIso < todayIso) return
     setSelectedDay(dayIso)
     setSelectedEndDay(dayIso)
+    setRequestedForId(user.id || '')
     setDialogOpen(true)
   }
 
@@ -684,6 +717,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     setDestination('')
     setReason('')
     setNotes('')
+    setRequestedForId(user.id || '')
   }
 
   const handleSubmit = async () => {
@@ -713,6 +747,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
           destination: destination.trim(),
           reason: reason.trim(),
           notes: notes.trim(),
+          requestedForId: canManageDepartment ? requestedForId || user.id : user.id,
         }),
       })
 
@@ -806,6 +841,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   return {
     tab,
     canRequest,
+    canManageDepartment,
     canValidate,
     canKeys,
     filters,
@@ -823,6 +859,8 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     destination,
     reason,
     notes,
+    requestedForId,
+    departmentUsers,
     saving,
     days,
     myReservations,
@@ -842,6 +880,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     setDestination,
     setReason,
     setNotes,
+    setRequestedForId,
     setFilters,
     setRequestFilters,
     setSelectedVehicleByReservation,
