@@ -447,6 +447,7 @@ export default function PreparationFormDialog({
       setDirty(false)
       setMessage(status === 'completed' ? 'Preparació finalitzada i reservada correctament.' : 'Esborrany desat correctament.')
       onSaved?.()
+      setOpen(false)
     } catch (saveError) {
       setMessage(saveError instanceof Error ? saveError.message : 'No s’ha pogut desar la fitxa.')
     } finally {

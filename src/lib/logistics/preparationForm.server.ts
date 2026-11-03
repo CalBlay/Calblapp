@@ -1,6 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { EVENT_COMANDA_COLLECTIONS } from '@/lib/eventComanda/collections'
-import { queryEventComandaArticles } from '@/lib/eventComanda/articles.server'
 import { listEventComandaWarehouses } from '@/lib/eventComanda/warehouses.server'
 import type {
   PreparationArticleSelection,
@@ -51,6 +50,16 @@ function normalizeSearch(value: unknown) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+}
+
+export function preparationArticleMatchesSearch(
+  article: { articleCode: unknown; articleName: unknown },
+  query: unknown
+) {
+  const normalizedQuery = normalizeSearch(query)
+  if (!normalizedQuery) return true
+  return normalizeSearch(`${article.articleCode ?? ''} ${article.articleName ?? ''}`)
+    .includes(normalizedQuery)
 }
 
 function normalizeDate(value: unknown) {
@@ -553,10 +562,28 @@ export async function listPreparationCatalog(params: {
 
   if (params.purpose === 'assigned') {
     if (query.length < 2) return { warehouse, articles: [] as PreparationCatalogArticle[] }
-    const result = await queryEventComandaArticles({ q: query, limit: 100 })
-    const candidates = result.articles.filter(
-      (article) => cleanText(article.warehouseId, 80).toUpperCase() === warehouse.id
-    )
+    const snap = await db.collection(ARTICLE_COLLECTION).where('warehouseId', '==', warehouse.id).get()
+    const candidates = snap.docs
+      .filter((doc) => doc.data().isActive !== false)
+      .map((doc) => {
+        const data = doc.data()
+        return {
+          articleCode: cleanText(data.code || doc.id, 80).toUpperCase(),
+          articleName: cleanText(data.name, 200) || cleanText(data.code || doc.id, 80).toUpperCase(),
+          preparationStock: data.preparationStock,
+        }
+      })
+      .filter((article) => preparationArticleMatchesSearch(article, query))
+      .sort((left, right) => {
+        const leftCode = normalizeSearch(left.articleCode)
+        const rightCode = normalizeSearch(right.articleCode)
+        const leftName = normalizeSearch(left.articleName)
+        const rightName = normalizeSearch(right.articleName)
+        const leftRank = leftCode.startsWith(query) ? 0 : leftName.startsWith(query) ? 1 : 2
+        const rightRank = rightCode.startsWith(query) ? 0 : rightName.startsWith(query) ? 1 : 2
+        return leftRank - rightRank || leftName.localeCompare(rightName, 'ca')
+      })
+      .slice(0, 100)
     const codes = candidates.map((article) => article.articleCode)
     const reservedByCode = await reservedPreparationQuantities(codes, params)
     return {
@@ -591,7 +618,10 @@ export async function listPreparationCatalog(params: {
     .filter((doc) => {
       if (!query) return true
       const data = doc.data()
-      return normalizeSearch(`${data.code || doc.id} ${data.name || ''}`).includes(query)
+      return preparationArticleMatchesSearch(
+        { articleCode: data.code || doc.id, articleName: data.name || '' },
+        query
+      )
     })
     .sort((a, b) => String(a.data().name || '').localeCompare(String(b.data().name || ''), 'ca'))
     .slice(0, 100)
