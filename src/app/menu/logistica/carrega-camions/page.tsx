@@ -5,10 +5,18 @@ import { endOfWeek, format, startOfWeek } from 'date-fns'
 import useSWR from 'swr'
 import {
   AlertTriangle,
+  Archive,
   CheckCircle2,
+  ChevronDown,
+  Cog,
+  Layers3,
   Loader2,
+  Package,
   PackageCheck,
+  ShoppingCart,
+  Snowflake,
   Truck,
+  Wrench,
 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
@@ -145,15 +153,51 @@ function LoadingEventCard({
     resolution: 'prepared' | 'left_unprepared'
   ) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
   const pct = event.loadableCount
     ? Math.round((event.loadedCount / event.loadableCount) * 100)
     : 0
   const warehouseGroups = new Map<string, LogisticsLoadingLine[]>()
+  let totalCarts = 0
+  let totalPallets = 0
+  let totalKits = 0
+  let totalGelPileBags = 0
+  let totalGelStoneBags = 0
+  let totalGelMojitoBags = 0
+  let totalRacks = 0
+  let totalMachinery = 0
+  let totalSmallMachinery = 0
+  let totalPalletJacks = 0
+  let totalPendingArticles = 0
   for (const line of event.lines) {
     const warehouseCode = line.warehouseCodes[0] || 'LOGISTICA'
     const current = warehouseGroups.get(warehouseCode) || []
     current.push(line)
     warehouseGroups.set(warehouseCode, current)
+    const lineType = line.key.slice(line.key.lastIndexOf(':') + 1)
+    if (lineType === 'carts') totalCarts += line.quantity
+    if (lineType === 'euro-pallets' || lineType === 'american-pallets') {
+      totalPallets += line.quantity
+    }
+    if (line.key.startsWith('logistics-pack:') || line.key.includes(':logistics-pack:')) {
+      totalKits += line.quantity
+    }
+    if (lineType === 'gel-pile') totalGelPileBags += line.quantity
+    if (lineType === 'gel-stone') totalGelStoneBags += line.quantity
+    if (lineType === 'gel-mojito') totalGelMojitoBags += line.quantity
+    if (lineType === 'racks') totalRacks += line.quantity
+    if (line.key.startsWith('machinery:') || line.key.includes(':machinery:')) {
+      totalMachinery += line.quantity
+    }
+    if (line.key.startsWith('small-machinery:') || line.key.includes(':small-machinery:')) {
+      totalSmallMachinery += line.quantity
+    }
+    if (line.key.startsWith('pallet-jack:') || line.key.includes(':pallet-jack:')) {
+      totalPalletJacks += line.quantity
+    }
+    if (!line.ready && line.pendingResolution !== 'left_unprepared') {
+      totalPendingArticles += line.quantity
+    }
   }
   const orderedWarehouseGroups = [...warehouseGroups.entries()].sort(([left], [right]) => {
     const leftIndex = PREPARATION_WAREHOUSE_CODES.indexOf(left as never)
@@ -164,8 +208,14 @@ function LoadingEventCard({
   })
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-      <header className="border-b border-slate-200 bg-white p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <header className={cn('bg-white', expanded && 'border-b border-slate-200')}>
+        <button
+          type="button"
+          className="w-full p-4 text-left transition-colors hover:bg-slate-50 sm:p-5"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-emerald-700">
               <Truck className="h-4 w-4" /> {event.eventCode || 'Sense codi'}
@@ -175,8 +225,122 @@ function LoadingEventCard({
               {formatDateTime(event.startKey)} → {formatDateTime(event.endKey)}
               {event.location ? ` · ${event.location}` : ''}
             </p>
+            {(totalCarts > 0 || totalPallets > 0 || totalKits > 0 || totalGelPileBags > 0 || totalGelStoneBags > 0 || totalGelMojitoBags > 0 || totalRacks > 0 || totalMachinery > 0 || totalSmallMachinery > 0 || totalPalletJacks > 0 || totalPendingArticles > 0) ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {totalCarts > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-800 ring-1 ring-inset ring-sky-200"
+                    title={`${totalCarts} carros en total`}
+                    aria-label={`${totalCarts} carros en total`}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalCarts} <span className="font-semibold">carros</span>
+                  </span>
+                ) : null}
+                {totalPallets > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-inset ring-violet-200"
+                    title={`${totalPallets} palets en total (EU + AM)`}
+                    aria-label={`${totalPallets} palets en total`}
+                  >
+                    <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalPallets} <span className="font-semibold">palets</span>
+                  </span>
+                ) : null}
+                {totalKits > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 ring-1 ring-inset ring-indigo-200"
+                    title={`${totalKits} kits de logística en total`}
+                    aria-label={`${totalKits} kits de logística en total`}
+                  >
+                    <Package className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalKits} <span className="font-semibold">kits</span>
+                  </span>
+                ) : null}
+                {totalGelPileBags > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 ring-1 ring-inset ring-cyan-200"
+                    title={`${totalGelPileBags} sacs de gel pilé`}
+                    aria-label={`${totalGelPileBags} sacs de gel pilé`}
+                  >
+                    <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalGelPileBags} <span className="font-semibold">gel pilé</span>
+                  </span>
+                ) : null}
+                {totalGelStoneBags > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-inset ring-blue-200"
+                    title={`${totalGelStoneBags} sacs de gel pedra`}
+                    aria-label={`${totalGelStoneBags} sacs de gel pedra`}
+                  >
+                    <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalGelStoneBags} <span className="font-semibold">gel pedra</span>
+                  </span>
+                ) : null}
+                {totalGelMojitoBags > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 ring-1 ring-inset ring-teal-200"
+                    title={`${totalGelMojitoBags} sacs de gel mojito`}
+                    aria-label={`${totalGelMojitoBags} sacs de gel mojito`}
+                  >
+                    <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalGelMojitoBags} <span className="font-semibold">gel mojito</span>
+                  </span>
+                ) : null}
+                {totalRacks > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 ring-1 ring-inset ring-slate-300"
+                    title={`${totalRacks} racks en total`}
+                    aria-label={`${totalRacks} racks en total`}
+                  >
+                    <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalRacks} <span className="font-semibold">racks</span>
+                  </span>
+                ) : null}
+                {totalMachinery > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800 ring-1 ring-inset ring-orange-200"
+                    title={`${totalMachinery} unitats de maquinària`}
+                    aria-label={`${totalMachinery} unitats de maquinària`}
+                  >
+                    <Cog className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalMachinery} <span className="font-semibold">maquinària</span>
+                  </span>
+                ) : null}
+                {totalSmallMachinery > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-lime-50 px-2.5 py-1 text-xs font-bold text-lime-800 ring-1 ring-inset ring-lime-200"
+                    title={`${totalSmallMachinery} unitats de maquinària petita`}
+                    aria-label={`${totalSmallMachinery} unitats de maquinària petita`}
+                  >
+                    <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalSmallMachinery} <span className="font-semibold">maq. petita</span>
+                  </span>
+                ) : null}
+                {totalPalletJacks > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-800 ring-1 ring-inset ring-rose-200"
+                    title={`${totalPalletJacks} transpalets`}
+                    aria-label={`${totalPalletJacks} transpalets`}
+                  >
+                    <Truck className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalPalletJacks} <span className="font-semibold">transpalets</span>
+                  </span>
+                ) : null}
+                {totalPendingArticles > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900 ring-1 ring-inset ring-amber-300"
+                    title={`${totalPendingArticles} unitats pendents de preparar`}
+                    aria-label={`${totalPendingArticles} unitats pendents de preparar`}
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                    {totalPendingArticles} <span className="font-semibold">pendents</span>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-bold text-emerald-800">
               {event.loadedCount}/{event.loadableCount} carregat
             </span>
@@ -185,13 +349,17 @@ function LoadingEventCard({
                 {event.pendingPreparationCount} pendent de preparar
               </span>
             ) : null}
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <ChevronDown className={cn('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
+            </span>
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
           <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${pct}%` }} />
         </div>
+        </button>
       </header>
-      {event.preparationNotes.length ? (
+      {expanded && event.preparationNotes.length ? (
         <section className="border-b border-slate-200 bg-amber-50 px-4 py-4 sm:px-5">
           <h3 className="text-xs font-bold uppercase tracking-wide text-amber-800">Observacions dels preparadors</h3>
           <div className="mt-2 grid gap-2 lg:grid-cols-2">
@@ -213,6 +381,7 @@ function LoadingEventCard({
           </div>
         </section>
       ) : null}
+      {expanded ? (
       <div className="grid items-start gap-3 p-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))] sm:p-4">
         {orderedWarehouseGroups.map(([warehouseCode, lines]) => {
           const warehouseName = isPreparationWarehouseCode(warehouseCode)
@@ -247,6 +416,7 @@ function LoadingEventCard({
           )
         })}
       </div>
+      ) : null}
     </article>
   )
 }

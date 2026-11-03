@@ -161,6 +161,10 @@ function displayEventTime(row: LogisticsEventPrepRow) {
   return row.EventTime?.trim() || row.HoraInici?.trim() || ''
 }
 
+function displayEventDate(row: LogisticsEventPrepRow) {
+  return row.EventDate?.trim() || row.DataInici?.trim() || ''
+}
+
 export default function LogisticsGrid({
   rows,
   warehouseTasks,
@@ -482,7 +486,7 @@ function WorkerGroupedView({
                           {ev.PreparacioHora || '--:--'}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
+                          {displayEventDate(ev) ? formatDayMonthValue(displayEventDate(ev), '--/--') : '--/--'}
                         </div>
                       </div>
                       <div
@@ -549,8 +553,8 @@ function WorkerGroupedView({
                         <th className="px-3 py-2 text-left">Observacions</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
-                        <th className="w-28 px-3 py-2 text-left">Data servei</th>
-                        <th className="w-24 px-3 py-2 text-left">Hora servei</th>
+                        <th className="w-28 px-3 py-2 text-left">Data event</th>
+                        <th className="w-24 px-3 py-2 text-left">Hora event</th>
                         {hasAssignedWarehouses ? (
                           <th className="px-3 py-2 text-left">Magatzems</th>
                         ) : null}
@@ -587,9 +591,9 @@ function WorkerGroupedView({
                           <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
                           <td className="px-3 py-2 text-slate-700">
-                            {ev.ServiceDate ? formatDayMonthValue(ev.ServiceDate, '--/--') : '--/--'}
+                            {displayEventDate(ev) ? formatDayMonthValue(displayEventDate(ev), '--/--') : '--/--'}
                           </td>
-                          <td className="px-3 py-2 text-slate-700">{ev.ServiceTime || '--:--'}</td>
+                          <td className="px-3 py-2 text-slate-700">{displayEventTime(ev) || '--:--'}</td>
                           {hasAssignedWarehouses ? (
                             <td className="px-3 py-2">
                               <PreparationWarehouseToggles
