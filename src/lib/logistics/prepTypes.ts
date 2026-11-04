@@ -15,7 +15,9 @@ export type LogisticsEventPrepRow = {
   rowType: 'event'
   id: string
   sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
-  planningMode?: 'event' | 'service'
+  planningMode?: 'event' | 'service' | 'day'
+  /** Fila diària calculada d'un esdeveniment de diversos dies, encara no desada. */
+  generatedDay?: boolean
   EventCode: string
   NomEvent: string
   /** Nom personalitzat visible només dins del flux de preparació logística. */

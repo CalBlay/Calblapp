@@ -550,7 +550,8 @@ export default function LogisticsPage() {
         id: string
         isNew?: boolean
         sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
-        planningMode?: 'event' | 'service'
+        planningMode?: 'event' | 'service' | 'day'
+        upsert?: boolean
         PreparacioData?: string
         PreparacioHora?: string
         EventCode?: string
@@ -560,6 +561,8 @@ export default function LogisticsPage() {
         NumPax?: string
         Ubicacio?: string
         DataInici?: string
+        ParentEventId?: string
+        ServiceName?: string
       }> = []
 
       const targetIds = Array.from(new Set([...rows.map((row) => row.id).filter((id) => edited[id]), ...manualRows.map((row) => row.id)]))
@@ -570,11 +573,13 @@ export default function LogisticsPage() {
 
         const rowEdit = edited[id] || {}
         const isNew = id.startsWith('draft_')
+        const isGeneratedDay = original.generatedDay === true
         const payload: {
           id: string
           isNew?: boolean
           sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
-          planningMode?: 'event' | 'service'
+          planningMode?: 'event' | 'service' | 'day'
+          upsert?: boolean
           PreparacioData?: string
           PreparacioHora?: string
           EventCode?: string
@@ -584,11 +589,14 @@ export default function LogisticsPage() {
           NumPax?: string
           Ubicacio?: string
           DataInici?: string
+          ParentEventId?: string
+          ServiceName?: string
         } = {
           id,
           isNew,
           sourceCollection: original.sourceCollection,
           planningMode: original.planningMode,
+          upsert: isGeneratedDay,
         }
 
         const nextPreparacioData = rowEdit.PreparacioData ?? original.PreparacioData ?? ''
@@ -613,18 +621,23 @@ export default function LogisticsPage() {
           return
         }
 
-        if (isNew || rowEdit.PreparacioData !== undefined) payload.PreparacioData = nextPreparacioData
-        if (isNew || rowEdit.PreparacioHora !== undefined) payload.PreparacioHora = nextPreparacioHora
+        if (isNew || isGeneratedDay || rowEdit.PreparacioData !== undefined) payload.PreparacioData = nextPreparacioData
+        if (isNew || isGeneratedDay || rowEdit.PreparacioHora !== undefined) payload.PreparacioHora = nextPreparacioHora
         if (isNew) payload.EventCode = original.EventCode ?? ''
+        if (isGeneratedDay) payload.EventCode = original.EventCode ?? ''
+        if (isGeneratedDay) payload.NomEvent = nextPreparacioNomEvent
+        if (isGeneratedDay) payload.DataInici = original.DataInici
+        if (isGeneratedDay) payload.ParentEventId = original.ParentEventId
+        if (isGeneratedDay) payload.ServiceName = original.ServiceName
         if (isNew) payload.NomEvent = nextPreparacioNomEvent
         else if (rowEdit.PreparacioNomEvent !== undefined) {
           payload.PreparacioNomEvent = nextPreparacioNomEvent
         }
-        if (isNew || rowEdit.PreparacioObservacions !== undefined) {
+        if (isNew || isGeneratedDay || rowEdit.PreparacioObservacions !== undefined) {
           payload.PreparacioObservacions = nextPreparacioObservacions
         }
-        if (isNew || rowEdit.NumPax !== undefined) payload.NumPax = nextNumPax
-        if (isNew || rowEdit.Ubicacio !== undefined) payload.Ubicacio = nextUbicacio
+        if (isNew || isGeneratedDay || rowEdit.NumPax !== undefined) payload.NumPax = nextNumPax
+        if (isNew || isGeneratedDay || rowEdit.Ubicacio !== undefined) payload.Ubicacio = nextUbicacio
         if (isNew || rowEdit.DataInici !== undefined) payload.DataInici = nextDataInici
 
         if (isNew || Object.keys(rowEdit).length > 0) {

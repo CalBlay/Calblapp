@@ -6,6 +6,7 @@ import { listWarehousePrepTasksForUser } from '@/lib/logistics/warehousePrepTask
 import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMagatzem'
 import { isPreparationPlanningDateInRange } from '@/lib/logistics/preparationRange'
 import { normalizeRole } from '@/lib/roles'
+import { buildPreparationDayId, listEventDays } from '@/lib/logistics/preparationDays'
 
 export const runtime = 'nodejs'
 
@@ -53,7 +54,8 @@ type RawEvent = {
 type LogisticsEvent = {
   id: string
   sourceCollection: 'stage_verd' | 'logistics_preparation_services'
-  planningMode: 'event' | 'service'
+  planningMode: 'event' | 'service' | 'day'
+  generatedDay?: boolean
   EventCode: string
   NomEvent: string
   PreparacioNomEvent: string
@@ -166,6 +168,15 @@ async function queryByDateRange(start: string, end: string) {
     .get()
 }
 
+async function queryByStringEndAfter(start: string) {
+  return db.collection('stage_verd').where('DataFi', '>=', start).limit(2000).get()
+}
+
+async function queryByDateEndAfter(start: string) {
+  const startDate = new Date(`${start}T00:00:00.000Z`)
+  return db.collection('stage_verd').where('DataFi', '>=', startDate).limit(2000).get()
+}
+
 async function queryByPreparationRange(start: string, end: string) {
   return db
     .collection('stage_verd')
@@ -192,9 +203,11 @@ async function queryServiceRowsByPreparationRange(start: string, end: string) {
 
 async function loadStageVerdRange(start: string, end: string) {
   const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
-  const [stringSnap, dateSnap, preparationSnap] = await Promise.allSettled([
+  const [stringSnap, dateSnap, stringEndSnap, dateEndSnap, preparationSnap] = await Promise.allSettled([
     queryByStringRange(start, end),
     queryByDateRange(start, end),
+    queryByStringEndAfter(start),
+    queryByDateEndAfter(start),
     queryByPreparationRange(start, end),
   ])
 
@@ -206,11 +219,25 @@ async function loadStageVerdRange(start: string, end: string) {
     dateSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
+  if (stringEndSnap.status === 'fulfilled') {
+    stringEndSnap.value.forEach((doc) => {
+      const eventStart = normalizeDataInici((doc.data() as RawEvent).DataInici)
+      if (eventStart && eventStart <= end) docs.set(doc.id, doc)
+    })
+  }
+
+  if (dateEndSnap.status === 'fulfilled') {
+    dateEndSnap.value.forEach((doc) => {
+      const eventStart = normalizeDataInici((doc.data() as RawEvent).DataInici)
+      if (eventStart && eventStart <= end) docs.set(doc.id, doc)
+    })
+  }
+
   if (preparationSnap.status === 'fulfilled') {
     preparationSnap.value.forEach((doc) => docs.set(doc.id, doc))
   }
 
-  const attempts = [stringSnap, dateSnap, preparationSnap]
+  const attempts = [stringSnap, dateSnap, stringEndSnap, dateEndSnap, preparationSnap]
   if (attempts.every((result) => result.status === 'rejected')) {
     throw new Error('No s\'ha pogut consultar cap índex de dates de stage_verd.')
   }
@@ -264,12 +291,19 @@ export async function GET(req: NextRequest) {
     ])
     const events: LogisticsEvent[] = []
     const codesWithServices = new Set<string>()
+    const persistedDays = new Set<string>()
     const stageById = new Map(stageDocs.map((doc) => [doc.id, doc.data() as RawEvent]))
 
     serviceDocs.forEach((doc) => {
       const row = doc.data() as RawEvent
       const eventCode = firstEventCode(row) || String(row.ParentEventCode ?? '').trim()
-      if (eventCode) codesWithServices.add(eventCode)
+      if (String(row.planningMode || '').trim() === 'day') {
+        const parentId = String(row.ParentEventId ?? '').trim()
+        const day = normalizeDataInici(row.ServiceDate ?? row.DataInici)
+        if (parentId && day) persistedDays.add(`${parentId}|${day}`)
+      } else if (eventCode) {
+        codesWithServices.add(eventCode)
+      }
     })
 
     serviceDocs.forEach((doc) => {
@@ -292,12 +326,15 @@ export async function GET(req: NextRequest) {
       const dataInici = parseDateOnly(dataIniciIso)
       if (!dataInici) return
 
-      const horaServei = String(row.ServiceTime ?? row.HoraInici ?? '').trim()
       const parent = stageById.get(String(row.ParentEventId ?? '').trim())
+      const isDayPlanning = String(row.planningMode || '').trim() === 'day'
+      const horaServei =
+        String(row.ServiceTime ?? row.HoraInici ?? '').trim() ||
+        (isDayPlanning ? String(parent?.HoraInici ?? '').trim() : '')
       events.push({
         id: doc.id,
         sourceCollection: 'logistics_preparation_services',
-        planningMode: 'service',
+        planningMode: isDayPlanning ? 'day' : 'service',
         EventCode: eventCode,
         NomEvent: formatEventName(row.ParentEventName ?? row.NomEvent ?? row.eventName ?? ''),
         PreparacioNomEvent: String(row.PreparacioNomEvent ?? '').trim(),
@@ -309,8 +346,10 @@ export async function GET(req: NextRequest) {
         HoraInici: horaServei,
         DataFi: normalizeDataInici(parent?.DataFi ?? parent?.DataInici ?? row.DataFi ?? row.DataInici),
         HoraFi: String(parent?.HoraFi ?? parent?.HoraInici ?? row.HoraFi ?? horaServei).trim(),
-        EventDate: normalizeDataInici(row.ParentEventDate ?? ''),
-        EventTime: String(row.ParentEventTime ?? '').trim(),
+        EventDate: normalizeDataInici(row.ParentEventDate ?? (isDayPlanning ? dataIniciIso : '')),
+        EventTime:
+          String(row.ParentEventTime ?? '').trim() ||
+          (isDayPlanning ? String(parent?.HoraInici ?? '').trim() : ''),
         ServiceName: String(row.ServiceName ?? row.Servei ?? '').trim(),
         ServiceDate: dataIniciIso,
         ServiceTime: horaServei,
@@ -332,18 +371,51 @@ export async function GET(req: NextRequest) {
       if (codesWithServices.has(eventCode)) return
 
       const dataIniciIso = normalizeDataInici(ev.DataInici)
-      if (
-        !isPreparationPlanningDateInRange(
-          ev.PreparacioData,
-          dataIniciIso,
-          startStr,
-          endStr
-        )
-      ) {
+      if (!dataIniciIso) return
+
+      const dataFiIso = normalizeDataInici(ev.DataFi ?? ev.DataInici) || dataIniciIso
+      const eventDays = listEventDays(dataIniciIso, dataFiIso)
+      if (eventDays.length > 1) {
+        eventDays.forEach((day) => {
+          if (persistedDays.has(`${doc.id}|${day}`)) return
+          if (!isPreparationPlanningDateInRange('', day, startStr, endStr)) return
+
+          const horaInici = String(ev.HoraInici || '')
+          events.push({
+            id: buildPreparationDayId(doc.id, day),
+            sourceCollection: 'logistics_preparation_services',
+            planningMode: 'day',
+            generatedDay: true,
+            EventCode: eventCode,
+            NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
+            PreparacioNomEvent: String(ev.PreparacioNomEvent ?? '').trim(),
+            PreparacioObservacions: '',
+            Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
+            NumPax: Number(ev.NumPax ?? ev.numPax ?? ev.Pax ?? 0) || 0,
+            DataInici: day,
+            DataVisual: day,
+            HoraInici: horaInici,
+            DataFi: dataFiIso,
+            HoraFi: String(ev.HoraFi || ev.HoraInici || '').trim(),
+            EventDate: day,
+            EventTime: horaInici,
+            ServiceName: `Dia ${eventDays.indexOf(day) + 1} de ${eventDays.length}`,
+            ServiceDate: day,
+            ServiceTime: horaInici,
+            ParentEventId: doc.id,
+            PreparacioData: '',
+            PreparacioHora: '',
+            PreparacioFeta: false,
+            PreparacioFetaPerUserId: '',
+            PreparacioFetaPerNom: '',
+            PreparacioFetaAt: '',
+            PreparacioMagatzems: {},
+          })
+        })
         return
       }
 
-      if (!dataIniciIso) return
+      if (!isPreparationPlanningDateInRange(ev.PreparacioData, dataIniciIso, startStr, endStr)) return
 
       const dataInici = parseDateOnly(dataIniciIso)
       if (!dataInici) return
@@ -367,7 +439,7 @@ export async function GET(req: NextRequest) {
         DataInici: dataIniciIso,
         DataVisual: dateToIso(dataVisual),
         HoraInici: horaInici,
-        DataFi: normalizeDataInici(ev.DataFi ?? ev.DataInici),
+        DataFi: dataFiIso,
         HoraFi: String(ev.HoraFi || ev.HoraInici || '').trim(),
         EventDate: dataIniciIso,
         EventTime: horaInici,

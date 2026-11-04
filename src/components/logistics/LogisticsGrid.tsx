@@ -830,7 +830,7 @@ function EditableTable({
                     <span>{serviceTime || '--:--'}</span>
                   </td>
                   <td className="px-3 py-3 text-center xl:px-4">
-                    {canEditPreparationList ? (
+                    {canEditPreparationList && !ev.generatedDay ? (
                       <button
                         type="button"
                         onClick={() => onDeleteRow?.(ev.id)}

@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { PREPARATION_UI_PATH } from '@/lib/logistics/preparationPermissions'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { canEditUiPath } from '@/lib/server/permissions'
+import { buildPreparationDayId } from '@/lib/logistics/preparationDays'
 
 export const runtime = 'nodejs'
 const isIsoDate = (value?: string | null) => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '').trim())
@@ -12,7 +13,8 @@ type UpdateItem = {
   id: string
   isNew?: boolean
   sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
-  planningMode?: 'event' | 'service'
+  planningMode?: 'event' | 'service' | 'day'
+  upsert?: boolean
   PreparacioData?: string
   PreparacioHora?: string
   EventCode?: string
@@ -22,6 +24,8 @@ type UpdateItem = {
   NumPax?: string | number | null
   Ubicacio?: string
   DataInici?: string
+  ParentEventId?: string
+  ServiceName?: string
 }
 
 function normalizeUpdates(body: unknown): UpdateItem[] {
@@ -129,6 +133,8 @@ export async function POST(req: NextRequest) {
         const value = trimOrEmpty(item.NomEvent)
         if (item.isNew) {
           updateFields.NomEvent = value
+        } else if (item.upsert) {
+          updateFields.NomEvent = value
         } else {
           // Compatibilitat amb clients antics: editar el nom des de Preparació mai
           // no ha de modificar el nom global compartit amb la resta de mòduls.
@@ -158,7 +164,7 @@ export async function POST(req: NextRequest) {
           protectManualField(updateFields, 'DataInici', value)
           protectManualField(updateFields, 'DataFi', value)
         }
-        if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
+        if (item.planningMode === 'service' || item.planningMode === 'day' || item.sourceCollection === 'logistics_preparation_services') {
           updateFields.ServiceDate = value
         }
       }
@@ -187,7 +193,41 @@ export async function POST(req: NextRequest) {
 
       if (!Object.keys(updateFields).length) continue
 
-      if (item.isNew) {
+      if (item.upsert) {
+        const dataInici = trimOrEmpty(updateFields.DataInici)
+        const nomEvent = trimOrEmpty(updateFields.NomEvent)
+        const parentEventId = trimOrEmpty(item.ParentEventId)
+        if (
+          !dataInici ||
+          !nomEvent ||
+          !parentEventId ||
+          item.planningMode !== 'day' ||
+          buildPreparationDayId(parentEventId, dataInici) !== id
+        ) {
+          return NextResponse.json(
+            { ok: false, error: `La planificacio diaria no es valida (${id})` },
+            { status: 400 }
+          )
+        }
+
+        const now = new Date().toISOString()
+        batch.set(
+          db.collection('logistics_preparation_services').doc(id),
+          {
+            ...updateFields,
+            planningMode: 'day',
+            sourceCollection: 'logistics_preparation_services',
+            ParentEventId: parentEventId,
+            ParentEventCode: trimOrEmpty(item.EventCode),
+            ServiceName: trimOrEmpty(item.ServiceName),
+            ServiceTime: '',
+            updatedAt: now,
+            lastWriteAt: now,
+            lastWriteSource: 'logistics',
+          },
+          { merge: true }
+        )
+      } else if (item.isNew) {
         const dataInici = trimOrEmpty(updateFields.DataInici)
         const nomEvent = trimOrEmpty(updateFields.NomEvent)
         if (!dataInici || !nomEvent) {
