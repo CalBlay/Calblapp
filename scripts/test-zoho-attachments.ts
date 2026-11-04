@@ -29,6 +29,10 @@ assert(shouldImportZohoAttachment('FT-123.pdf'), 'FT prefix followed by hyphen')
 assert(!shouldImportZohoAttachment('FM.encarrec.pdf'), 'FM must be followed by space or underscore')
 assert(!shouldImportZohoAttachment('contracte FT 123.pdf'), 'prefix must be at start')
 assert(!shouldImportZohoAttachment(''), 'empty name is ignored')
+assert(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_PM'), 'PM archive prefix')
+assert(shouldImportZohoAttachment('TM tast.pdf', 'ARxiu_TM'), 'TM archive prefix')
+assert(shouldImportZohoAttachment('TM2.pdf', 'Arxiu_TM2'), 'TM2 archive prefix')
+assert(!shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), 'PM field rejects TM')
 
 const parsed = extractZohoFieldAttachments([
   {
@@ -62,8 +66,8 @@ const mergedWithLegacyShape = mergeZohoFieldAttachments([
 assert(mergedWithLegacyShape.length === 2, 'parses field and legacy attachment shapes')
 assert(
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.join(',') ===
-    'Fulla_d_enc_rrec,Full_de_Tast',
-  'sync reads both Zoho file attachment fields'
+    'Fulla_d_enc_rrec,Full_de_Tast,Full_de_modificacions,Full_modificacions,Arxiu_PM,ARxiu_TM,Arxiu_TM2',
+  'sync reads all configured Zoho file attachment fields'
 )
 
 const existing = {

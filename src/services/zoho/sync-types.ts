@@ -71,6 +71,9 @@ export interface ZohoDeal {
   Full_de_Tast?: unknown
   Full_de_modificacions?: unknown
   Full_modificacions?: unknown
+  Arxiu_PM?: unknown
+  ARxiu_TM?: unknown
+  Arxiu_TM2?: unknown
 }
 
 export interface NormalizedDeal {

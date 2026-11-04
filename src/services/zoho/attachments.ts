@@ -4,6 +4,7 @@ export interface ZohoAttachment {
   Size?: number
   Modified_Time?: string
   Download_Url?: string
+  Field_Api_Name?: string
 }
 
 export const ZOHO_FIELD_ATTACHMENT_SOURCE_V8 = 'zoho-field-attachment-v8'
@@ -40,13 +41,29 @@ export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Full_de_Tast',
   'Full_de_modificacions',
   'Full_modificacions',
+  'Arxiu_PM',
+  'ARxiu_TM',
+  'Arxiu_TM2',
 ] as const
 
 const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM', 'FC'] as const
 
-export function shouldImportZohoAttachment(fileName?: string | null): boolean {
+const ZOHO_ATTACHMENT_PREFIX_BY_FIELD: Readonly<Record<string, string>> = {
+  Arxiu_PM: 'PM',
+  ARxiu_TM: 'TM',
+  Arxiu_TM2: 'TM2',
+}
+
+export function shouldImportZohoAttachment(
+  fileName?: string | null,
+  fieldApiName?: string | null
+): boolean {
   const normalized = String(fileName || '').trim().toUpperCase()
   if (!normalized) return false
+
+  const fieldPrefix = ZOHO_ATTACHMENT_PREFIX_BY_FIELD[String(fieldApiName || '')]
+  if (fieldPrefix) return normalized.startsWith(fieldPrefix)
+
   return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) => {
     if (!normalized.startsWith(prefix)) return false
     const next = normalized.charAt(prefix.length)

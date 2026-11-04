@@ -32,6 +32,15 @@ test('shouldImportZohoAttachment accepts configured prefixes and valid separator
   assert.equal(shouldImportZohoAttachment(''), false)
 })
 
+test('shouldImportZohoAttachment applies the dedicated prefix for each archive field', () => {
+  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_PM'), true)
+  assert.equal(shouldImportZohoAttachment('tm_menu.pdf', 'ARxiu_TM'), true)
+  assert.equal(shouldImportZohoAttachment('TM2.pdf', 'Arxiu_TM2'), true)
+  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), false)
+  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'ARxiu_TM'), false)
+  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_TM2'), false)
+})
+
 test('extract and merge Zoho field attachments normalize ids and dedupe across fields', () => {
   const parsed = extractZohoFieldAttachments([
     {
@@ -63,6 +72,9 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
     'Full_de_Tast',
     'Full_de_modificacions',
     'Full_modificacions',
+    'Arxiu_PM',
+    'ARxiu_TM',
+    'Arxiu_TM2',
   ])
 })
 
@@ -168,6 +180,9 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Full_de_Tast',
     'Full_de_modificacions',
     'Full_modificacions',
+    'Arxiu_PM',
+    'ARxiu_TM',
+    'Arxiu_TM2',
   ])
   assert.equal(ZOHO_FIELD_ATTACHMENT_SOURCE_V8, 'zoho-field-attachment-v8')
   assert.match(
@@ -228,6 +243,9 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     'Celler_Extra',
     'Full_de_modificacions',
     'Full_modificacions',
+    'Arxiu_PM',
+    'ARxiu_TM',
+    'Arxiu_TM2',
   ]) {
     assert.match(syncSource, new RegExp(`baseFields[\\s\\S]*${field}`))
   }

@@ -115,13 +115,22 @@ async function resolveZohoDealAttachments(
   const fieldValues = await Promise.all(
     ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.map(async (field) => {
       const value = deal?.[field]
-      if (!shouldRefetchZohoAttachmentField(value)) return value
+      const resolvedValue = !shouldRefetchZohoAttachmentField(value)
+        ? value
+        : await getZohoFieldAttachmentValue(moduleName, dealId, field)
 
-      return getZohoFieldAttachmentValue(moduleName, dealId, field)
+      return { field, value: resolvedValue }
     })
   )
 
-  return mergeZohoFieldAttachments(fieldValues)
+  const seen = new Set<string>()
+  return fieldValues.flatMap(({ field, value }) =>
+    mergeZohoFieldAttachments([value]).flatMap((attachment) => {
+      if (seen.has(attachment.id)) return []
+      seen.add(attachment.id)
+      return [{ ...attachment, Field_Api_Name: field }]
+    })
+  )
 }
 
 export async function buildZohoAttachmentFields(
@@ -150,7 +159,10 @@ export async function buildZohoAttachmentFields(
 
   for (const attachment of attachments) {
     const metadataName = String(attachment.File_Name || '').trim()
-    if (metadataName && !shouldImportZohoAttachment(metadataName)) continue
+    if (
+      metadataName &&
+      !shouldImportZohoAttachment(metadataName, attachment.Field_Api_Name)
+    ) continue
     if (deletedAttachmentIds.has(String(attachment.id || '').trim())) {
       slotIndex += 1
       continue
@@ -165,7 +177,7 @@ export async function buildZohoAttachmentFields(
 
     if (!metadataName) {
       if (existingName) {
-        if (!shouldImportZohoAttachment(fileName)) continue
+        if (!shouldImportZohoAttachment(fileName, attachment.Field_Api_Name)) continue
       } else {
         const downloaded = await downloadZohoAttachment(
           moduleName,
@@ -176,7 +188,7 @@ export async function buildZohoAttachmentFields(
           typeof attachment.Size === 'number' ? attachment.Size : null
         )
         fileName = downloaded.fileName.trim() || fileName
-        if (!shouldImportZohoAttachment(fileName)) continue
+        if (!shouldImportZohoAttachment(fileName, attachment.Field_Api_Name)) continue
         fileBuffer = downloaded.buffer
         initialMimeType = downloaded.mimeType
       }
