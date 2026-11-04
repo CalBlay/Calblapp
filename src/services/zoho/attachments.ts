@@ -42,7 +42,7 @@ export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Full_de_modificacions',
   'Full_modificacions',
   'Arxiu_PM',
-  'ARxiu_TM',
+  'Arxiu_TM',
   'Arxiu_TM2',
 ] as const
 
@@ -50,7 +50,7 @@ const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM', 'FC'] as const
 
 const ZOHO_ATTACHMENT_PREFIX_BY_FIELD: Readonly<Record<string, string>> = {
   Arxiu_PM: 'PM',
-  ARxiu_TM: 'TM',
+  Arxiu_TM: 'TM',
   Arxiu_TM2: 'TM2',
 }
 
@@ -154,19 +154,20 @@ export function extractZohoFieldAttachments(
       record.attachment_Id ||
         record.attachment_id ||
         record.Attachment_Id ||
+        record.id ||
         record.File_Id__s ||
         record.file_Id__s ||
         record.file_Id ||
         record.File_Id ||
         record.file_id ||
         record.$file_id ||
-        record.id ||
         ''
     ).trim()
     if (!id) return []
 
     const fileName = String(
-      record.File_Name ||
+      record.File_Name__s ||
+        record.File_Name ||
         record.file_Name ||
         record.file_name ||
         record.fileName ||
@@ -174,8 +175,12 @@ export function extractZohoFieldAttachments(
         record.Name ||
         ''
     ).trim()
-    const size = Number(record.Size || record.original_Size_Byte || record.size)
-    const modifiedTime = String(record.Modified_Time || '').trim()
+    const size = Number(
+      record.Size__s || record.Size || record.original_Size_Byte || record.size
+    )
+    const modifiedTime = String(
+      record.Modified_Time__s || record.Modified_Time || ''
+    ).trim()
     const downloadUrl = String(
       record.download_Url || record.download_url || ''
     ).trim()

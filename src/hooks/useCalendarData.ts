@@ -39,6 +39,10 @@ export interface Deal {
   sourceEventIds?: string[]
   sourceEvents?: Array<{ id: string; name: string; code: string }>
   groupedMenuTasting?: boolean
+  serviceBreakdown?: Array<{
+    service: string
+    pax: number | null
+  }>
   calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
   sourceTastings?: Array<{
     id: string
@@ -273,6 +277,22 @@ export function useCalendarData(filters?: {
                 .filter((item) => item.id)
             : undefined,
           groupedMenuTasting: ev.groupedMenuTasting === true,
+          serviceBreakdown: Array.isArray(ev.serviceBreakdown)
+            ? ev.serviceBreakdown
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => {
+                  const row = item as Record<string, unknown>
+                  const numericPax = Number(row.pax)
+                  return {
+                    service: String(row.service || '').trim(),
+                    pax:
+                      row.pax !== null && row.pax !== undefined && Number.isFinite(numericPax)
+                        ? numericPax
+                        : null,
+                  }
+                })
+                .filter((item) => item.service)
+            : undefined,
           calendarOccurrenceType:
             ev.calendarOccurrenceType === 'menu_tasting_1' ||
             ev.calendarOccurrenceType === 'menu_tasting_2' ||

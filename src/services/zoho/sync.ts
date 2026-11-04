@@ -10,7 +10,7 @@ import {
   stripInvalidManualMerge,
   type ManualReserveDoc,
 } from '@/services/spaces/manualReserveZohoMatch'
-import { zohoFetch } from '@/services/zoho/auth'
+import { zohoFetch, zohoFetchV8 } from '@/services/zoho/auth'
 import { buildZohoAttachmentFields } from '@/services/zoho/sync-attachments'
 import {
   buildFincaMatcher,
@@ -868,7 +868,42 @@ async function syncStageCollections({
       if (data?.origen !== 'zoho') continue
 
       const zoho = zohoById.get(id)
-      if (!zoho) continue
+      if (!zoho) {
+        const currentData = doc.data()
+        const now = new Date().toISOString()
+        const wasAlreadyCancelled = currentData?.cancelled === true
+        verdCleanupBatch.set(
+          doc.ref,
+          {
+            cancelled: true,
+            cancelledAt:
+              wasAlreadyCancelled && typeof currentData?.cancelledAt === 'string'
+                ? currentData.cancelledAt
+                : now,
+            cancelledByUserId: wasAlreadyCancelled
+              ? (currentData?.cancelledByUserId ?? null)
+              : null,
+            cancelledByName: wasAlreadyCancelled
+              ? (currentData?.cancelledByName ?? 'Zoho')
+              : 'Zoho',
+            cancellationSource: wasAlreadyCancelled
+              ? (currentData?.cancellationSource ?? null)
+              : 'zoho-record-missing',
+            updatedAt: now,
+            lastWriteSource: 'zoho-sync',
+            lastWriteAt: now,
+          },
+          { merge: true }
+        )
+        verdCleanupCount += 1
+        console.log(
+          `[zoho-sync] Marcat com a cancel·lat a stage_verd (ja no existeix a Zoho): ${id}`
+        )
+        if (verdCleanupCount >= MAX_BATCH_WRITES) {
+          await flushVerdCleanup()
+        }
+        continue
+      }
 
       const group = classifyStage(zoho.Stage || '')
       if (group !== 'verd') {
@@ -983,7 +1018,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     attachmentsDeletedFromStorage: 0,
   }
   const baseFields =
-    'id,Deal_Name,Modified_Time,Account_Name,Stage,Pipeline,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Hora_esdeveniment,Hora_Fi_Boda,Hora_Fi_Evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Data_i_hora,Ubicaci,Ubicaci_1a_Part,Ubicaci_2a_part,Pax,confirmar_prova,Data_1_Prova_Men,Auto_data_1a_part,Otros,Data_enviament_Forms,Formulari_Enviat,Formulari_Respost1,Comensals,Al_l_rgies,Data_2a_Part_Tast,Auto_Data_2a_Part,Hora,Otros_2a_Part,Enviament_Forms,Forms_Enviat,Al_l_rgies_2a_Part,Observacions_2a_Part,Comensals_2a,Deco,Postres,Celler_Vi_Blanc,Celler_Vi_Negre,Celler_Cava,Celler_Extra,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast,Full_de_modificacions,Full_modificacions,Arxiu_PM,ARxiu_TM,Arxiu_TM2'
+    'id,Deal_Name,Modified_Time,Account_Name,Stage,Tipo_de_lead,Pipeline,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Hora_esdeveniment,Hora_Fi_Boda,Hora_Fi_Evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Data_i_hora,Ubicaci,Ubicaci_1a_Part,Ubicaci_2a_part,Pax,Data_1_Prova_Men,Auto_data_1a_part,Data_enviament_Forms,Comensals,Data_2a_Part_Tast,Auto_Data_2a_Part,Hora,Observacions_2a_Part,Comensals_2a,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast,Full_de_modificacions,Full_modificacions,Arxiu_PM,Arxiu_TM,Arxiu_TM2'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -1004,30 +1039,48 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   // 1ï¸âƒ£ Llegir oportunitats amb paginaciÃ³
   const allDeals: ZohoDeal[] = []
   let stoppedByIncrementalCutoff = false
-  for (let page = 1; ; page++) {
-    const res = await zohoFetch<{ data?: ZohoDeal[] }>(
-      `/${moduleName}?fields=${fields}&page=${page}&per_page=200&sort_by=Modified_Time&sort_order=desc`
+  let pageToken: string | null = null
+  const usedPageTokens = new Set<string>()
+  for (;;) {
+    const paginationParam = pageToken
+      ? `page_token=${encodeURIComponent(pageToken)}`
+      : 'page=1'
+    const res = await zohoFetchV8<{
+      data?: ZohoDeal[]
+      info?: {
+        more_records?: boolean
+        next_page_token?: string | null
+      }
+    }>(
+      `/${moduleName}?fields=${fields}&${paginationParam}&per_page=200&sort_by=Modified_Time&sort_order=desc`
     )
     const data = res.data ?? []
     if (data.length === 0) break
 
     if (incrementalCutoffMs === null) {
       allDeals.push(...data)
-      continue
+    } else {
+      const pageRecords = data.filter((deal) => {
+        const modifiedMs = parseZohoModifiedTimeMs(deal.Modified_Time)
+        return modifiedMs === null || modifiedMs >= incrementalCutoffMs
+      })
+      allDeals.push(...pageRecords)
+
+      const oldestRecord = data[data.length - 1]
+      const oldestModifiedMs = parseZohoModifiedTimeMs(oldestRecord?.Modified_Time)
+      if (oldestModifiedMs !== null && oldestModifiedMs < incrementalCutoffMs) {
+        stoppedByIncrementalCutoff = true
+        break
+      }
     }
 
-    const pageRecords = data.filter((deal) => {
-      const modifiedMs = parseZohoModifiedTimeMs(deal.Modified_Time)
-      return modifiedMs === null || modifiedMs >= incrementalCutoffMs
-    })
-    allDeals.push(...pageRecords)
-
-    const oldestRecord = data[data.length - 1]
-    const oldestModifiedMs = parseZohoModifiedTimeMs(oldestRecord?.Modified_Time)
-    if (oldestModifiedMs !== null && oldestModifiedMs < incrementalCutoffMs) {
-      stoppedByIncrementalCutoff = true
-      break
+    const nextPageToken = String(res.info?.next_page_token || '').trim()
+    if (res.info?.more_records === false || !nextPageToken) break
+    if (usedPageTokens.has(nextPageToken)) {
+      throw new Error('Zoho ha retornat un page_token repetit')
     }
+    usedPageTokens.add(nextPageToken)
+    pageToken = nextPageToken
   }
 
   console.info(`ðŸ“¦ Rebudes ${allDeals.length} oportunitats`)

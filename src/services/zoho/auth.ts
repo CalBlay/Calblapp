@@ -68,3 +68,37 @@ export async function zohoFetch<T = unknown>(
 
   return json as T
 }
+
+/**
+ * Alguns camps moderns de Deals (com Pipeline) no es retornen a CRM v2.
+ * Permet consultar-los a v8 sense canviar la versió base de la resta de la integració.
+ */
+export async function zohoFetchV8<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  if (!ZOHO_API_BASE) throw new Error('Missing ZOHO_API_BASE')
+  const token = await getZohoAccessToken()
+  const v8Base = ZOHO_API_BASE.replace(/\/v\d+(?:\.\d+)?\/?$/i, '/v8')
+  const res = await fetch(`${v8Base}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    cache: 'no-store',
+  })
+
+  const json: unknown = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    console.error('[ZohoFetchV8] request failed', {
+      path,
+      status: res.status,
+      body: json,
+    })
+    throw new Error(`Error Zoho v8 ${res.status}`)
+  }
+
+  return json as T
+}

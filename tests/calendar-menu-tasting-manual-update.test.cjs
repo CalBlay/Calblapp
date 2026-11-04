@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const { test } = require('node:test')
 
 const {
+  buildMenuTastingManualDelete,
   buildMenuTastingManualUpdate,
 } = require('../src/lib/calendar/menuTastingManualUpdate')
 const {
@@ -75,5 +76,24 @@ test('keeps PM manual edits protected from the next Zoho synchronization', () =>
 
   assert.equal(preserved.MenuTasting1Date, '2027-01-09')
   assert.equal(preserved.Comensals, 8)
+})
+
+test('deleting a PM clears every date source and protects it from Zoho sync', () => {
+  assert.deepEqual(buildMenuTastingManualDelete('menu_tasting_1'), {
+    MenuTasting1Date: null,
+    Data_1_Prova_Men: null,
+    Auto_data_1a_part: null,
+  })
+  assert.deepEqual(buildMenuTastingManualDelete('menu_tasting_2'), {
+    MenuTasting2Date: null,
+    Data_2a_Part_Tast: null,
+    Auto_Data_2a_Part: null,
+  })
+  assert.deepEqual(buildMenuTastingManualDelete('menu_tasting_company'), {
+    MenuTastingCompanyDate: null,
+    Data_i_hora: null,
+  })
+  assert.equal(CALENDAR_MANUAL_OVERRIDE_FIELDS.has('Auto_data_1a_part'), true)
+  assert.equal(CALENDAR_MANUAL_OVERRIDE_FIELDS.has('Auto_Data_2a_Part'), true)
 })
 

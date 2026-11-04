@@ -26,12 +26,50 @@ after(() => {
   Module._load = originalLoad
 })
 
-test('businessLineFromPipeline uses Pipeline as the canonical business line', () => {
+test('businessLineFromPipeline maps Zoho business-line values', () => {
   assert.equal(businessLineFromPipeline('Bodas'), 'Casaments')
   assert.equal(businessLineFromPipeline({ id: '1', name: 'Corporativo' }), 'Empresa')
   assert.equal(businessLineFromPipeline('Fires i Festivals'), 'Foodlovers')
   assert.equal(businessLineFromPipeline('Grupos Restaurantes'), 'Grups Restaurants')
   assert.equal(businessLineFromPipeline(null), null)
+})
+
+test('Pipeline/Canal has priority over Tipo_de_lead and owner', async () => {
+  const dependencies = {
+    parseZohoDate: (value) => value || null,
+    parseZohoTime: () => null,
+    getLN: async () => 'Agenda',
+    lnForMartaGranatoCommercial: (ln) => ln,
+    stripCode: (value) => String(value).trim(),
+    normalizeIncomingZohoCode: (value) => value || null,
+    extractCodeFromName: () => null,
+    isBadCode: () => false,
+    hasRestaurantKeyword: () => false,
+    findFincaForUbicacio: () => null,
+    extractZohoDisplayName: () => null,
+    operativeResponsableFromZohoDeal: () => '',
+    fincaLnForDeal: (ln) => ln,
+  }
+  const base = {
+    Deal_Name: 'Prova LN',
+    Stage: 'Pagament confirmat',
+    Fecha_del_evento: '2027-06-21',
+    Owner: { id: 'roman', name: 'Román Gomez' },
+  }
+  const normalized = await normalizeZohoDeals(
+    [
+      { ...base, id: 'boda', Pipeline: 'Bodas', Tipo_de_lead: null },
+      { ...base, id: 'empresa', Pipeline: 'Empresas', Tipo_de_lead: 'Boda' },
+      { ...base, id: 'restaurants', Pipeline: 'Grupos Restaurantes' },
+    ],
+    dependencies
+  )
+
+  assert.deepEqual(normalized.map((deal) => deal.LN), [
+    'Casaments',
+    'Empresa',
+    'Grups Restaurants',
+  ])
 })
 
 test('restaurant centres keep priority over Pipeline when resolving LN', async () => {

@@ -53,6 +53,15 @@ assert(parsed[0]?.Size === 42, 'normalizes numeric Size')
 assert(parsed[0]?.Download_Url === '/download/att-1', 'extracts download url')
 assert(parsed[1]?.id === 'att-2', 'extracts string attachment id')
 
+const parsedV8 = extractZohoFieldAttachments([{
+  id: '739896000046430182',
+  File_Id__s: 'q9bihd6902c58a8f04467916462799bca6d2a',
+  File_Name__s: 'FE document.pdf',
+  Size__s: 756390,
+}])
+assert(parsedV8[0]?.id === '739896000046430182', 'prefers v8 attachment id')
+assert(parsedV8[0]?.File_Name === 'FE document.pdf', 'extracts v8 file name')
+
 const merged = mergeZohoFieldAttachments([
   [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
   [{ attachment_Id: 'att-2', File_Name: 'FG222.pdf' }],

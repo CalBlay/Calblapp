@@ -171,11 +171,12 @@ export async function normalizeZohoDeals(
     }
 
     const ownerCommercial = deal.Owner?.name?.trim() || '-'
+    const businessLineRaw = deal.Pipeline ?? deal.Tipo_de_lead
     const pipelineName =
-      typeof deal.Pipeline === 'string'
-        ? deal.Pipeline.trim()
-        : String(deal.Pipeline?.name || '').trim()
-    const pipelineLn = businessLineFromPipeline(deal.Pipeline)
+      typeof businessLineRaw === 'string'
+        ? businessLineRaw.trim()
+        : String(businessLineRaw?.name || '').trim()
+    const pipelineLn = businessLineFromPipeline(businessLineRaw)
     let ln = pipelineLn || await deps.getLN(deal.Owner?.id)
     ln = deps.lnForMartaGranatoCommercial(ln, ownerCommercial)
 
@@ -225,7 +226,6 @@ export async function normalizeZohoDeals(
       Ubicaci_1a_Part: deal.Ubicaci_1a_Part || null,
       Ubicaci_2a_part: deal.Ubicaci_2a_part || null,
       Pax: deal.Pax ?? null,
-      confirmar_prova: deal.confirmar_prova ?? null,
       MenuTasting1Date:
         menuTastingIsoDay(deal.Data_1_Prova_Men) ||
         menuTastingIsoDay(deal.Auto_data_1a_part),
@@ -235,27 +235,13 @@ export async function normalizeZohoDeals(
       MenuTastingCompanyDate: menuTastingIsoDay(deal.Data_i_hora),
       Data_1_Prova_Men: deal.Data_1_Prova_Men || null,
       Auto_data_1a_part: deal.Auto_data_1a_part ?? null,
-      Otros: deal.Otros ?? null,
       Data_enviament_Forms: deal.Data_enviament_Forms ?? null,
-      Formulari_Enviat: deal.Formulari_Enviat ?? null,
-      Formulari_Respost1: deal.Formulari_Respost1 ?? null,
       Comensals: deal.Comensals ?? null,
-      Al_l_rgies: deal.Al_l_rgies ?? null,
       Data_2a_Part_Tast: deal.Data_2a_Part_Tast || null,
       Auto_Data_2a_Part: deal.Auto_Data_2a_Part ?? null,
       Hora: deal.Hora || null,
-      Otros_2a_Part: deal.Otros_2a_Part ?? null,
-      Enviament_Forms: deal.Enviament_Forms ?? null,
-      Forms_Enviat: deal.Forms_Enviat ?? null,
-      Al_l_rgies_2a_Part: deal.Al_l_rgies_2a_Part ?? null,
       Observacions_2a_Part: deal.Observacions_2a_Part ?? null,
       Comensals_2a: deal.Comensals_2a ?? null,
-      Deco: deal.Deco ?? null,
-      Postres: deal.Postres ?? null,
-      Celler_Vi_Blanc: deal.Celler_Vi_Blanc ?? null,
-      Celler_Vi_Negre: deal.Celler_Vi_Negre ?? null,
-      Celler_Cava: deal.Celler_Cava ?? null,
-      Celler_Extra: deal.Celler_Extra ?? null,
       DataInici: dateISO,
       DataFi: dataFiISO,
       ObservacionsZoho: deal.Description || deal.Observacions || null,

@@ -34,10 +34,10 @@ test('shouldImportZohoAttachment accepts configured prefixes and valid separator
 
 test('shouldImportZohoAttachment applies the dedicated prefix for each archive field', () => {
   assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_PM'), true)
-  assert.equal(shouldImportZohoAttachment('tm_menu.pdf', 'ARxiu_TM'), true)
+  assert.equal(shouldImportZohoAttachment('tm_menu.pdf', 'Arxiu_TM'), true)
   assert.equal(shouldImportZohoAttachment('TM2.pdf', 'Arxiu_TM2'), true)
   assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), false)
-  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'ARxiu_TM'), false)
+  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_TM'), false)
   assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_TM2'), false)
 })
 
@@ -61,6 +61,21 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
   assert.equal(parsed[0]?.Download_Url, '/download/att-1')
   assert.equal(parsed[1]?.id, 'att-2')
 
+  const v8Parsed = extractZohoFieldAttachments([{
+    id: '739896000046430182',
+    File_Id__s: 'q9bihd6902c58a8f04467916462799bca6d2a',
+    File_Name__s: 'FE document.pdf',
+    Size__s: 756390,
+    Modified_Time__s: '2026-09-29T14:49:00+02:00',
+  }])
+  assert.deepEqual(v8Parsed, [{
+    id: '739896000046430182',
+    File_Name: 'FE document.pdf',
+    Size: 756390,
+    Modified_Time: '2026-09-29T14:49:00+02:00',
+    Download_Url: undefined,
+  }])
+
   const merged = mergeZohoFieldAttachments([
     [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
     [{ attachment_Id: 'att-2', File_Name: 'FG222.pdf' }],
@@ -73,7 +88,7 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
     'Full_de_modificacions',
     'Full_modificacions',
     'Arxiu_PM',
-    'ARxiu_TM',
+    'Arxiu_TM',
     'Arxiu_TM2',
   ])
 })
@@ -181,7 +196,7 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Full_de_modificacions',
     'Full_modificacions',
     'Arxiu_PM',
-    'ARxiu_TM',
+    'Arxiu_TM',
     'Arxiu_TM2',
   ])
   assert.equal(ZOHO_FIELD_ATTACHMENT_SOURCE_V8, 'zoho-field-attachment-v8')
@@ -210,8 +225,36 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   assert.match(routeSource, /const forceFullSync = url\.searchParams\.get\('full'\) === '1'/)
   assert.doesNotMatch(routeSource, /forceFullSync:\s*true/)
   assert.match(syncSource, /const ZOHO_SYNC_CONCURRENCY = 4/)
+  assert.match(syncSource, /page_token=\$\{encodeURIComponent\(pageToken\)\}/)
+  assert.match(syncSource, /next_page_token\?: string \| null/)
+  assert.match(syncSource, /usedPageTokens\.has\(nextPageToken\)/)
+  assert.doesNotMatch(syncSource, /for \(let page = 1; ; page\+\+\)/)
   assert.match(syncSource, /slice\(offset, offset \+ ZOHO_SYNC_CONCURRENCY\)/)
+  const baseFieldsMatch = syncSource.match(/const baseFields =\s*'([^']+)'/)
+  assert.ok(baseFieldsMatch)
+  const requestedFields = baseFieldsMatch[1].split(',')
+  assert.equal(requestedFields.length, 49)
+  for (const removedField of [
+    'confirmar_prova',
+    'Otros',
+    'Formulari_Enviat',
+    'Formulari_Respost1',
+    'Al_l_rgies',
+    'Otros_2a_Part',
+    'Enviament_Forms',
+    'Forms_Enviat',
+    'Al_l_rgies_2a_Part',
+    'Deco',
+    'Postres',
+    'Celler_Vi_Blanc',
+    'Celler_Vi_Negre',
+    'Celler_Cava',
+    'Celler_Extra',
+  ]) {
+    assert.equal(requestedFields.includes(removedField), false)
+  }
   for (const field of [
+    'Tipo_de_lead',
     'Pipeline',
     'Ubicaci',
     'Ubicaci_1a_Part',
@@ -220,31 +263,17 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     'Hora_Fi_Evento',
     'Data_1_Prova_Men',
     'Auto_data_1a_part',
-    'Otros',
     'Data_enviament_Forms',
-    'Formulari_Enviat',
-    'Formulari_Respost1',
     'Comensals',
-    'Al_l_rgies',
     'Data_2a_Part_Tast',
     'Auto_Data_2a_Part',
     'Hora',
-    'Otros_2a_Part',
-    'Enviament_Forms',
-    'Forms_Enviat',
-    'Al_l_rgies_2a_Part',
     'Observacions_2a_Part',
     'Comensals_2a',
-    'Deco',
-    'Postres',
-    'Celler_Vi_Blanc',
-    'Celler_Vi_Negre',
-    'Celler_Cava',
-    'Celler_Extra',
     'Full_de_modificacions',
     'Full_modificacions',
     'Arxiu_PM',
-    'ARxiu_TM',
+    'Arxiu_TM',
     'Arxiu_TM2',
   ]) {
     assert.match(syncSource, new RegExp(`baseFields[\\s\\S]*${field}`))
@@ -253,27 +282,13 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   for (const field of [
     'Data_1_Prova_Men',
     'Auto_data_1a_part',
-    'Otros',
     'Data_enviament_Forms',
-    'Formulari_Enviat',
-    'Formulari_Respost1',
     'Comensals',
-    'Al_l_rgies',
     'Data_2a_Part_Tast',
     'Auto_Data_2a_Part',
     'Hora',
-    'Otros_2a_Part',
-    'Enviament_Forms',
-    'Forms_Enviat',
-    'Al_l_rgies_2a_Part',
     'Observacions_2a_Part',
     'Comensals_2a',
-    'Deco',
-    'Postres',
-    'Celler_Vi_Blanc',
-    'Celler_Vi_Negre',
-    'Celler_Cava',
-    'Celler_Extra',
   ]) {
     assert.match(
       normalizationSource,

@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
-import { Ban, ExternalLink, Loader2, Mail, RotateCcw, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, Loader2, Mail, RotateCcw, Save, Trash2 } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
@@ -24,7 +24,10 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 import { formatDateOnly } from '@/lib/date-format'
-import { buildMenuTastingManualUpdate } from '@/lib/calendar/menuTastingManualUpdate'
+import {
+  buildMenuTastingManualDelete,
+  buildMenuTastingManualUpdate,
+} from '@/lib/calendar/menuTastingManualUpdate'
 
 interface Props {
   deal: Deal
@@ -340,7 +343,7 @@ export default function CalendarModal({
   const canSendDocuments = canSendEmail && files.length > 0
   const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
   const canDeleteEvent =
-    !isMenuTasting && canEdit && canDeleteManual && !isProductionOperationalWorker
+    canEdit && canDeleteManual && !isProductionOperationalWorker
   const canEditEventFields = canEdit && !isMenuTasting
   const canEditMenuTastingFields = canEdit && isMenuTasting
 
@@ -465,6 +468,14 @@ export default function CalendarModal({
     const s = String(raw ?? '').trim()
     return s
   }, [dealRecord, editData.NumPax])
+
+  const groupedServiceBreakdown = useMemo(
+    () =>
+      Array.isArray(deal.serviceBreakdown)
+        ? deal.serviceBreakdown.filter((item) => item.service)
+        : [],
+    [deal.serviceBreakdown]
+  )
 
   // 🧩 Sincronitza el formulari quan canviï el deal
   useEffect(() => {
@@ -748,13 +759,41 @@ export default function CalendarModal({
     }
   }
 
-  // Elimina definitivament l'esdeveniment
+  // Elimina l'esdeveniment o buida la data de la PM virtual al document origen.
   const handleDeleteEvent = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (!canDeleteEvent) return
-    if (!confirm('Vols eliminar aquest esdeveniment?')) return
+    const deleteLabel = isMenuTasting
+      ? isGroupedMenuTasting
+        ? 'totes les proves de menú agrupades'
+        : 'aquesta prova de menú'
+      : 'aquest esdeveniment'
+    if (!confirm(`Vols eliminar ${deleteLabel}?`)) return
 
     try {
+      if (isMenuTasting) {
+        const responses = await Promise.all(
+          mutationTargets.map((target) =>
+            fetch(`/api/calendar/manual/${target.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                collection: COLLECTION,
+                ...buildMenuTastingManualDelete(target.occurrenceType),
+              }),
+            })
+          )
+        )
+        if (responses.some((response) => !response.ok)) {
+          throw new Error('Error eliminant la prova de menú')
+        }
+        alert('🗑️ Prova de menú eliminada correctament')
+        handleClose()
+        document.dispatchEvent(new CustomEvent('calendar:reload'))
+        onSaved?.()
+        return
+      }
+
       const res = await fetch(
         `/api/calendar/manual/${mutationDocId}?collection=${COLLECTION}`,
         { method: 'DELETE' }
@@ -1027,6 +1066,15 @@ export default function CalendarModal({
                 value={editData.Servei}
                 onChange={(val) => handleChange('Servei', val)}
               />
+            ) : isGroupedMenuTasting && groupedServiceBreakdown.length > 0 ? (
+              <div className="space-y-1">
+                {groupedServiceBreakdown.map((item, index) => (
+                  <p key={`${item.service}-${index}`}>
+                    {item.service}
+                    {item.pax === null ? '' : `: ${item.pax} pax`}
+                  </p>
+                ))}
+              </div>
             ) : (
               <p>{editData.Servei || '—'}</p>
             )}
@@ -1215,44 +1263,55 @@ export default function CalendarModal({
   )
 
   const footer = (
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           {canCancelEvent && (
             <Button
               type="button"
               variant={cancelled ? 'outline' : 'destructive'}
-              className="w-full"
+              className="h-8 min-w-0 px-2 text-xs"
               disabled={updatingCancellation}
               onClick={() => void handleCancellationChange(!cancelled)}
             >
               {updatingCancellation ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
               ) : cancelled ? (
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
               ) : (
-                <Ban className="mr-2 h-4 w-4" />
+                <Ban className="mr-1 h-3.5 w-3.5" />
               )}
-              {cancelled ? 'Reactivar esdeveniment' : 'Cancel·lar esdeveniment'}
+              {cancelled ? 'Reactivar' : 'Cancel·lar'}
             </Button>
           )}
           {cancelled && canSendCancellation && (
             <Button
               type="button"
               variant="outline"
-              className="w-full border-red-300 text-red-700 hover:bg-red-50"
+              className="col-span-3 h-8 border-red-300 px-2 text-xs text-red-700 hover:bg-red-50"
               onClick={() => setSendCancellationOpen(true)}
             >
-              <Mail className="mr-2 h-4 w-4" />
+              <Mail className="mr-1 h-3.5 w-3.5" />
               Enviar avís de cancel·lació
             </Button>
           )}
           {canSave && (
             <>
-              <Button onClick={handleSave} className="w-full">
-                💾 Desa canvis
+              <Button
+                onClick={handleSave}
+                className="h-8 min-w-0 px-2 text-xs"
+                title="Desa canvis"
+              >
+                <Save className="mr-1 h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Desar</span>
               </Button>
               {canEdit && (
-                <Button onClick={handleRestore} variant="outline" className="w-full">
-                  🔄 Restaurar
+                <Button
+                  onClick={handleRestore}
+                  variant="outline"
+                  className="h-8 min-w-0 px-2 text-xs"
+                  title="Restaura els canvis"
+                >
+                  <RotateCcw className="mr-1 h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Restaurar</span>
                 </Button>
               )}
             </>
@@ -1262,14 +1321,16 @@ export default function CalendarModal({
               type="button"
               onClick={handleDeleteEvent}
               variant="default"
-              className="w-full bg-red-600 text-white hover:bg-red-700"
+              className="h-8 min-w-0 bg-red-600 px-2 text-xs text-white hover:bg-red-700"
+              title={isMenuTasting ? 'Eliminar prova de menú' : 'Eliminar esdeveniment'}
             >
-              🗑️ Eliminar esdeveniment
+              <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Eliminar</span>
             </Button>
           )}
 
           {!canSave && (
-            <Button variant="outline" className="w-full" onClick={handleClose}>
+            <Button variant="outline" className="col-span-3 h-8 px-2 text-xs" onClick={handleClose}>
               Tancar
             </Button>
           )}
@@ -1338,7 +1399,7 @@ export default function CalendarModal({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{body}</div>
-        <div className="shrink-0 border-t px-4 py-3">{footer}</div>
+        <div className="shrink-0 border-t px-4 py-2">{footer}</div>
       </div>
       </>
     )
@@ -1372,7 +1433,7 @@ export default function CalendarModal({
           {body}
         </div>
 
-        <DialogFooter className="shrink-0 border-t px-4 py-3 sm:border-t-0 sm:px-0 sm:py-0">
+        <DialogFooter className="shrink-0 border-t px-4 py-2 sm:border-t-0 sm:px-0 sm:py-0">
           {footer}
         </DialogFooter>
       </DialogContent>

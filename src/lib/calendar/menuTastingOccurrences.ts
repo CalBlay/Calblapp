@@ -10,6 +10,7 @@ type MenuTastingConfig = {
   idSuffix: 'pm1' | 'pm2' | 'pme'
   titlePrefix: 'PM_' | 'PM2_'
   occurrenceType: MenuTastingOccurrenceType
+  filePrefix: 'TM' | 'TM2' | 'PM'
   locationFields?: readonly MenuTastingLocationField[]
   confirmationField?: 'confirmar_prova'
   includeCodeInTitle?: boolean
@@ -40,6 +41,7 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
     idSuffix: 'pm1',
     titlePrefix: 'PM_',
     occurrenceType: 'menu_tasting_1',
+    filePrefix: 'TM',
     locationFields: ['Ubicaci_1a_Part'],
   },
   {
@@ -49,6 +51,7 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
     idSuffix: 'pm2',
     titlePrefix: 'PM2_',
     occurrenceType: 'menu_tasting_2',
+    filePrefix: 'TM2',
     locationFields: ['Ubicaci_2a_part'],
   },
   {
@@ -58,6 +61,7 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
     idSuffix: 'pme',
     titlePrefix: 'PM_',
     occurrenceType: 'menu_tasting_company',
+    filePrefix: 'PM',
     locationFields: ['Ubicaci', 'Ubiaci'],
     confirmationField: 'confirmar_prova',
     includeCodeInTitle: false,
@@ -140,6 +144,28 @@ function tastingSummary({
     .join(' · ')
 }
 
+function menuTastingFiles(
+  files: unknown,
+  expectedPrefix: MenuTastingConfig['filePrefix']
+): unknown {
+  if (!Array.isArray(files)) return files
+
+  return files.filter((file) => {
+    if (!file || typeof file !== 'object') return false
+    const record = file as { name?: unknown; source?: unknown }
+
+    // Els adjunts manuals continuen visibles. Dels camps de fitxer de Zoho,
+    // cada prova mostra nomes el seu tipus (TM, TM2 o PM).
+    if (record.source !== 'zoho-field-attachment-v8') return true
+
+    const name = String(record.name || '').trim().toUpperCase()
+    if (expectedPrefix === 'TM') {
+      return name.startsWith('TM') && !name.startsWith('TM2')
+    }
+    return name.startsWith(expectedPrefix)
+  })
+}
+
 export function buildMenuTastingOccurrence({
   sourceEvent,
   sourceData,
@@ -172,12 +198,17 @@ export function buildMenuTastingOccurrence({
   const occurrenceSourceEvent = configuredLocation
     ? { ...sourceEvent, location: configuredLocation }
     : sourceEvent
+  const occurrenceFiles = menuTastingFiles(
+    occurrenceSourceEvent.files,
+    config.filePrefix
+  )
   const summarySourceEvent = config.includeCodeInTitle === false
     ? { ...occurrenceSourceEvent, code: '' }
     : occurrenceSourceEvent
 
   return {
     ...occurrenceSourceEvent,
+    files: occurrenceFiles,
     id: `${sourceEventId}::${config.idSuffix}`,
     sourceEventId,
     sourceEventName: String(sourceEvent.summary || '').trim(),

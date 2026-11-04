@@ -15,6 +15,8 @@ export interface ZohoDeal {
   Modified_Time?: string | null
   Account_Name?: string | ZohoNamedValue | null
   Stage: string
+  /** Camp alternatiu de Zoho; Pipeline/Canal té prioritat per resoldre la LN. */
+  Tipo_de_lead?: string | ZohoNamedValue | null
   Pipeline?: string | ZohoNamedValue | null
   Servicio_texto?: string | null
   Men_texto?: string | null
@@ -38,30 +40,15 @@ export interface ZohoDeal {
   Ubicaci_1a_Part?: string | null
   Ubicaci_2a_part?: string | null
   Pax?: number | string | null
-  confirmar_prova?: boolean | string | number | null
   Data_1_Prova_Men?: string | null
   Auto_data_1a_part?: string | boolean | null
-  Otros?: string | null
   Data_enviament_Forms?: string | null
-  Formulari_Enviat?: string | boolean | null
-  Formulari_Respost1?: string | boolean | null
   Comensals?: number | string | null
-  Al_l_rgies?: string | null
   Data_2a_Part_Tast?: string | null
   Auto_Data_2a_Part?: string | boolean | null
   Hora?: string | null
-  Otros_2a_Part?: string | null
-  Enviament_Forms?: string | null
-  Forms_Enviat?: string | boolean | null
-  Al_l_rgies_2a_Part?: string | null
   Observacions_2a_Part?: string | null
   Comensals_2a?: number | string | null
-  Deco?: string | boolean | null
-  Postres?: string | null
-  Celler_Vi_Blanc?: string | null
-  Celler_Vi_Negre?: string | null
-  Celler_Cava?: string | null
-  Celler_Extra?: string | null
   Fecha_de_petici_n?: string | null
   Precio_Total?: number | string | null
   Amount?: number | string | null
@@ -72,7 +59,7 @@ export interface ZohoDeal {
   Full_de_modificacions?: unknown
   Full_modificacions?: unknown
   Arxiu_PM?: unknown
-  ARxiu_TM?: unknown
+  Arxiu_TM?: unknown
   Arxiu_TM2?: unknown
 }
 
@@ -92,33 +79,18 @@ export interface NormalizedDeal {
   Ubicaci_1a_Part?: string | null
   Ubicaci_2a_part?: string | null
   Pax?: number | string | null
-  confirmar_prova?: boolean | string | number | null
   MenuTasting1Date?: string | null
   MenuTasting2Date?: string | null
   MenuTastingCompanyDate?: string | null
   Data_1_Prova_Men?: string | null
   Auto_data_1a_part?: string | boolean | null
-  Otros?: string | null
   Data_enviament_Forms?: string | null
-  Formulari_Enviat?: string | boolean | null
-  Formulari_Respost1?: string | boolean | null
   Comensals?: number | string | null
-  Al_l_rgies?: string | null
   Data_2a_Part_Tast?: string | null
   Auto_Data_2a_Part?: string | boolean | null
   Hora?: string | null
-  Otros_2a_Part?: string | null
-  Enviament_Forms?: string | null
-  Forms_Enviat?: string | boolean | null
-  Al_l_rgies_2a_Part?: string | null
   Observacions_2a_Part?: string | null
   Comensals_2a?: number | string | null
-  Deco?: string | boolean | null
-  Postres?: string | null
-  Celler_Vi_Blanc?: string | null
-  Celler_Vi_Negre?: string | null
-  Celler_Cava?: string | null
-  Celler_Extra?: string | null
   DataInici: string | null
   DataFi: string | null
   HoraInici?: string | null

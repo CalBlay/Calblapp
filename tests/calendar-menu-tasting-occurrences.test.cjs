@@ -74,6 +74,54 @@ test('omits an unassigned event code and empty tasting details from the title', 
   assert.equal(occurrence.summary, 'PM_PROVA')
 })
 
+test('shows only the matching Zoho attachment on each menu tasting', () => {
+  const eventWithFiles = {
+    ...sourceEvent,
+    files: [
+      { key: 'z:1', url: 'https://example.test/tm.jpg', name: 'TM tast.jpg', source: 'zoho-field-attachment-v8' },
+      { key: 'z:2', url: 'https://example.test/tm2.jpg', name: 'TM2 tast.jpg', source: 'zoho-field-attachment-v8' },
+      { key: 'manual:1', url: 'https://example.test/manual.pdf', name: 'Notes.pdf', source: 'sharepoint' },
+    ],
+  }
+  const sourceData = {
+    Data_1_Prova_Men: '2026-07-25',
+    Data_2a_Part_Tast: '2026-07-25',
+  }
+
+  const first = buildMenuTastingOccurrence({
+    sourceEvent: eventWithFiles,
+    sourceData,
+    sourceEventId: 'zoho-1',
+    config: MENU_TASTING_CONFIGS[0],
+    rangeStart: '2026-07-01',
+    rangeEnd: '2026-07-31',
+  })
+  const second = buildMenuTastingOccurrence({
+    sourceEvent: eventWithFiles,
+    sourceData,
+    sourceEventId: 'zoho-1',
+    config: MENU_TASTING_CONFIGS[1],
+    rangeStart: '2026-07-01',
+    rangeEnd: '2026-07-31',
+  })
+
+  assert.deepEqual(first.files.map((file) => file.name), ['TM tast.jpg', 'Notes.pdf'])
+  assert.deepEqual(second.files.map((file) => file.name), ['TM2 tast.jpg', 'Notes.pdf'])
+})
+
+test('menu tasting inherits the cancellation state from its source event', () => {
+  const occurrence = buildMenuTastingOccurrence({
+    sourceEvent: { ...sourceEvent, cancelled: true },
+    sourceData: { Data_1_Prova_Men: '2026-07-25' },
+    sourceEventId: 'zoho-cancelled',
+    config: MENU_TASTING_CONFIGS[0],
+    rangeStart: '2026-07-01',
+    rangeEnd: '2026-07-31',
+  })
+
+  assert.equal(occurrence.cancelled, true)
+})
+
 test('uses automatic tasting dates when the explicit Zoho dates are empty', () => {
   const first = buildMenuTastingOccurrence({
     sourceEvent,

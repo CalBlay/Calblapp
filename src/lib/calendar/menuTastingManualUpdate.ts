@@ -5,7 +5,9 @@ export const MENU_TASTING_MANUAL_OVERRIDE_FIELDS = new Set([
   'MenuTasting2Date',
   'MenuTastingCompanyDate',
   'Data_1_Prova_Men',
+  'Auto_data_1a_part',
   'Data_2a_Part_Tast',
+  'Auto_Data_2a_Part',
   'Data_i_hora',
   'Hora',
   'Ubicaci_1a_Part',
@@ -70,5 +72,31 @@ export function buildMenuTastingManualUpdate(
     Data_i_hora: dateTime(day, time),
     Ubicaci: location || null,
     ...(includePax ? { Pax: pax } : {}),
+  }
+}
+
+/** Camps de data que cal protegir com a buits perquè una PM eliminada no reaparegui al sync. */
+export function buildMenuTastingManualDelete(
+  occurrenceType: MenuTastingOccurrenceType
+): Record<string, null> {
+  if (occurrenceType === 'menu_tasting_1') {
+    return {
+      MenuTasting1Date: null,
+      Data_1_Prova_Men: null,
+      Auto_data_1a_part: null,
+    }
+  }
+
+  if (occurrenceType === 'menu_tasting_2') {
+    return {
+      MenuTasting2Date: null,
+      Data_2a_Part_Tast: null,
+      Auto_Data_2a_Part: null,
+    }
+  }
+
+  return {
+    MenuTastingCompanyDate: null,
+    Data_i_hora: null,
   }
 }
