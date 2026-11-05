@@ -27,6 +27,16 @@ test('calendar cancellation routes authenticate, authorize, and validate collect
   }
 })
 
+test('manual cancellation records and clears its source explicitly', () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, 'src/app/api/calendar/manual/[id]/cancel/route.ts'),
+    'utf8'
+  )
+
+  assert.match(source, /cancellationSource: 'manual'/)
+  assert.match(source, /cancellationSource: null/)
+})
+
 test('cancellation email requires a cancelled event before sending through Outlook', () => {
   const source = fs.readFileSync(
     path.join(ROOT, 'src/app/api/calendar/manual/[id]/cancellation-email/route.ts'),

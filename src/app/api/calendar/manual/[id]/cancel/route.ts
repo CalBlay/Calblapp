@@ -44,6 +44,7 @@ export async function POST(
             cancelledAt: now,
             cancelledByUserId: auth.user.id,
             cancelledByName: String(auth.user.name || auth.user.email || '').trim(),
+            cancellationSource: 'manual',
             updatedAt: now,
           }
         : {
@@ -51,8 +52,10 @@ export async function POST(
             cancelledAt: null,
             cancelledByUserId: null,
             cancelledByName: null,
+            cancellationSource: null,
             cancellationNoticeSentAt: null,
             cancellationNoticeSentByUserId: null,
+            cancellationNoticeRecipientCount: null,
             updatedAt: now,
           },
       { merge: true }

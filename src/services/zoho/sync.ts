@@ -36,6 +36,7 @@ import {
   preserveManualCalendarOverrides,
   readManualOverrides,
 } from '@/lib/calendar/manualOverrides'
+import { reconcileActiveZohoDealCancellation } from '@/lib/calendar/zohoCancellation'
 
 function preserveLocalCalendarChanges(
   incoming: Record<string, unknown>,
@@ -43,7 +44,10 @@ function preserveLocalCalendarChanges(
 ): Record<string, unknown> {
   if (!existing) return incoming
 
-  const out = preserveManualCalendarOverrides(incoming, existing)
+  const out = reconcileActiveZohoDealCancellation(
+    preserveManualCalendarOverrides(incoming, existing),
+    existing
+  )
 
   for (const [key, value] of Object.entries(existing)) {
     const lower = key.toLowerCase()
@@ -855,6 +859,7 @@ async function syncStageCollections({
 
     let verdCleanupBatch = firestore.batch()
     let verdCleanupCount = 0
+    let verdMissingFromZohoSnapshot = 0
     const flushVerdCleanup = async () => {
       if (verdCleanupCount === 0) return
       await verdCleanupBatch.commit()
@@ -869,39 +874,10 @@ async function syncStageCollections({
 
       const zoho = zohoById.get(id)
       if (!zoho) {
-        const currentData = doc.data()
-        const now = new Date().toISOString()
-        const wasAlreadyCancelled = currentData?.cancelled === true
-        verdCleanupBatch.set(
-          doc.ref,
-          {
-            cancelled: true,
-            cancelledAt:
-              wasAlreadyCancelled && typeof currentData?.cancelledAt === 'string'
-                ? currentData.cancelledAt
-                : now,
-            cancelledByUserId: wasAlreadyCancelled
-              ? (currentData?.cancelledByUserId ?? null)
-              : null,
-            cancelledByName: wasAlreadyCancelled
-              ? (currentData?.cancelledByName ?? 'Zoho')
-              : 'Zoho',
-            cancellationSource: wasAlreadyCancelled
-              ? (currentData?.cancellationSource ?? null)
-              : 'zoho-record-missing',
-            updatedAt: now,
-            lastWriteSource: 'zoho-sync',
-            lastWriteAt: now,
-          },
-          { merge: true }
-        )
-        verdCleanupCount += 1
-        console.log(
-          `[zoho-sync] Marcat com a cancel·lat a stage_verd (ja no existeix a Zoho): ${id}`
-        )
-        if (verdCleanupCount >= MAX_BATCH_WRITES) {
-          await flushVerdCleanup()
-        }
+        // Una resposta paginada incompleta o una incidència temporal de Zoho no
+        // demostra que l'oportunitat s'hagi eliminat. Conservem el document; les
+        // etapes explícitament perdudes ja es cancel·len més amunt.
+        verdMissingFromZohoSnapshot += 1
         continue
       }
 
@@ -937,6 +913,11 @@ async function syncStageCollections({
     }
 
     await flushVerdCleanup()
+    if (verdMissingFromZohoSnapshot > 0) {
+      console.warn(
+        `[zoho-sync] Conservats ${verdMissingFromZohoSnapshot} documents de stage_verd absents de la instantània de Zoho`
+      )
+    }
     return
   }
 

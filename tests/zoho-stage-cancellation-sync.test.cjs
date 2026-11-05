@@ -24,14 +24,13 @@ test('full sync preserves lost Zoho documents in stage_taronja', () => {
   assert.match(source, /isLostZohoStage\(zohoById\.get\(id\)\?\.Stage \|\| ''\)/)
 })
 
-test('full sync cancels stage_verd documents removed from Zoho', () => {
-  assert.doesNotMatch(source, /const zoho = zohoById\.get\(id\)\s+if \(!zoho\) continue/)
+test('full sync preserves stage_verd documents absent from one Zoho snapshot', () => {
   assert.match(
     source,
-    /if \(!zoho\) \{[\s\S]*cancelled: true[\s\S]*'zoho-record-missing'[\s\S]*ja no existeix a Zoho/
+    /if \(!zoho\) \{[\s\S]*verdMissingFromZohoSnapshot \+= 1[\s\S]*continue/
   )
   assert.doesNotMatch(
     source,
-    /if \(!zoho\) \{\s*verdCleanupBatch\.delete\(doc\.ref\)/
+    /if \(!zoho\) \{[\s\S]*cancellationSource:[\s\S]*'zoho-record-missing'/
   )
 })
