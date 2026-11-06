@@ -49,6 +49,9 @@ test('builds PM and PM2 virtual occurrences with their own date and pax', () => 
   assert.equal(first.start, '2026-07-25T12:00:00')
   assert.equal(first.numPax, 12)
   assert.equal(first.calendarOccurrenceType, 'menu_tasting_1')
+  assert.equal(first.menuTastingStatus, 'confirmed')
+  assert.equal(first.stageGroup, 'Confirmat')
+  assert.equal(first.cancelled, false)
 
   assert.equal(second.id, 'zoho-1::pm2')
   assert.equal(second.summary, 'PM2_CEU0123 · PROVA · Cal Blay · 0 pax')
@@ -109,7 +112,7 @@ test('shows only the matching Zoho attachment on each menu tasting', () => {
   assert.deepEqual(second.files.map((file) => file.name), ['TM2 tast.jpg', 'Notes.pdf'])
 })
 
-test('menu tasting inherits the cancellation state from its source event', () => {
+test('menu tasting stays operationally confirmed when its source event is cancelled', () => {
   const occurrence = buildMenuTastingOccurrence({
     sourceEvent: { ...sourceEvent, cancelled: true },
     sourceData: { Data_1_Prova_Men: '2026-07-25' },
@@ -119,7 +122,9 @@ test('menu tasting inherits the cancellation state from its source event', () =>
     rangeEnd: '2026-07-31',
   })
 
-  assert.equal(occurrence.cancelled, true)
+  assert.equal(occurrence.cancelled, false)
+  assert.equal(occurrence.menuTastingStatus, 'confirmed')
+  assert.equal(occurrence.stageGroup, 'Confirmat')
 })
 
 test('uses automatic tasting dates when the explicit Zoho dates are empty', () => {

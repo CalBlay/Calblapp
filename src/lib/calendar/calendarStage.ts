@@ -47,3 +47,17 @@ export function calendarStageFilterForCollection(value?: string): CalendarStageF
 export function calendarStageDotClass(value?: string): string {
   return calendarStagePresentation(value)?.dotClass ?? 'bg-gray-300'
 }
+
+export function matchesCalendarStageFilter(
+  deal: { collection?: string; calendarOccurrenceType?: string },
+  filter?: string
+): boolean {
+  const normalizedFilter = String(filter || '').trim().toLowerCase()
+  if (!normalizedFilter || normalizedFilter === 'all') return true
+
+  // Les proves de menú són cites operatives confirmades i han de continuar
+  // visibles encara que l'usuari filtri per l'etapa comercial de l'esdeveniment.
+  if (deal.calendarOccurrenceType) return true
+
+  return calendarStageFilterForCollection(deal.collection) === normalizedFilter
+}

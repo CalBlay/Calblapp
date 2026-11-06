@@ -68,8 +68,6 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
   },
 ] as const
 
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
-
 function validIsoDay(year: number, month: number, day: number): string | null {
   const candidate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   const parsed = new Date(`${candidate}T00:00:00.000Z`)
@@ -208,6 +206,14 @@ export function buildMenuTastingOccurrence({
 
   return {
     ...occurrenceSourceEvent,
+    // Una prova amb data és una cita operativa confirmada, independentment de
+    // l'etapa comercial de l'esdeveniment pare.
+    menuTastingStatus: 'confirmed',
+    stageGroup: 'Confirmat',
+    cancelled: false,
+    cancelledAt: '',
+    cancelledByName: '',
+    cancellationNoticeSentAt: '',
     files: occurrenceFiles,
     id: `${sourceEventId}::${config.idSuffix}`,
     sourceEventId,

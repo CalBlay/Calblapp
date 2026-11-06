@@ -7,6 +7,7 @@ const {
   calendarStageDotClass,
   calendarStageFilterForCollection,
   calendarStagePresentation,
+  matchesCalendarStageFilter,
 } = require('../src/lib/calendar/calendarStage')
 const { COLORS_STAGE } = require('../src/lib/colors')
 
@@ -31,4 +32,22 @@ test('legend palette keeps yellow and orange clearly distinct', () => {
 test('stage_verd remains Confirmat with a green dot', () => {
   assert.equal(calendarStageFilterForCollection('stage_verd'), 'confirmat')
   assert.equal(calendarStageDotClass('stage_verd'), COLORS_STAGE.confirmat)
+})
+
+test('menu tastings remain visible with every commercial stage filter', () => {
+  const tasting = {
+    collection: 'stage_groc',
+    calendarOccurrenceType: 'menu_tasting_1',
+  }
+
+  assert.equal(matchesCalendarStageFilter(tasting, 'confirmat'), true)
+  assert.equal(matchesCalendarStageFilter(tasting, 'pressupost'), true)
+  assert.equal(matchesCalendarStageFilter(tasting, 'calentet'), true)
+})
+
+test('regular events still follow their commercial stage filter', () => {
+  const event = { collection: 'stage_groc' }
+
+  assert.equal(matchesCalendarStageFilter(event, 'pressupost'), true)
+  assert.equal(matchesCalendarStageFilter(event, 'confirmat'), false)
 })

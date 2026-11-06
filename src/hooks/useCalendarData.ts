@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import {
-  calendarStageFilterForCollection,
   calendarStagePresentation,
+  matchesCalendarStageFilter,
   normalizeCalendarStageCollection,
 } from '@/lib/calendar/calendarStage'
 
@@ -44,6 +44,7 @@ export interface Deal {
     pax: number | null
   }>
   calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  menuTastingStatus?: 'confirmed'
   sourceTastings?: Array<{
     id: string
     occurrenceType: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
@@ -189,6 +190,16 @@ export function useCalendarData(filters?: {
         const endStr = typeof ev.end === 'string' ? ev.end : ''
         const collection = normalizeCalendarStageCollection(String(ev.collection ?? ''))
         const stagePresentation = calendarStagePresentation(collection || undefined)
+        const calendarOccurrenceType =
+          ev.calendarOccurrenceType === 'menu_tasting_1' ||
+          ev.calendarOccurrenceType === 'menu_tasting_2' ||
+          ev.calendarOccurrenceType === 'menu_tasting_company'
+            ? ev.calendarOccurrenceType
+            : undefined
+        const menuTastingStatus =
+          calendarOccurrenceType && ev.menuTastingStatus === 'confirmed'
+            ? 'confirmed' as const
+            : undefined
 
         return {
           id: String(ev.id ?? ''),
@@ -200,7 +211,10 @@ export function useCalendarData(filters?: {
           Responsable: String(ev.Responsable ?? ev.responsable ?? ''),
           LN: String(ev.LN ?? ev.lnLabel ?? 'Altres'),
           Servei: String(ev.Servei ?? ev.servei ?? ''),
-          StageGroup: String(ev.StageGroup ?? ev.stageGroup ?? stagePresentation?.label ?? ''),
+          StageGroup:
+            menuTastingStatus === 'confirmed'
+              ? 'Confirmat'
+              : String(ev.StageGroup ?? ev.stageGroup ?? stagePresentation?.label ?? ''),
           collection: collection || undefined,
 
           DataInici: startStr.slice(0, 10),
@@ -209,7 +223,11 @@ export function useCalendarData(filters?: {
             ev.Ubicacio ?? ev.ubicacio ?? ev.location ?? ev.Location ?? ''
           ),
           Color: String(ev.Color ?? stagePresentation?.colorClass ?? ''),
-          StageDot: String(ev.StageDot ?? stagePresentation?.dotClass ?? ''),
+          StageDot: String(
+            menuTastingStatus === 'confirmed'
+              ? calendarStagePresentation('stage_verd')?.dotClass ?? ''
+              : ev.StageDot ?? stagePresentation?.dotClass ?? ''
+          ),
           HoraInici: horaInici,
           HoraFi: horaFi || undefined,
 
@@ -233,7 +251,7 @@ export function useCalendarData(filters?: {
           codeConfirmed,
           codeMatchScore,
           codeStatus,
-          cancelled: ev.cancelled === true,
+          cancelled: menuTastingStatus === 'confirmed' ? false : ev.cancelled === true,
           cancelledAt: typeof ev.cancelledAt === 'string' ? ev.cancelledAt : undefined,
           cancelledByName:
             typeof ev.cancelledByName === 'string' ? ev.cancelledByName : undefined,
@@ -293,12 +311,8 @@ export function useCalendarData(filters?: {
                 })
                 .filter((item) => item.service)
             : undefined,
-          calendarOccurrenceType:
-            ev.calendarOccurrenceType === 'menu_tasting_1' ||
-            ev.calendarOccurrenceType === 'menu_tasting_2' ||
-            ev.calendarOccurrenceType === 'menu_tasting_company'
-              ? ev.calendarOccurrenceType
-              : undefined,
+          calendarOccurrenceType,
+          menuTastingStatus,
           origen: (ev.origen === 'manual' || ev.origen === 'firestore' || ev.origen === 'zoho'
             ? ev.origen
             : 'zoho') as Deal['origen'],
@@ -315,8 +329,7 @@ export function useCalendarData(filters?: {
 
       /* ---------- STAGE ---------- */
       if (!isAll(filters?.stage)) {
-        const st = normalize(filters!.stage!)
-        data = data.filter((d) => calendarStageFilterForCollection(d.collection) === st)
+        data = data.filter((deal) => matchesCalendarStageFilter(deal, filters?.stage))
       }
 
       /* ---------- COMERCIAL ---------- */

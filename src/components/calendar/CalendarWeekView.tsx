@@ -303,7 +303,7 @@ export default function CalendarWeekView({
                         transform: 'translateZ(0)',
                       }}
                     >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : calendarStageDotClass(span.ev.collection)}`} />
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : span.ev.StageDot || calendarStageDotClass(span.ev.collection)}`} />
                       <span className="min-w-0 flex-1 text-left leading-tight line-clamp-2">
                         {span.ev.NomEvent}
                       </span>
@@ -406,7 +406,7 @@ function MoreEventsPopup({
                     className={`flex items-center gap-2 truncate rounded-md px-2 py-1 ${CALENDAR_EVENT_TEXT} ${ev.cancelled ? CALENDAR_CANCELLED_CARD_CLASS : 'bg-white ring-1 ring-inset ring-slate-200'}`}
                     style={{ transform: 'translateZ(0)' }}
                   >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : calendarStageDotClass(ev.collection)}`} />
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : ev.StageDot || calendarStageDotClass(ev.collection)}`} />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {ev.cancelled && (
                       <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">

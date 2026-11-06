@@ -403,7 +403,7 @@ export default function CalendarMonthView({
                           }}
                         >
                           <span
-                            className={`h-2 w-2 rounded-full ${span.ev.cancelled ? 'bg-red-700' : calendarStageDotClass(span.ev.collection)}`}
+                            className={`h-2 w-2 rounded-full ${span.ev.cancelled ? 'bg-red-700' : span.ev.StageDot || calendarStageDotClass(span.ev.collection)}`}
                           />
                           <span
                             className={`truncate ${isSingleDay ? 'text-left' : 'text-center'} flex-1`}
@@ -530,7 +530,7 @@ function MoreEventsPopup({
                     `}
                   >
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : calendarStageDotClass(ev.collection)}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${ev.cancelled ? 'bg-red-700' : ev.StageDot || calendarStageDotClass(ev.collection)}`}
                     />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {ev.cancelled && (
