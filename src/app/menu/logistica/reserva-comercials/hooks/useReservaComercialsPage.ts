@@ -45,6 +45,7 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   setTabAndUrl: (nextTab: TabId) => void
   setMonthDate: React.Dispatch<React.SetStateAction<Date>>
   setDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  setSelectedDay: React.Dispatch<React.SetStateAction<string>>
   setSelectedEndDay: React.Dispatch<React.SetStateAction<string>>
   setStartTime: React.Dispatch<React.SetStateAction<string>>
   setEndTime: React.Dispatch<React.SetStateAction<string>>
@@ -59,6 +60,7 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   handleRequestDatesChange: (next: SmartFiltersChange) => void
   handleKeysDatesChange: (next: SmartFiltersChange) => void
   handleOpenReservation: (dayIso: string) => void
+  handleEditReservation: (reservation: CommercialReservation) => void
   handleSubmit: () => Promise<void>
   handleValidation: (id: string, status: CommercialReservationStatus) => Promise<boolean>
   handleCancelReservation: (id: string) => Promise<void>
@@ -239,6 +241,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingReservationId, setEditingReservationId] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState(() => isoDate(new Date()))
   const [selectedEndDay, setSelectedEndDay] = useState(() => isoDate(new Date()))
   const [startTime, setStartTime] = useState('09:00')
@@ -702,9 +705,24 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
   const handleOpenReservation = (dayIso: string) => {
     if (dayIso < todayIso) return
+    setEditingReservationId(null)
     setSelectedDay(dayIso)
     setSelectedEndDay(dayIso)
     setRequestedForId(user.id || '')
+    setDialogOpen(true)
+  }
+
+  const handleEditReservation = (reservation: CommercialReservation) => {
+    if (!canManageDepartment || reservation.status !== 'confirmed') return
+    setEditingReservationId(reservation.id)
+    setSelectedDay(reservation.date)
+    setSelectedEndDay(getCommercialReservationEndDate(reservation))
+    setStartTime(reservation.startTime)
+    setEndTime(reservation.endTime)
+    setDestination(reservation.destination)
+    setReason(reservation.reason)
+    setNotes(reservation.notes)
+    setRequestedForId(reservation.requestedForId)
     setDialogOpen(true)
   }
 
@@ -736,10 +754,15 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
     try {
       setSaving(true)
-      const res = await fetch('/api/logistica/reserva-comercials', {
-        method: 'POST',
+      const res = await fetch(
+        editingReservationId
+          ? `/api/logistica/reserva-comercials/${encodeURIComponent(editingReservationId)}`
+          : '/api/logistica/reserva-comercials',
+        {
+        method: editingReservationId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(editingReservationId ? { action: 'edit' } : {}),
           date: selectedDay,
           endDate: selectedEndDay,
           startTime: effectiveStartTime,
@@ -757,6 +780,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
       }
 
       resetForm()
+      setEditingReservationId(null)
       setDialogOpen(false)
       await loadReservations()
     } catch (err) {
@@ -852,6 +876,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     loading,
     error,
     dialogOpen,
+    editingReservationId,
     selectedDay,
     selectedEndDay,
     startTime,
@@ -874,6 +899,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     setTabAndUrl,
     setMonthDate,
     setDialogOpen,
+    setSelectedDay,
     setSelectedEndDay,
     setStartTime,
     setEndTime,
@@ -888,6 +914,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     handleRequestDatesChange,
     handleKeysDatesChange,
     handleOpenReservation,
+    handleEditReservation,
     handleSubmit,
     handleValidation,
     handleCancelReservation,

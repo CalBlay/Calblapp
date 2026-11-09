@@ -118,6 +118,8 @@ export default function ReservaComercialsPage() {
               }))
             }
             onCancelReservation={page.handleCancelReservation}
+            onEditReservation={page.handleEditReservation}
+            canManageDepartment={page.canManageDepartment}
             saving={page.saving}
           />
         ) : null}
@@ -165,6 +167,7 @@ export default function ReservaComercialsPage() {
         open={page.dialogOpen}
         onOpenChange={page.setDialogOpen}
         selectedDay={page.selectedDay}
+        setSelectedDay={page.setSelectedDay}
         selectedEndDay={page.selectedEndDay}
         setSelectedEndDay={page.setSelectedEndDay}
         startTime={page.startTime}
@@ -186,6 +189,7 @@ export default function ReservaComercialsPage() {
         onSubmit={page.handleSubmit}
         timeline={page.selectedDayTimeline}
         totalVehicles={page.selectedDayTimeline[0]?.totalVehicles || 0}
+        editing={Boolean(page.editingReservationId)}
       />
     </div>
   )

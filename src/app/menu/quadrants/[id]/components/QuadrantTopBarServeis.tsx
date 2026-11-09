@@ -10,7 +10,7 @@ import QuadrantEditorIconActions, {
 import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import { mergeResponsibleCandidatePools } from '../lib/quadrantPayloadShared'
-import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { isSelectableResponsible } from '@/lib/personnelRoles'
 
 type Props = {
   mode: QuadrantMode
@@ -50,7 +50,7 @@ export default function QuadrantTopBarServeis({
   const vestimentActive = vestimentModelChoice !== '__none__' && Boolean(vestimentModelChoice)
 
   const topResponsibleOptions = availableResponsables.filter(
-    (resp) => resp.status === 'available' && isResponsiblePerson(resp)
+    (resp) => isSelectableResponsible(resp)
   )
   const responsibleCandidatePools = mergeResponsibleCandidatePools(
     topResponsibleOptions,

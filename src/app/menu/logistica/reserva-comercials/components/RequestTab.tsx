@@ -31,6 +31,8 @@ type Props = {
   onRequestDatesChange: (next: SmartFiltersChange) => void
   onRequestStatusChange: (value: string) => void
   onCancelReservation: (id: string) => Promise<void>
+  onEditReservation: (reservation: CommercialReservation) => void
+  canManageDepartment: boolean
   saving: boolean
 }
 
@@ -49,6 +51,8 @@ export default function RequestTab({
   onRequestDatesChange,
   onRequestStatusChange,
   onCancelReservation,
+  onEditReservation,
+  canManageDepartment,
   saving,
 }: Props) {
   return (
@@ -215,7 +219,17 @@ export default function RequestTab({
                   ) : null}
                   <div className="mt-1 text-sm text-slate-600">{reservation.destination}</div>
                   {reservation.status === 'pending' || reservation.status === 'confirmed' ? (
-                    <div className="mt-3 flex justify-end">
+                    <div className="mt-3 flex justify-end gap-2">
+                      {canManageDepartment && reservation.status === 'confirmed' ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onEditReservation(reservation)}
+                          disabled={saving}
+                        >
+                          Modificar reserva
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"

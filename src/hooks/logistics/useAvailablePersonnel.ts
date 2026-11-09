@@ -8,6 +8,7 @@ export interface PersonnelOption {
   role: string
   status: 'available' | 'conflict' | 'notfound'
   reason?: string
+  conflictType?: 'overlap' | 'same_day_not_allowed' | 'rest_violation'
   isDriver?: boolean
   isJamonero?: boolean
   isResponsible?: boolean
@@ -77,6 +78,7 @@ const cleanList = (
       role: person.role,
       status: (person.status as PersonnelOption['status']) || 'notfound',
       reason: person.reason,
+      conflictType: person.conflictType,
       isDriver: person.isDriver === true,
       isJamonero: person.isJamonero === true,
       isResponsible: person.isResponsible === true,

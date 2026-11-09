@@ -10,7 +10,7 @@ import {
   normalizeTransportType,
 } from '@/lib/transportTypes'
 import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
-import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { isSelectableResponsible } from '@/lib/personnelRoles'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   getExternalWorkerBaseLabel,
@@ -110,7 +110,7 @@ export default function CuinaGroupRoleLineRow({
             canDriverHandleVehicleType(person as DriverCapability, vehicleTypeNorm || undefined)
         )
       : isResponsable
-        ? rowResponsables.filter((person) => isResponsiblePerson(person))
+        ? rowResponsables.filter((person) => isSelectableResponsible(person))
         : rowTreballadors
 
     return base.filter((person) => {

@@ -13,7 +13,7 @@ import {
   sortPeopleWithCrewFirst,
   type CrewMemberRef,
 } from '@/lib/driverCrewUtils'
-import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { isSelectableResponsible } from '@/lib/personnelRoles'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   isPersonReservedForRoleLine,
@@ -25,6 +25,7 @@ type PersonOption = {
   name: string
   status?: string
   reason?: string
+  conflictType?: string
   isJamonero?: boolean
   role?: string
   isResponsible?: boolean
@@ -75,9 +76,15 @@ function peopleForRole(
   if (role === 'responsable') {
     return responsables
       .filter(
-        (person) => person.status === 'available' && isResponsiblePerson(person)
+        (person) => isSelectableResponsible(person)
       )
-      .map((person) => ({ id: person.id, name: person.name, status: person.status, reason: person.reason }))
+      .map((person) => ({
+        id: person.id,
+        name: person.name,
+        status: person.status,
+        reason: person.reason,
+        conflictType: person.conflictType,
+      }))
   }
   if (role === 'conductor') {
     return conductors.map((person) => ({ ...person }))

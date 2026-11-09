@@ -35,7 +35,7 @@ import {
 import { LOGISTICS_ETT_RECIPIENT } from '@/lib/quadrantEttEmail'
 import { ensureLogisticRoleLines, collectAllLogisticaRoleLines } from '../lib/logisticPhaseRoleLines'
 import { validateNoLocalQuadrantPersonDuplicates } from '@/lib/quadrantLocalAvailability'
-import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { isResponsiblePerson, isSelectableResponsible } from '@/lib/personnelRoles'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 const normalizeTime = (value?: string) => {
@@ -93,6 +93,7 @@ export type ResponsableAvailabilityOption = {
   name: string
   status: 'available' | 'conflict' | 'notfound'
   reason?: string
+  conflictType?: 'overlap' | 'same_day_not_allowed' | 'rest_violation'
   role?: string
   isResponsible?: boolean
 }
@@ -318,10 +319,11 @@ export function useQuadrantFormState({
       String(existingDraft?.id || '').trim() ||
       String(event.id || '').trim().split('__')[0] ||
       undefined,
+    includeConflicts: true,
     enabled: modalOpen,
   })
 
-  const availableResponsables = useMemo<ResponsableAvailabilityOption[]>(
+  const headerAvailableResponsables = useMemo<ResponsableAvailabilityOption[]>(
     () =>
       responsables
         .filter((r) => Boolean(r.id?.trim()) && isResponsiblePerson(r))
@@ -330,6 +332,7 @@ export function useQuadrantFormState({
           name: r.name,
           status: r.status,
           reason: r.reason,
+          conflictType: r.conflictType,
           role: r.role,
           isResponsible: r.isResponsible === true,
         })),
@@ -337,20 +340,21 @@ export function useQuadrantFormState({
   )
   const responsablePoolIdsKey = useMemo(
     () =>
-      availableResponsables
+      headerAvailableResponsables
         .map((r) => r.id)
         .filter(Boolean)
         .sort()
         .join('|'),
-    [availableResponsables]
+    [headerAvailableResponsables]
   )
   const availableConductors = useMemo<AvailableConductor[]>(
-    () => conductors.filter((c) => Boolean(c.id?.trim())),
+    () => conductors.filter((c) => c.status === 'available' && Boolean(c.id?.trim())),
     [conductors]
   )
   const availableJamoneros = useMemo(
     () =>
       [...responsables, ...conductors, ...treballadors]
+        .filter((person) => person.status === 'available')
         .filter((person) => person.isJamonero === true && Boolean(person.id?.trim()))
         .filter(
           (person, index, arr) =>
@@ -363,21 +367,21 @@ export function useQuadrantFormState({
   const availableTreballadors = useMemo(
     () =>
       treballadors
-        .filter((p) => Boolean(p.id?.trim()))
+        .filter((p) => p.status === 'available' && Boolean(p.id?.trim()))
         .map((p) => ({ id: p.id, name: p.name })),
     [treballadors]
   )
 
   const servicePersonnelPools = useMemo(() => {
     const merged = [
-      ...availableResponsables.map((p) => ({ id: p.id, name: p.name })),
+      ...headerAvailableResponsables.map((p) => ({ id: p.id, name: p.name })),
       ...availableConductors.map((p) => ({ id: p.id, name: p.name })),
       ...availableTreballadors.map((p) => ({ id: p.id, name: p.name })),
     ]
     return merged.filter(
       (person, index, arr) => arr.findIndex((candidate) => candidate.id === person.id) === index
     )
-  }, [availableConductors, availableResponsables, availableTreballadors])
+  }, [availableConductors, headerAvailableResponsables, availableTreballadors])
 
   const logistics = useLogisticsPhasesState({
     event,
@@ -449,11 +453,81 @@ export function useQuadrantFormState({
     buildServiceGroupsPayload,
   } = services
 
+  const serviceAvailability = useMemo(() => {
+    const ranges = servicePhaseGroups
+      .filter((group) => servicePhaseSettings[group.phaseKey]?.selected !== false)
+      .map((group) => {
+        const date = String(group.serviceDate || '').trim()
+        const groupStartTime = String(group.startTime || '').trim()
+        const groupEndTime = String(group.endTime || '').trim()
+        if (!date || !/^\d{2}:\d{2}$/.test(groupStartTime) || !/^\d{2}:\d{2}$/.test(groupEndTime)) {
+          return null
+        }
+        const rangeStart = new Date(`${date}T${groupStartTime}:00`)
+        const rangeEnd = new Date(`${date}T${groupEndTime}:00`)
+        if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime())) return null
+        if (rangeEnd <= rangeStart) rangeEnd.setDate(rangeEnd.getDate() + 1)
+        return { rangeStart, rangeEnd }
+      })
+      .filter((range): range is { rangeStart: Date; rangeEnd: Date } => Boolean(range))
+
+    if (ranges.length === 0) return null
+    const rangeStart = new Date(Math.min(...ranges.map((range) => range.rangeStart.getTime())))
+    const rangeEnd = new Date(Math.max(...ranges.map((range) => range.rangeEnd.getTime())))
+    const localDate = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    const localTime = (date: Date) =>
+      `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+
+    return {
+      startDate: localDate(rangeStart),
+      endDate: localDate(rangeEnd),
+      startTime: localTime(rangeStart),
+      endTime: localTime(rangeEnd),
+    }
+  }, [servicePhaseGroups, servicePhaseSettings])
+
+  const { responsables: serviceRangeResponsables } = useAvailablePersonnel({
+    departament: department,
+    startDate: serviceAvailability?.startDate,
+    endDate: serviceAvailability?.endDate,
+    startTime: serviceAvailability?.startTime,
+    endTime: serviceAvailability?.endTime,
+    excludeEventId:
+      String(existingDraft?.id || '').trim() ||
+      String(event.id || '').trim().split('__')[0] ||
+      undefined,
+    includeConflicts: true,
+    enabled: modalOpen && department.trim().toLowerCase() === 'serveis' && Boolean(serviceAvailability),
+  })
+
+  const availableResponsables = useMemo<ResponsableAvailabilityOption[]>(() => {
+    const source =
+      department.trim().toLowerCase() === 'serveis' && serviceAvailability
+        ? serviceRangeResponsables
+        : headerAvailableResponsables
+    return source
+      .filter((person) => Boolean(person.id?.trim()) && isResponsiblePerson(person))
+      .map((person) => ({
+        id: person.id,
+        name: person.name,
+        status: person.status,
+        reason: person.reason,
+        conflictType: person.conflictType,
+        role: person.role,
+        isResponsible: person.isResponsible === true,
+      }))
+  }, [department, headerAvailableResponsables, serviceAvailability, serviceRangeResponsables])
+
   useEffect(() => {
     if (department.trim().toLowerCase() !== 'serveis') return
 
     const candidatePools = mergeResponsibleCandidatePools(
-      availableResponsables.filter((resp) => resp.status === 'available'),
+      availableResponsables.filter((resp) => isSelectableResponsible(resp)),
       availableConductors
     )
     const validResponsibleIds = new Set(
@@ -561,7 +635,7 @@ export function useQuadrantFormState({
       const baseMeetingPoint = meetingPoint || location || event.eventLocation || ''
       const { id: topResponsibleId } = resolveManualResponsible(
         manualResp,
-        availableResponsables.filter((resp) => resp.status === 'available'),
+        availableResponsables.filter((resp) => isSelectableResponsible(resp)),
         availableConductors
       )
       return selectedLogisticPhaseKeys.map((phaseKey) => {
@@ -770,7 +844,7 @@ export function useQuadrantFormState({
     if (!modalOpen || !manualResp || manualResp === '__auto__') return
 
     const candidatePools = mergeResponsibleCandidatePools(
-      availableResponsables.filter((resp) => resp.status === 'available'),
+      availableResponsables.filter((resp) => isSelectableResponsible(resp)),
       availableConductors
     )
     if (candidatePools.some((resp) => resp.id === manualResp)) return

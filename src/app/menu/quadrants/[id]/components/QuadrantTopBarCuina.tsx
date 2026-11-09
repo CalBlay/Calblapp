@@ -11,7 +11,7 @@ import QuadrantEditorIconActions, {
 import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import { mergeResponsibleCandidatePools } from '../lib/quadrantPayloadShared'
-import { isResponsiblePerson } from '@/lib/personnelRoles'
+import { isSelectableResponsible } from '@/lib/personnelRoles'
 import type { CuinaStaffTotals } from '../lib/cuinaGroupRoleLines'
 
 type Props = {
@@ -55,7 +55,7 @@ export default function QuadrantTopBarCuina({
   const [timesOpen, setTimesOpen] = useState(false)
 
   const topResponsibleOptions = availableResponsables.filter(
-    (resp) => resp.status === 'available' && isResponsiblePerson(resp)
+    (resp) => isSelectableResponsible(resp)
   )
   const responsibleCandidatePools = mergeResponsibleCandidatePools(
     topResponsibleOptions,

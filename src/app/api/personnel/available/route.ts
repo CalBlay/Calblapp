@@ -22,6 +22,7 @@ type AvailEntry = {
   role: string
   status: 'available' | 'conflict'
   reason: string
+  conflictType?: 'overlap' | 'same_day_not_allowed' | 'rest_violation'
   isDriver?: boolean
   isJamonero?: boolean
   isResponsible?: boolean
@@ -459,6 +460,13 @@ export async function GET(request: NextRequest) {
         : hasRestViolation
         ? `No compleix descans minim (${premisesRules.restHours}h)`
         : ''
+      const conflictType = hasOverlap
+        ? 'overlap' as const
+        : hasSameDayViolation
+        ? 'same_day_not_allowed' as const
+        : hasRestViolation
+        ? 'rest_violation' as const
+        : undefined
 
       const isDriver =
         data.isDriver === true ||
@@ -474,6 +482,7 @@ export async function GET(request: NextRequest) {
         role: data.role || '',
         status: isAvailable ? 'available' : 'conflict',
         reason,
+        conflictType,
         isDriver,
         isJamonero: data.isJamonero === true,
         isResponsible: data.isResponsible === true,

@@ -5,12 +5,13 @@ import { requireAuth, type SessionUserForApi } from '@/lib/server/apiAuth'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationDayKeys,
   getCommercialReservationEndDate,
   isCommercialReservationVehicleReassignment,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
 import { queryCommercialReservationDocsByRange } from '@/lib/commercialReservations.server'
-import type { AccessUser } from '@/lib/accessControl'
+import { normalizeDept, type AccessUser } from '@/lib/accessControl'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { PERM } from '@/lib/permissionKeys'
 import {
@@ -19,6 +20,7 @@ import {
 } from '@/lib/reservaComercialsPermissions'
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import { notifyReservaComercialUser } from '@/lib/logistica/reservaComercialNotifications'
+import { normalizeRole } from '@/lib/roles'
 
 const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
@@ -111,6 +113,20 @@ async function createUserNotification(params: {
   reservationId: string
 }) {
   await notifyReservaComercialUser(params)
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function getTransportLeadUserIds() {
+  const snap = await db.collection('users').where('departmentLower', '==', 'logistica').get()
+  return snap.docs
+    .filter((doc) => {
+      const data = doc.data() as { role?: string; isTransportLead?: boolean }
+      return normalizeRole(String(data.role || '')) === 'cap' && data.isTransportLead === true
+    })
+    .map((doc) => doc.id)
 }
 
 async function findAvailableCommercialVehicle(target: CommercialReservation) {
@@ -216,6 +232,13 @@ export async function PATCH(
       user: accessUser,
       permission: PERM.action(RESERVA_UI_PATH, RESERVA_COMERCIALS_ACTION.VALIDATE),
     })
+    const canManageDepartment = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.action(
+        RESERVA_UI_PATH,
+        RESERVA_COMERCIALS_ACTION.MANAGE_DEPARTMENT
+      ),
+    })
 
     const { id } = await ctx.params
     const reservationId = String(id || '').trim()
@@ -230,10 +253,157 @@ export async function PATCH(
     }
 
     const current = mapReservation(snap.id, snap.data() as ReservationDoc)
-    const body = (await req.json()) as Partial<CommercialReservation>
+    const body = (await req.json()) as Partial<CommercialReservation> & { action?: string }
+    const action = String(body.action || '').trim()
     const nextStatus = String(body.status || '').trim() as CommercialReservation['status']
     const actorIsRequester = String(user?.id || '') === current.requesterId
     const actorIsBeneficiary = String(user?.id || '') === current.requestedForId
+
+    if (action === 'edit') {
+      if (!canManageDepartment || current.status !== 'confirmed') {
+        return NextResponse.json(
+          { error: 'Només el gestor de vehicles pot modificar una reserva confirmada' },
+          { status: 403 }
+        )
+      }
+      if (normalizeDept(current.requestedForDepartment) !== normalizeDept(user.department || '')) {
+        return NextResponse.json(
+          { error: 'Només pots modificar reserves del teu departament' },
+          { status: 403 }
+        )
+      }
+
+      const requestedForId = String(body.requestedForId || '').trim()
+      const targetSnap = await db.collection('users').doc(requestedForId).get()
+      if (!targetSnap.exists) {
+        return NextResponse.json({ error: 'La persona seleccionada no existeix' }, { status: 400 })
+      }
+      const targetData = targetSnap.data() as Record<string, unknown>
+      const targetDepartment = String(targetData.department || '').trim()
+      if (normalizeDept(targetDepartment) !== normalizeDept(user.department || '')) {
+        return NextResponse.json(
+          { error: 'Només pots assignar conductors del teu departament' },
+          { status: 403 }
+        )
+      }
+
+      const date = String(body.date || '').trim()
+      const endDate = String(body.endDate || date).trim() || date
+      const startTime = String(body.startTime || '').trim()
+      const endTime = String(body.endTime || '').trim()
+      const destination = String(body.destination || '').trim()
+      const reason = String(body.reason || '').trim()
+      const notes = String(body.notes || '').trim()
+      if (!date || !endDate || !startTime || !endTime || !destination || !reason) {
+        return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
+      }
+      if (date < todayIsoDate()) {
+        return NextResponse.json(
+          { error: "Només es poden fer reserves d'avui en endavant" },
+          { status: 400 }
+        )
+      }
+      if (endDate < date || `${endDate}T${endTime}:00` <= `${date}T${startTime}:00`) {
+        return NextResponse.json({ error: 'La franja horària no és vàlida' }, { status: 400 })
+      }
+      const dayKeys = getCommercialReservationDayKeys({ date, endDate })
+      if (dayKeys.length > 370) {
+        return NextResponse.json({ error: 'La reserva no pot superar els 370 dies.' }, { status: 400 })
+      }
+
+      const scheduleChanged =
+        date !== current.date ||
+        endDate !== getCommercialReservationEndDate(current) ||
+        startTime !== current.startTime ||
+        endTime !== current.endTime
+      const driverChanged = requestedForId !== current.requestedForId
+      const requestedForName = String(targetData.name || '').trim()
+      const editPatch: Record<string, unknown> = {
+        requestedForId,
+        requestedForName,
+        requestedForRole: String(targetData.role || '').trim(),
+        requestedForDepartment: targetDepartment,
+        date,
+        endDate,
+        dayKeys,
+        startTime,
+        endTime,
+        destination,
+        reason,
+        notes,
+        updatedAt: admin.firestore.Timestamp.now(),
+      }
+      if (scheduleChanged) {
+        editPatch.status = 'pending'
+        editPatch.assignedVehicleId = null
+        editPatch.assignedVehiclePlate = null
+        editPatch.approvedById = null
+        editPatch.approvedByName = null
+      }
+      await ref.set(editPatch, { merge: true })
+
+      const oldDateLabel = `${current.date} ${current.startTime}-${getCommercialReservationEndDate(current)} ${current.endTime}`
+      const newDateLabel = `${date} ${startTime}-${endDate} ${endTime}`
+      const notifications: Array<Promise<void>> = []
+      if (driverChanged && current.requestedForId) {
+        notifications.push(
+          createUserNotification({
+            userId: current.requestedForId,
+            title: 'Reserva de vehicle anul·lada',
+            body: `La teva reserva ${oldDateLabel} s'ha anul·lat perquè s'ha canviat el conductor.`,
+            type: 'commercial_vehicle_validation',
+            url: '/menu/logistica/reserva-comercials?tab=sollicitud',
+            reservationId,
+          })
+        )
+      }
+      if (driverChanged && requestedForId) {
+        notifications.push(
+          createUserNotification({
+            userId: requestedForId,
+            title: scheduleChanged ? 'Nova sol·licitud de vehicle per a tu' : 'Reserva de vehicle per a tu',
+            body: scheduleChanged
+              ? `T'han assignat una sol·licitud de vehicle per a ${newDateLabel}, pendent de validació de transports.`
+              : `T'han assignat la reserva confirmada ${newDateLabel}${current.assignedVehiclePlate ? ` amb ${current.assignedVehiclePlate}` : ''}.`,
+            type: 'commercial_vehicle_validation',
+            url: '/menu/logistica/reserva-comercials?tab=sollicitud',
+            reservationId,
+          })
+        )
+      } else if (scheduleChanged && requestedForId) {
+        notifications.push(
+          createUserNotification({
+            userId: requestedForId,
+            title: 'Reserva modificada i pendent de validació',
+            body: `La teva reserva ha canviat de ${oldDateLabel} a ${newDateLabel} i transports l'ha de validar de nou.`,
+            type: 'commercial_vehicle_validation',
+            url: '/menu/logistica/reserva-comercials?tab=sollicitud',
+            reservationId,
+          })
+        )
+      }
+      if (scheduleChanged) {
+        const leadIds = await getTransportLeadUserIds()
+        notifications.push(
+          ...leadIds.map((userId) =>
+            createUserNotification({
+              userId,
+              title: 'Reserva modificada pendent de revalidació',
+              body: `${requestedForName || 'Un conductor'} necessita revalidar la reserva per al ${newDateLabel}.`,
+              type: 'commercial_vehicle_request',
+              url: '/menu/logistica/reserva-comercials?tab=validacio',
+              reservationId,
+            })
+          )
+        )
+      }
+      await Promise.all(notifications)
+
+      const updated = await ref.get()
+      return NextResponse.json({
+        reservation: mapReservation(updated.id, updated.data() as ReservationDoc),
+      })
+    }
 
     if (nextStatus === 'confirmed' || nextStatus === 'rejected') {
       if (!canValidate) {

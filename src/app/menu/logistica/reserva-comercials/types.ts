@@ -66,6 +66,7 @@ export type ReservationPageState = {
   loading: boolean
   error: string | null
   dialogOpen: boolean
+  editingReservationId: string | null
   selectedDay: string
   selectedEndDay: string
   startTime: string

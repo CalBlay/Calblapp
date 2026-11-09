@@ -21,6 +21,7 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedDay: string
+  setSelectedDay: React.Dispatch<React.SetStateAction<string>>
   selectedEndDay: string
   setSelectedEndDay: React.Dispatch<React.SetStateAction<string>>
   startTime: string
@@ -42,12 +43,14 @@ type Props = {
   onSubmit: () => Promise<void>
   timeline: ReservationTimelineSlot[]
   totalVehicles: number
+  editing: boolean
 }
 
 export default function ReservationDialog({
   open,
   onOpenChange,
   selectedDay,
+  setSelectedDay,
   selectedEndDay,
   setSelectedEndDay,
   startTime,
@@ -69,14 +72,17 @@ export default function ReservationDialog({
   onSubmit,
   timeline,
   totalVehicles,
+  editing,
 }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nova sol·licitud</DialogTitle>
+          <DialogTitle>{editing ? 'Modificar reserva confirmada' : 'Nova sol·licitud'}</DialogTitle>
           <DialogDescription>
-            Reserva el dia seleccionat i envia la petició a transports.
+            {editing
+              ? "Si canvies el dia o l'hora, transports l'haurà de validar de nou."
+              : 'Reserva el dia seleccionat i envia la petició a transports.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -98,7 +104,15 @@ export default function ReservationDialog({
           ) : null}
 
           <Field label="Dia">
-            <Input value={prettyDate(selectedDay)} readOnly />
+            {editing ? (
+              <Input
+                type="date"
+                value={selectedDay}
+                onChange={(event) => setSelectedDay(event.target.value)}
+              />
+            ) : (
+              <Input value={prettyDate(selectedDay)} readOnly />
+            )}
           </Field>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -198,7 +212,7 @@ export default function ReservationDialog({
             onClick={() => void onSubmit()}
             disabled={saving || !destination.trim() || !reason.trim()}
           >
-            {saving ? 'Enviant...' : 'Enviar sol·licitud'}
+            {saving ? 'Desant...' : editing ? 'Desar modificació' : 'Enviar sol·licitud'}
           </Button>
         </DialogFooter>
       </DialogContent>

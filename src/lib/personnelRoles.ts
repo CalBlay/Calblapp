@@ -21,3 +21,24 @@ export function isResponsiblePerson(
   if (person.isResponsible === true) return true
   return RESPONSABLE_ROLES.has(normPersonRole(person.role))
 }
+
+/**
+ * Els responsables segueixen sent seleccionables si tenen un altre servei el
+ * mateix dia però no se solapen. Només un solapament horari real els bloqueja.
+ */
+export function isSelectableResponsible(
+  person?: {
+    isResponsible?: boolean
+    role?: string | null
+    status?: string | null
+    conflictType?: string | null
+    reason?: string | null
+  } | null
+): boolean {
+  if (!isResponsiblePerson(person)) return false
+  if (person?.status !== 'conflict') return true
+  if (person.conflictType) return person.conflictType !== 'overlap'
+
+  // Compatibilitat amb respostes antigues/cachÃ© sense `conflictType`.
+  return normPersonRole(person.reason) !== 'ja assignat en aquest rang'
+}
