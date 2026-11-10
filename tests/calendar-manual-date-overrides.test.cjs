@@ -147,6 +147,20 @@ test('ADA sync skips codes marked as manualOverrides', () => {
   assert.match(source, /manualOverrides\?\.code === true/)
 })
 
+test('ADA sync processes every calendar stage collection', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/sync/adaSync.ts'),
+    'utf8'
+  )
+
+  assert.match(
+    source,
+    /ADA_SYNC_STAGE_COLLECTIONS\s*=\s*\[\s*'stage_verd',\s*'stage_taronja',\s*'stage_groc',\s*\]/
+  )
+  assert.match(source, /ADA_SYNC_STAGE_COLLECTIONS\.map/)
+  assert.match(source, /batch\.update\(doc\.ref/)
+})
+
 test('calendar PUT protects both date fields when either boundary changes', () => {
   const source = fs.readFileSync(
     path.join(__dirname, '../src/app/api/calendar/manual/[id]/route.ts'),

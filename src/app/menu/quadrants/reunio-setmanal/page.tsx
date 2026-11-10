@@ -1,14 +1,12 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { addWeeks, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
+import { endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import {
-  CalendarDays,
   Check,
-  ChevronLeft,
-  ChevronRight,
+  ChefHat,
   ClipboardList,
   FileText,
   History,
@@ -18,6 +16,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import type {
@@ -32,6 +32,8 @@ type MeetingResponse = {
   rows: WeeklyMeetingRow[]
   editableCommentDepartment: MeetingCommentDepartment | null
 }
+type KitchenAttendanceFilter = 'all' | 'required' | 'not-required'
+
 type MeetingSession = {
   id: string
   weekStart: string
@@ -99,7 +101,7 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
     <style>
       body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:10px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:6px;vertical-align:top}th{background:#111827;color:white;text-align:left}th:nth-child(1){width:8%}th:nth-child(2){width:22%}th:nth-child(3){width:4%}th:nth-child(4){width:13%}th:nth-child(5){width:16%}th:nth-child(6),th:nth-child(7){width:18.5%}hr{border:0;border-top:1px solid #cbd5e1;margin:7px 0}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
-    <div class="meta">Setmana del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
+    <div class="meta">Període del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
     <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
     <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes) || 'Sense observacions.'}</p></div></body></html>`
 }
@@ -312,7 +314,9 @@ function DepartmentCommentCell({
 export default function QuadrantsWeeklyMeetingPage() {
   const initialWeek = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), [])
   const [weekStart, setWeekStart] = useState(format(initialWeek, 'yyyy-MM-dd'))
-  const weekEnd = format(endOfWeek(parseISO(weekStart), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const [weekEnd, setWeekEnd] = useState(
+    format(endOfWeek(initialWeek, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  )
   const meetingUrl = `/api/quadrants/meeting?start=${weekStart}&end=${weekEnd}`
   const { data, error, isLoading, mutate } = useSWR<MeetingResponse>(meetingUrl, fetchJson)
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set())
@@ -320,6 +324,15 @@ export default function QuadrantsWeeklyMeetingPage() {
   const [notes, setNotes] = useState('')
   const [minutesBusy, setMinutesBusy] = useState(false)
   const [selectedHistoryId, setSelectedHistoryId] = useState('')
+  const [kitchenAttendanceFilter, setKitchenAttendanceFilter] =
+    useState<KitchenAttendanceFilter>('all')
+
+  const visibleRows = useMemo(() => {
+    const rows = data?.rows || []
+    if (kitchenAttendanceFilter === 'all') return rows
+    const kitchenIsRequired = kitchenAttendanceFilter === 'required'
+    return rows.filter((row) => row.cuina.required === kitchenIsRequired)
+  }, [data?.rows, kitchenAttendanceFilter])
 
   const minutesUrl = minutesOpen
     ? `/api/quadrants/meeting/minutes?weekStart=${weekStart}&weekEnd=${weekEnd}`
@@ -337,11 +350,13 @@ export default function QuadrantsWeeklyMeetingPage() {
   useEffect(() => {
     setNotes(currentSession?.notes || '')
     setSelectedHistoryId('')
-  }, [currentSession?.id, currentSession?.notes, weekStart])
+  }, [currentSession?.id, currentSession?.notes, weekStart, weekEnd])
 
-  const changeWeek = (amount: number) => {
-    setWeekStart(format(addWeeks(parseISO(weekStart), amount), 'yyyy-MM-dd'))
-  }
+  const handlePeriodChange = useCallback((filters: SmartFiltersChange) => {
+    if (!filters.start || !filters.end) return
+    setWeekStart(filters.start)
+    setWeekEnd(filters.end)
+  }, [])
 
   const updateDecision = async (
     row: WeeklyMeetingRow,
@@ -537,41 +552,68 @@ export default function QuadrantsWeeklyMeetingPage() {
         actions={<Link href="/menu/quadrants" className="font-medium hover:underline">Tauler de treball</Link>}
       />
 
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => changeWeek(-1)} aria-label="Setmana anterior" className="rounded-lg border border-slate-200 p-2 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" /></button>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium">
-            <CalendarDays className="h-4 w-4 text-indigo-600" />
-            <input
-              type="date"
-              value={weekStart}
-              onChange={(event) => setWeekStart(format(startOfWeek(parseISO(event.target.value), { weekStartsOn: 1 }), 'yyyy-MM-dd'))}
-              className="bg-transparent outline-none"
-            />
+      <CorporateFiltersShell variant="toolbar">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
+          <SmartFilters
+            modeDefault="week"
+            modeOptions={['week', 'day', 'range']}
+            role="Treballador"
+            showDepartment={false}
+            showWorker={false}
+            showLocation={false}
+            showStatus={false}
+            onChange={handlePeriodChange}
+            initialStart={weekStart}
+            initialEnd={weekEnd}
+            compact
+          />
+          <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+            <ChefHat className="h-4 w-4 text-amber-600" />
+            <span>Cuina</span>
+            <select
+              value={kitchenAttendanceFilter}
+              onChange={(event) =>
+                setKitchenAttendanceFilter(event.target.value as KitchenAttendanceFilter)
+              }
+              aria-label="Filtrar segons si hi va Cuina"
+              className="bg-transparent font-semibold text-slate-900 outline-none"
+            >
+              <option value="all">Tots</option>
+              <option value="required">Va</option>
+              <option value="not-required">No va</option>
+            </select>
           </label>
-          <button type="button" onClick={() => changeWeek(1)} aria-label="Setmana següent" className="rounded-lg border border-slate-200 p-2 hover:bg-slate-50"><ChevronRight className="h-4 w-4" /></button>
-          <span className="text-sm text-slate-500">fins al {format(parseISO(weekEnd), 'dd/MM/yyyy')}</span>
+          <button type="button" onClick={() => setMinutesOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            <FileText className="h-4 w-4" /> Acta de la reunió
+          </button>
+          </div>
         </div>
-        <button type="button" onClick={() => setMinutesOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-          <FileText className="h-4 w-4" /> Acta de la reunió
-        </button>
-      </section>
+      </CorporateFiltersShell>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="font-semibold text-slate-900">Graella setmanal</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold text-slate-900">Graella del període</h2>
+            {data?.rows.length ? (
+              <span className="text-xs font-medium text-slate-500">
+                {visibleRows.length} de {data.rows.length} esdeveniments
+              </span>
+            ) : null}
+          </div>
           <p className="text-sm text-slate-500">Tothom pot veure les observacions dels tres departaments; cada departament només pot editar les seves.</p>
         </div>
         {isLoading ? <div className="flex items-center justify-center gap-2 p-12 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> Carregant esdeveniments…</div>
         : error ? <div className="p-8 text-center text-rose-700">{error.message}</div>
-        : !data?.rows.length ? <div className="p-12 text-center text-slate-500">No hi ha esdeveniments aquesta setmana.</div>
+        : !data?.rows.length ? <div className="p-12 text-center text-slate-500">No hi ha esdeveniments en aquest període.</div>
+        : !visibleRows.length ? <div className="p-12 text-center text-slate-500">No hi ha esdeveniments que coincideixin amb el filtre de Cuina.</div>
         : <div className="overflow-x-auto">
           <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
             <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-white">
               <tr><th className="w-[8%] p-2.5">Dia</th><th className="w-[21%] p-2.5">Lloc / quadrant de Serveis</th><th className="w-[4%] p-2 text-center">PAX</th><th className="w-[13%] p-2.5">Horari</th><th className="w-[16%] p-2.5">Obs. Serveis</th><th className="w-[19%] p-2.5">Logística</th><th className="w-[19%] p-2.5">Cuina</th></tr>
             </thead>
             <tbody>
-              {data.rows.map((row, index) => (
+              {visibleRows.map((row, index) => (
                 <tr key={row.key} className={cn('border-b border-slate-200 align-top', index % 2 ? 'bg-slate-50/60' : 'bg-white')}>
                   <td className="p-3">
                     <strong>{format(parseISO(row.eventDay), 'dd/MM/yyyy')}</strong>
@@ -643,7 +685,7 @@ export default function QuadrantsWeeklyMeetingPage() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <label className="mb-1 flex items-center gap-2 text-sm font-semibold"><History className="h-4 w-4" /> Historial d’actes</label>
                 <select value={selectedHistoryId} onChange={(event) => setSelectedHistoryId(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                  <option value="">Setmana seleccionada</option>
+                  <option value="">Període seleccionat</option>
                   {(historyData?.sessions || []).map((session) => <option key={session.id} value={session.id}>{format(parseISO(session.weekStart), 'dd/MM/yyyy')} – {format(parseISO(session.weekEnd), 'dd/MM/yyyy')} · {session.status === 'finalized' ? 'Finalitzada' : 'Esborrany'}</option>)}
                 </select>
               </div>

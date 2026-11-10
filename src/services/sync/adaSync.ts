@@ -43,6 +43,11 @@ const ADA_API_TOKEN = process.env.ADA_API_TOKEN || ''
 const ADA_TIMEZONE = 'Europe/Madrid'
 const ADA_RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 const ADA_MAX_ATTEMPTS = 3
+const ADA_SYNC_STAGE_COLLECTIONS = [
+  'stage_verd',
+  'stage_taronja',
+  'stage_groc',
+] as const
 
 export class AdaApiError extends Error {
   status: number
@@ -252,11 +257,16 @@ export async function syncAdaEventsToFirestore(opts?: {
     adaByDate.get(key)!.push(ev)
   }
 
-  const stageSnap = await firestore
-    .collection('stage_verd')
-    .where('DataInici', '>=', startDate)
-    .where('DataInici', '<=', endDate)
-    .get()
+  const stageSnapshots = await Promise.all(
+    ADA_SYNC_STAGE_COLLECTIONS.map(async (collectionName) => ({
+      collectionName,
+      snapshot: await firestore
+        .collection(collectionName)
+        .where('DataInici', '>=', startDate)
+        .where('DataInici', '<=', endDate)
+        .get(),
+    }))
+  )
 
   let batch = firestore.batch()
   let pending = 0
@@ -287,28 +297,48 @@ export async function syncAdaEventsToFirestore(opts?: {
     if (codeOwner.has(normalizedCode)) {
       return codeOwner.get(normalizedCode) || null
     }
-    const snap = await firestore
-      .collection('stage_verd')
-      .where('code', '==', code)
-      .limit(1)
-      .get()
-    const owner = snap.empty ? null : snap.docs[0].id
+    const variants = Array.from(
+      new Set([code.trim(), normalizedCode, normalizedCode.toLowerCase()])
+    )
+    const snapshots = await Promise.all(
+      ADA_SYNC_STAGE_COLLECTIONS.map(async (collectionName) => ({
+        collectionName,
+        snapshot: await firestore
+          .collection(collectionName)
+          .where('code', 'in', variants)
+          .limit(1)
+          .get(),
+      }))
+    )
+    const match = snapshots.find(({ snapshot }) => !snapshot.empty)
+    const owner = match
+      ? `${match.collectionName}/${match.snapshot.docs[0].id}`
+      : null
     codeOwner.set(normalizedCode, owner)
     return owner
   }
 
-  const stageDocs = [...stageSnap.docs].sort((a, b) => {
-    const dateDiff = dateKey((a.data() as StageEvent).DataInici).localeCompare(
-      dateKey((b.data() as StageEvent).DataInici)
+  const stageDocs = stageSnapshots
+    .flatMap(({ collectionName, snapshot }) =>
+      snapshot.docs.map((doc) => ({ collectionName, doc }))
     )
-    return dateDiff || a.id.localeCompare(b.id)
-  })
+    .sort((a, b) => {
+      const dateDiff = dateKey((a.doc.data() as StageEvent).DataInici).localeCompare(
+        dateKey((b.doc.data() as StageEvent).DataInici)
+      )
+      return (
+        dateDiff ||
+        ADA_SYNC_STAGE_COLLECTIONS.indexOf(a.collectionName) -
+          ADA_SYNC_STAGE_COLLECTIONS.indexOf(b.collectionName) ||
+        a.doc.id.localeCompare(b.doc.id)
+      )
+    })
 
   // Carrega primer els propietaris dels codis ja assignats dins del rang. Els manuals tenen
   // prioritat i, entre els automatics antics duplicats, conservem de manera
   // determinista el primer per data. La resta s'autocorregira en el bucle.
   for (const manualFirst of [true, false]) {
-    for (const doc of stageDocs) {
+    for (const { collectionName, doc } of stageDocs) {
       const data = doc.data() as StageEvent
       const currentCode = String(data.code || '').trim()
       const isManual =
@@ -323,14 +353,15 @@ export async function syncAdaEventsToFirestore(opts?: {
       }
       const normalizedCode = normalizeAdaEventCode(currentCode)
       if (!codeOwner.has(normalizedCode)) {
-        codeOwner.set(normalizedCode, doc.id)
+        codeOwner.set(normalizedCode, `${collectionName}/${doc.id}`)
       }
     }
   }
 
-  for (const doc of stageDocs) {
+  for (const { collectionName, doc } of stageDocs) {
     total++
     const data = doc.data() as StageEvent
+    const documentKey = `${collectionName}/${doc.id}`
     const stageDate = dateKey(data.DataInici)
     if (!stageDate) {
       noMatch++
@@ -346,10 +377,10 @@ export async function syncAdaEventsToFirestore(opts?: {
     }
     const currentCode = String(data.code || '').trim()
     const currentOwner = await getCodeOwner(currentCode)
-    if (currentCode && currentOwner && currentOwner !== doc.id) {
+    if (currentCode && currentOwner && currentOwner !== documentKey) {
       // Autocorreccio de duplicats creats per syncs anteriors. Els codis manuals
       // no s'han d'alterar mai des d'una sincronitzacio automatica.
-      batch.update(firestore.collection('stage_verd').doc(doc.id), {
+      batch.update(doc.ref, {
         code: '',
         codeConfirmed: false,
         codeMatchScore: 0,
@@ -361,11 +392,11 @@ export async function syncAdaEventsToFirestore(opts?: {
       repairedDuplicateCodes++
       if (pending >= 450) await flush()
     } else if (currentCode) {
-      reserveAdaEventCode(codeOwner, currentCode, doc.id)
+      reserveAdaEventCode(codeOwner, currentCode, documentKey)
     }
 
     if (data.codeConfirmed === true) {
-      if (!currentOwner || currentOwner === doc.id) {
+      if (!currentOwner || currentOwner === documentKey) {
         skippedConfirmed++
         continue
       }
@@ -408,7 +439,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     else matched2++
 
     const existingOwner = await getCodeOwner(code)
-    if (existingOwner && existingOwner !== doc.id) {
+    if (existingOwner && existingOwner !== documentKey) {
       skippedConfirmedCode++
       continue
     }
@@ -416,7 +447,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     // Reserva immediata dins la mateixa execucio. Sense aquesta reserva, dos
     // updates del mateix batch veien el codi com a lliure fins al commit.
     if (!isRepeatablePmCode(code)) {
-      reserveAdaEventCode(codeOwner, code, doc.id)
+      reserveAdaEventCode(codeOwner, code, documentKey)
     }
 
     const existingFields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
@@ -429,8 +460,7 @@ export async function syncAdaEventsToFirestore(opts?: {
 
     if (!needsUpdate) continue
 
-    const ref = firestore.collection('stage_verd').doc(doc.id)
-    batch.update(ref, {
+    batch.update(doc.ref, {
       code,
       codeConfirmed: confirmed,
       codeMatchScore: matchScore,
