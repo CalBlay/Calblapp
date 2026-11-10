@@ -14,7 +14,6 @@ import { isSelectableResponsible } from '@/lib/personnelRoles'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   getExternalWorkerBaseLabel,
-  normalizeExternalWorkerName,
 } from '@/lib/quadrantExternalWorkers'
 import { isCuinaCenterExternalExtraLine } from '../lib/cuinaGroupRoleLines'
 import {
@@ -271,14 +270,11 @@ export default function CuinaGroupRoleLineRow({
 
         {isCenterExternalExtra && mode === 'manual' ? (
           <Input
-            value={line.personName || getExternalWorkerBaseLabel('centerExternalExtra')}
+            value={line.personName || ''}
             onChange={(e) =>
               onLinePatch({
                 personId: '',
-                personName: normalizeExternalWorkerName({
-                  rawName: e.target.value,
-                  type: 'centerExternalExtra',
-                }),
+                personName: e.target.value,
                 isExternal: true,
                 externalType: 'centerExternalExtra',
                 isCenterExternalExtra: true,
