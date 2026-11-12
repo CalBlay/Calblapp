@@ -53,6 +53,8 @@ function adaptEventForCell(ev: RawSpaceEvent) {
     NumPax: readNumber(ev.NumPax, Number.NaN),
     StageGroup: readStage(ev.StageGroup, readStage(ev.stage)),
     cancelled: ev.cancelled === true,
+    multiSpaceCount: readNumber(ev.multiSpaceCount),
+    spaceNames: Array.isArray(ev.spaceNames) ? ev.spaceNames.map(String) : [],
   }
 }
 
@@ -157,30 +159,31 @@ export default function SpaceGrid({
               const dia = format(day, 'EEE', { locale: ca })
               const dataDia = format(day, 'dd/MM', { locale: ca })
               const dateIso = format(day, 'yyyy-MM-dd')
-              let totalPaxScoped = 0
-              let totalEventsScoped = 0
+              const scopedEventsById = new Map<string, RawSpaceEvent>()
 
               for (const row of data) {
                 const cell = row?.dies?.[i]
                 if (!cell?.events) continue
 
-                const scopedEvents = cell.events.filter((e: RawSpaceEvent) => {
-                  if (!isActiveSpaceReservation(e)) return false
+                cell.events.forEach((e: RawSpaceEvent, eventIndex) => {
+                  if (!isActiveSpaceReservation(e)) return
                   const s = String(e.stage ?? e.StageGroup ?? '').toLowerCase()
-                  return (
+                  const isScoped =
                     (s === 'verd' && headerRule.stages.includes('verd')) ||
                     (s === 'taronja' && headerRule.stages.includes('taronja')) ||
                     (s === 'groc' && headerRule.stages.includes('groc')) ||
                     (s.includes('confirmat') && headerRule.stages.includes('verd'))
-                  )
+                  if (!isScoped) return
+                  const key = readString(e.id) || `${row.finca}:${eventIndex}`
+                  if (!scopedEventsById.has(key)) scopedEventsById.set(key, e)
                 })
-
-                totalPaxScoped += scopedEvents.reduce(
-                  (a: number, e: RawSpaceEvent) => a + Number(e.numPax ?? 0),
-                  0
-                )
-                totalEventsScoped += scopedEvents.length
               }
+              const scopedEvents = Array.from(scopedEventsById.values())
+              const totalPaxScoped = scopedEvents.reduce(
+                (total, event) => total + Number(event.numPax ?? 0),
+                0
+              )
+              const totalEventsScoped = scopedEvents.length
 
               const shouldHighlight =
                 isSpacesDateManuallyHighlighted(headerRule, dateIso) ||
@@ -281,6 +284,8 @@ export default function SpaceGrid({
                               numPax: Number.isFinite(cellEvent.NumPax) ? cellEvent.NumPax : 0,
                               stage: cellEvent.StageGroup,
                               cancelled: cellEvent.cancelled,
+                              multiSpaceCount: cellEvent.multiSpaceCount,
+                              spaceNames: cellEvent.spaceNames,
                             }}
                           />
                         </div>

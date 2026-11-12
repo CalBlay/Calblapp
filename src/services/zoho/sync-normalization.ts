@@ -180,8 +180,16 @@ export async function normalizeZohoDeals(
     let ln = pipelineLn || await deps.getLN(deal.Owner?.id)
     ln = deps.lnForMartaGranatoCommercial(ln, ownerCommercial)
 
-    const ubicacions = [...(deal.Espai_2 || []), ...(deal.Finca_2 || [])]
-    const ubicacioRaw = deal.Finca_2?.[0] || deal.Espai_2?.[0] || ''
+    const ubicacions = [...(deal.Finca_2 || []), ...(deal.Espai_2 || [])]
+    const ubicacioLabels = Array.from(
+      new Map(
+        ubicacions
+          .map((value) => deps.stripCode(String(value || '')).trim())
+          .filter(Boolean)
+          .map((label) => [label.toLocaleLowerCase('ca'), label])
+      ).values()
+    )
+    const ubicacioRaw = ubicacions[0] || ''
     const ubicacioLabel = deps.stripCode(ubicacioRaw).trim()
     const ubicacioCodeRaw = deps.normalizeIncomingZohoCode(
       deps.extractCodeFromName(ubicacioRaw)
@@ -252,6 +260,7 @@ export async function normalizeZohoDeals(
         deal.N_mero_de_personas_del_evento ||
         null,
       Ubicacio: ubicacioLabel,
+      Ubicacions: ubicacioLabels,
       FincaId: fincaMatch?.id,
       FincaCode: fincaMatch?.code,
       FincaLN: deps.fincaLnForDeal(

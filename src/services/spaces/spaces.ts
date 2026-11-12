@@ -160,6 +160,8 @@ interface RawEvent {
   Comentari?: string
   Ubicacio?: string
   DataInici?: string
+  spaceNames?: string[]
+  multiSpaceCount?: number
 }
 
 interface EventOut extends RawEvent {
@@ -280,47 +282,52 @@ export async function getSpacesByWeek(
         if (!(start instanceof Date) || Number.isNaN(start.getTime())) return
         if (!(end instanceof Date) || Number.isNaN(end.getTime())) return
 
-        const finca = normalizeText(data.Ubicacio).split('(')[0]
+        const spaceNames = eventSpaceNames(data)
         const commercial = normalizeText(data.Comercial)
         const ln = normalizeText(data.LN)
 
         if (
-          !matchesAnyFilter(finca, fincaFilters) ||
           !matchesAnyFilter(commercial, comercialFilters) ||
           !matchesLnFilter(ln, lnFilters, excludeGrupsRestaurants)
         ) {
           return
         }
 
-        rawEvents.push({
-          id: doc.id,
-          finca,
-          date: format(start, 'yyyy-MM-dd'),
-          dateEnd: format(end, 'yyyy-MM-dd'),
-          ln,
-          stage: collection.replace('stage_', '') as RawEvent['stage'],
-          cancelled: data.cancelled === true,
-          cancelledAt: normalizeText(data.cancelledAt),
-          cancelledByName: normalizeText(data.cancelledByName),
-          eventName: normalizeText(data.NomEvent),
-          commercial,
-          numPax: Number(data.NumPax) || 0,
-          startTime: normalizeText(data.HoraInici),
-          code: data.code
-            ? normalizeText(data.code)
-            : data.Code
-              ? normalizeText(data.Code)
-              : '',
-          service: normalizeText(data.Servei || data.service || ''),
-          observacions: normalizeText(
-            data.ObservacionsZoho ||
-              data.observacionsZoho ||
-              data.Observacions ||
-              data.observacions ||
-              ''
-          ),
-          createdAtMs,
-        })
+        for (const finca of spaceNames) {
+          if (!matchesAnyFilter(finca, fincaFilters)) continue
+
+          rawEvents.push({
+            id: doc.id,
+            finca,
+            date: format(start, 'yyyy-MM-dd'),
+            dateEnd: format(end, 'yyyy-MM-dd'),
+            ln,
+            stage: collection.replace('stage_', '') as RawEvent['stage'],
+            cancelled: data.cancelled === true,
+            cancelledAt: normalizeText(data.cancelledAt),
+            cancelledByName: normalizeText(data.cancelledByName),
+            eventName: normalizeText(data.NomEvent),
+            commercial,
+            numPax: Number(data.NumPax) || 0,
+            startTime: normalizeText(data.HoraInici),
+            code: data.code
+              ? normalizeText(data.code)
+              : data.Code
+                ? normalizeText(data.Code)
+                : '',
+            service: normalizeText(data.Servei || data.service || ''),
+            observacions: normalizeText(
+              data.ObservacionsZoho ||
+                data.observacionsZoho ||
+                data.Observacions ||
+                data.observacions ||
+                ''
+            ),
+            createdAtMs,
+            spaceNames,
+            multiSpaceCount: spaceNames.length,
+          })
+        }
       })
     }
 
@@ -410,6 +417,10 @@ export async function getSpacesByWeek(
 
     const result: SpaceRow[] = []
     const totalPaxPerDia = Array(rangeDays).fill(0)
+    const countedEventIdsPerDay = Array.from(
+      { length: rangeDays },
+      () => new Set<string>()
+    )
 
     for (const finca of byFinca.keys()) {
       if (!matchesAnyFilter(finca, fincaFilters)) continue
@@ -494,7 +505,11 @@ export async function getSpacesByWeek(
             reason: event.stage === 'lila' ? '' : reason,
           })
           if (event.stage !== 'lila' && isActiveSpaceReservation(event)) {
-            totalPaxPerDia[index] += event.numPax || 0
+            const countKey = `${event.isManual ? 'manual' : 'zoho'}:${event.id}`
+            if (!countedEventIdsPerDay[index].has(countKey)) {
+              countedEventIdsPerDay[index].add(countKey)
+              totalPaxPerDia[index] += event.numPax || 0
+            }
           }
         }
 
@@ -541,15 +556,36 @@ const STAGE_READ_PRIORITY: Record<Stage, number> = {
 function dedupeStageEventsByPriority(events: RawEvent[]): RawEvent[] {
   const byId = new Map<string, RawEvent>()
   for (const event of events) {
-    const prev = byId.get(event.id)
+    const key = `${event.id}::${event.finca.toLocaleLowerCase('ca')}`
+    const prev = byId.get(key)
     if (
       !prev ||
       STAGE_READ_PRIORITY[event.stage] > STAGE_READ_PRIORITY[prev.stage]
     ) {
-      byId.set(event.id, event)
+      byId.set(key, event)
     }
   }
   return Array.from(byId.values())
+}
+
+/** Extreu totes les finques de Zoho, mantenint compatibilitat amb documents antics. */
+export function eventSpaceNames(data: Record<string, unknown>): string[] {
+  const values: unknown[] = [
+    ...(Array.isArray(data.Ubicacions) ? data.Ubicacions : []),
+    ...(Array.isArray(data.Finca_2) ? data.Finca_2 : []),
+    ...(Array.isArray(data.Espai_2) ? data.Espai_2 : []),
+  ]
+
+  if (values.length === 0) values.push(data.Ubicacio)
+
+  const byKey = new Map<string, string>()
+  for (const value of values) {
+    const name = normalizeText(value).split('(')[0].trim()
+    const key = name.toLocaleLowerCase('ca')
+    if (!byKey.has(key)) byKey.set(key, name)
+  }
+
+  return Array.from(byKey.values())
 }
 
 function shouldIncludeManualReserves(stageFilters: string[]): boolean {

@@ -119,6 +119,49 @@ test('restaurant centres keep priority over Pipeline when resolving LN', async (
   assert.equal(company.LN, 'Empresa')
 })
 
+test('normalizeZohoDeals preserves every proposed space without duplicates', async () => {
+  const dependencies = {
+    parseZohoDate: (value) => value || null,
+    parseZohoTime: () => null,
+    getLN: async () => 'Empresa',
+    lnForMartaGranatoCommercial: (ln) => ln,
+    stripCode: (value) => String(value).replace(/\s*\([^)]+\)\s*/g, '').trim(),
+    normalizeIncomingZohoCode: (value) => value || null,
+    extractCodeFromName: (value) => String(value).match(/\(([^)]+)\)/)?.[1] || null,
+    isBadCode: () => false,
+    hasRestaurantKeyword: () => false,
+    findFincaForUbicacio: () => null,
+    extractZohoDisplayName: () => null,
+    operativeResponsableFromZohoDeal: () => '',
+    fincaLnForDeal: (ln) => ln,
+  }
+
+  const [deal] = await normalizeZohoDeals(
+    [{
+      id: 'multi-space',
+      Deal_Name: 'OMNITEL COMUNICACIONES SL',
+      Stage: 'Propuesta',
+      Pipeline: 'Corporativo',
+      Fecha_del_evento: '2027-02-03',
+      Owner: { id: 'owner-1', name: 'Anna Ferrete' },
+      Finca_2: [
+        'Casa del Mar (CEU0029)',
+        'Masia Torreblanca (CEU001007)',
+        'Mirador de les Caves (CCE00007)',
+      ],
+      Espai_2: ['Casa del Mar (CEU0029)'],
+    }],
+    dependencies
+  )
+
+  assert.equal(deal.Ubicacio, 'Casa del Mar')
+  assert.deepEqual(deal.Ubicacions, [
+    'Casa del Mar',
+    'Masia Torreblanca',
+    'Mirador de les Caves',
+  ])
+})
+
 test('classifyStage routes calentet to taronja and payment/RQ to verd', () => {
   assert.equal(classifyStage('Calentet'), 'taronja')
   assert.equal(classifyStage('Prereserva'), 'taronja')

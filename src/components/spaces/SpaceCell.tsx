@@ -3,7 +3,7 @@
 
 import { colorByStage } from '@/lib/colors'
 import type { Stage } from '@/services/spaces/spaces'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, MapPinned } from 'lucide-react'
 
 export interface SpaceCellEvent {
   eventName?: string
@@ -18,6 +18,8 @@ export interface SpaceCellEvent {
   reason?: string
   warning?: boolean
   cancelled?: boolean
+  multiSpaceCount?: number
+  spaceNames?: string[]
 }
 
 interface SpaceCellProps {
@@ -47,6 +49,8 @@ export default function SpaceCell({ event }: SpaceCellProps) {
   const hasWarning = event.warning ?? false
   const reason = event.reason ?? ''
   const isCancelled = event.cancelled === true
+  const multiSpaceCount = event.multiSpaceCount ?? 0
+  const spaceNames = event.spaceNames ?? []
 
   /* ──────────────────────────────
      Colors i estats visuals
@@ -55,7 +59,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
     ? 'border border-red-500 bg-red-100 text-red-950 ring-1 ring-inset ring-red-500'
     : isDiscarded
       ? 'bg-red-50 text-red-800 border border-red-200'
-      : `${colorByStage(stage)} text-gray-800 border border-black/5`
+      : colorByStage(stage)
 
   /* ──────────────────────────────
      Textos i tooltip
@@ -70,6 +74,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
     commercial,
     numPax ? `${numPax} pax` : '',
     isCancelled ? 'CANCEL·LADA' : '',
+    multiSpaceCount > 1 ? `${multiSpaceCount} espais: ${spaceNames.join(', ')}` : '',
     hasWarning && reason ? `⚠️ ${reason}` : '',
   ]
     .filter(Boolean)
@@ -98,6 +103,13 @@ export default function SpaceCell({ event }: SpaceCellProps) {
       {isCancelled ? (
         <span className="mb-0.5 text-[9px] font-bold uppercase tracking-wide text-red-800 lg:text-[10px]">
           Cancel·lada
+        </span>
+      ) : null}
+
+      {multiSpaceCount > 1 ? (
+        <span className="mb-1 inline-flex w-fit items-center gap-1 self-start rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 lg:text-[10px]">
+          <MapPinned className="h-3 w-3" aria-hidden="true" />
+          {multiSpaceCount} espais
         </span>
       ) : null}
 

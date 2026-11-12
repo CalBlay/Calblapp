@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CalendarDays, Users } from 'lucide-react'
+import { AlertTriangle, CalendarDays, MapPinned, Users } from 'lucide-react'
 import { colorByStage } from '@/lib/colors'
 import {
   DEFAULT_SPACES_HEADER_RULE,
@@ -84,6 +84,16 @@ const isRuleStage = (event: RawSpaceEvent, rule: SpacesHeaderRuleConfig) => {
   return stage !== 'lila' && rule.stages.includes(stage)
 }
 
+const uniqueEntriesByEvent = (entries: DayEntry[]) => {
+  const unique = new Map<string, DayEntry>()
+  entries.forEach((entry, index) => {
+    const id = readText(entry.event.id)
+    const key = id || `${entry.finca}:${eventName(entry.event)}:${index}`
+    if (!unique.has(key)) unique.set(key, entry)
+  })
+  return Array.from(unique.values())
+}
+
 export default function SpaceMonthView({
   data,
   month,
@@ -136,7 +146,8 @@ export default function SpaceMonthView({
   const selectedActiveEntries = selectedEntries.filter(({ event }) =>
     isActiveSpaceReservation(event)
   )
-  const selectedPax = selectedActiveEntries.reduce(
+  const selectedUniqueActiveEntries = uniqueEntriesByEvent(selectedActiveEntries)
+  const selectedPax = selectedUniqueActiveEntries.reduce(
     (sum, { event }) => sum + eventPax(event),
     0
   )
@@ -194,13 +205,14 @@ export default function SpaceMonthView({
             const activeEntries = entries.filter(({ event }) =>
               isActiveSpaceReservation(event)
             )
-            const pax = activeEntries.reduce(
+            const uniqueActiveEntries = uniqueEntriesByEvent(activeEntries)
+            const pax = uniqueActiveEntries.reduce(
               (sum, { event }) => sum + eventPax(event),
               0
             )
             const occupiedFincas = new Set(activeEntries.map(({ finca }) => finca)).size
-            const scopedEntries = activeEntries.filter(({ event }) =>
-              isRuleStage(event, headerRule)
+            const scopedEntries = uniqueEntriesByEvent(
+              activeEntries.filter(({ event }) => isRuleStage(event, headerRule))
             )
             const scopedPax = scopedEntries.reduce(
               (sum, { event }) => sum + eventPax(event),
@@ -227,7 +239,7 @@ export default function SpaceMonthView({
                     ? 'border-red-200 bg-red-50/80 hover:bg-red-50'
                     : 'border-slate-100 bg-white'
                 }`}
-                aria-label={`${cell.day}: ${activeEntries.length} esdeveniments, ${pax} pax`}
+                aria-label={`${cell.day}: ${uniqueActiveEntries.length} esdeveniments, ${pax} pax`}
               >
                 <div className="flex items-start justify-between gap-1">
                   <span
@@ -250,7 +262,7 @@ export default function SpaceMonthView({
                 {entries.length > 0 ? (
                   <>
                     <div className={`mt-1 text-[9px] font-semibold leading-tight sm:text-[11px] ${highlighted ? 'text-red-700' : 'text-slate-600'}`}>
-                      <span>{activeEntries.length} ev.</span>
+                      <span>{uniqueActiveEntries.length} ev.</span>
                       <span className="hidden sm:inline"> · {pax} pax · {occupiedFincas} finques</span>
                     </div>
 
@@ -280,6 +292,9 @@ export default function SpaceMonthView({
                           <span className="font-semibold">{finca}</span>
                           <span> · {eventName(event)}</span>
                           {eventPax(event) > 0 ? <span> · {eventPax(event)}p</span> : null}
+                          {readNumber(event.multiSpaceCount) > 1 ? (
+                            <span> · {readNumber(event.multiSpaceCount)} espais</span>
+                          ) : null}
                         </div>
                       ))}
                       {entries.length > 3 ? (
@@ -307,7 +322,7 @@ export default function SpaceMonthView({
             <div className="flex flex-wrap gap-2 text-xs text-slate-600">
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1">
                 <CalendarDays className="h-3.5 w-3.5" />
-                {selectedActiveEntries.length} esdeveniments
+                {selectedUniqueActiveEntries.length} esdeveniments
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1">
                 <Users className="h-3.5 w-3.5" />
@@ -346,6 +361,12 @@ export default function SpaceMonthView({
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-80">
                             {commercialName(event) ? <span>{commercialName(event)}</span> : null}
                             {eventPax(event) > 0 ? <span>{eventPax(event)} pax</span> : null}
+                            {readNumber(event.multiSpaceCount) > 1 ? (
+                              <span className="inline-flex items-center gap-1 font-semibold">
+                                <MapPinned className="h-3.5 w-3.5" aria-hidden="true" />
+                                {readNumber(event.multiSpaceCount)} espais
+                              </span>
+                            ) : null}
                             {event.cancelled === true ? <span className="font-semibold">Cancel·lada</span> : null}
                           </div>
                         </button>

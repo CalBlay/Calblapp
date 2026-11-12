@@ -45,6 +45,7 @@ function eventSearchText(event: SpacesSearchEvent): string {
     event.ObservacionsZoho,
     event.Comentari,
     event.Ubicacio,
+    event.spaceNames,
     event.DataInici,
     event.date,
     event.dateEnd,

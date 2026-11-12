@@ -24,10 +24,10 @@ export const STAGE_COLORS: Record<string, string> = {
   verd: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
 
   // 🟠 Calentet / Prereserva
-  taronja: 'bg-orange-50 text-orange-800 border border-orange-200',
+  taronja: 'bg-orange-200 text-orange-950 border border-orange-500',
 
   // 🟡 Pressupost enviat
-  groc: 'bg-yellow-50 text-yellow-800 border border-yellow-200',
+  groc: 'bg-yellow-50 text-yellow-900 border border-yellow-300',
 
   // 🟣 Residual / proves
   lila: 'bg-violet-50 text-violet-800 border border-violet-200',

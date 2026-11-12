@@ -98,6 +98,8 @@ export interface NormalizedDeal {
   NumPax: number | string | null
   ObservacionsZoho?: string | null
   Ubicacio: string
+  /** Totes les ubicacions proposades a Zoho per a la mateixa oportunitat. */
+  Ubicacions?: string[]
   FincaId?: string
   FincaCode?: string
   FincaLN?: string
