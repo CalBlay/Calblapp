@@ -46,27 +46,33 @@ export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Arxiu_TM2',
 ] as const
 
-const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM', 'FC'] as const
-
-const ZOHO_ATTACHMENT_PREFIX_BY_FIELD: Readonly<Record<string, string>> = {
-  Arxiu_PM: 'PM',
-  Arxiu_TM: 'TM',
-  Arxiu_TM2: 'TM2',
-}
+const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = [
+  'PM1',
+  'PM2',
+  'PMS',
+  'PM',
+  'TM2',
+  'TM',
+  'FT',
+  'FG',
+  'FE',
+  'FM',
+  'FC',
+] as const
 
 export function shouldImportZohoAttachment(
   fileName?: string | null,
-  fieldApiName?: string | null
+  _fieldApiName?: string | null
 ): boolean {
   const normalized = String(fileName || '').trim().toUpperCase()
   if (!normalized) return false
 
-  const fieldPrefix = ZOHO_ATTACHMENT_PREFIX_BY_FIELD[String(fieldApiName || '')]
-  if (fieldPrefix) return normalized.startsWith(fieldPrefix)
-
   return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) => {
     if (!normalized.startsWith(prefix)) return false
     const next = normalized.charAt(prefix.length)
+    if (prefix === 'PM') {
+      return !next || next === ' ' || next === '_' || next === '-'
+    }
     return !next || next === ' ' || next === '_' || next === '-' || /\d/.test(next)
   })
 }

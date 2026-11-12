@@ -11,6 +11,12 @@ test('shouldImportZohoAttachment accepts prefix + space/underscore/hyphen/digit 
   assert.equal(shouldImportZohoAttachment('FT'), true)
   assert.equal(shouldImportZohoAttachment('fg_contracte.pdf'), true)
   assert.equal(shouldImportZohoAttachment('FC 07022024_AURA.pptx'), true)
+  assert.equal(shouldImportZohoAttachment('PM proposta.pdf'), true)
+  assert.equal(shouldImportZohoAttachment('PM1_proposta.pdf'), true)
+  assert.equal(shouldImportZohoAttachment('PM2 proposta.pdf'), true)
+  assert.equal(shouldImportZohoAttachment('PMS-proposta.pdf'), true)
+  assert.equal(shouldImportZohoAttachment('TM_menu-antic.pdf'), true)
+  assert.equal(shouldImportZohoAttachment('TM2_menu-antic.pdf'), true)
 })
 
 test('shouldImportZohoAttachment still rejects non-prefix and punctuation-without-separator names', () => {
@@ -19,4 +25,5 @@ test('shouldImportZohoAttachment still rejects non-prefix and punctuation-withou
   assert.equal(shouldImportZohoAttachment(''), false)
   assert.equal(shouldImportZohoAttachment('NOTES.pdf'), false)
   assert.equal(shouldImportZohoAttachment('FTX123.pdf'), false)
+  assert.equal(shouldImportZohoAttachment('PM3_menu.pdf'), false)
 })

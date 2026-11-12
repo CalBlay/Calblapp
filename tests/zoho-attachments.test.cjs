@@ -32,13 +32,14 @@ test('shouldImportZohoAttachment accepts configured prefixes and valid separator
   assert.equal(shouldImportZohoAttachment(''), false)
 })
 
-test('shouldImportZohoAttachment applies the dedicated prefix for each archive field', () => {
+test('shouldImportZohoAttachment applies the filename prefixes to every archive field', () => {
   assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_PM'), true)
-  assert.equal(shouldImportZohoAttachment('tm_menu.pdf', 'Arxiu_TM'), true)
-  assert.equal(shouldImportZohoAttachment('TM2.pdf', 'Arxiu_TM2'), true)
-  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), false)
-  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_TM'), false)
-  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_TM2'), false)
+  assert.equal(shouldImportZohoAttachment('PM1 proposta.pdf', 'Arxiu_TM'), true)
+  assert.equal(shouldImportZohoAttachment('PM2 proposta.pdf', 'Arxiu_TM2'), true)
+  assert.equal(shouldImportZohoAttachment('PMS proposta.pdf', 'Arxiu_PM'), true)
+  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), true)
+  assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_TM'), true)
+  assert.equal(shouldImportZohoAttachment('TM2 tast.pdf', 'Arxiu_TM2'), true)
 })
 
 test('extract and merge Zoho field attachments normalize ids and dedupe across fields', () => {
