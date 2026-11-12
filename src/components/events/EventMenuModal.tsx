@@ -242,7 +242,7 @@ export default function EventMenuModal({
     validating: personnelValidating,
     error: personnelError,
     mutate: refreshPersonnel,
-  } = useEventPersonnel(event?.id, showPersonnel)
+  } = useEventPersonnel(event?.sourceEventId || event?.id, showPersonnel)
 
   const personnelIsEmpty =
     !personnelData?.responsables?.length &&
@@ -283,9 +283,9 @@ const treballadorsPersons =
   })) ?? []
 
   useEffect(() => {
-    if (!showPersonnel || !event?.id) return
+    if (!showPersonnel || (!event?.sourceEventId && !event?.id)) return
     void refreshPersonnel()
-  }, [showPersonnel, event?.id, refreshPersonnel])
+  }, [showPersonnel, event?.sourceEventId, event?.id, refreshPersonnel])
 
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)
