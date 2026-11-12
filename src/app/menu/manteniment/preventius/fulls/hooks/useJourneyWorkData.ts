@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { fetchJourneyTickets, fetchPlannedItems, fetchWaitingJourneyTickets } from '../lib/api'
+import { fetchJourneyTickets, fetchPendingJourneyTickets, fetchPlannedItems } from '../lib/api'
 import {
   collectStatusOptions,
   collectWorkerOptions,
   filterItemsByDateRange,
+  filterTicketsBeforeDateRange,
+  filterTicketsOutsideDateRange,
   groupWorkItems,
 } from '../lib/groupWorkItems'
 import { normalizeMaintenanceStatus } from '../lib/status'
@@ -22,7 +24,7 @@ type Params = {
 export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, refreshKey }: Params) {
   const [plannedItems, setPlannedItems] = useState<PreventiuPlannedItem[]>([])
   const [ticketItems, setTicketItems] = useState<TicketJourneyItem[]>([])
-  const [waitingTicketItems, setWaitingTicketItems] = useState<TicketJourneyItem[]>([])
+  const [pendingTicketItems, setPendingTicketItems] = useState<TicketJourneyItem[]>([])
   const [kindFilter, setKindFilter] = useState<'all' | 'preventiu' | 'ticket'>('all')
   const [workerFilter, setWorkerFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -61,8 +63,8 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
   useEffect(() => {
     let active = true
     const load = async () => {
-      const items = await fetchWaitingJourneyTickets(role, userId)
-      if (active) setWaitingTicketItems(items)
+      const items = await fetchPendingJourneyTickets(role, userId)
+      if (active) setPendingTicketItems(items)
     }
     void load()
     const onFocus = () => void load()
@@ -78,7 +80,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
     [filters, plannedItems, ticketItems]
   )
 
-  const waitingFiltered = useMemo(() => {
+  const pendingFiltered = useMemo(() => {
     const workerNeedle = workerFilter.toLowerCase()
     const searchNeedle = searchQuery
       .normalize('NFD')
@@ -86,9 +88,15 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
       .toLowerCase()
       .trim()
 
-    return waitingTicketItems.filter((item) => {
+    const pendingCandidates =
+      role === 'treballador'
+        ? filterTicketsBeforeDateRange(filters, pendingTicketItems)
+        : filterTicketsOutsideDateRange(filters, pendingTicketItems)
+
+    return pendingCandidates.filter((item) => {
       if (kindFilter === 'preventiu') return false
-      if (normalizeMaintenanceStatus(item.status) !== 'espera') return false
+      const itemStatus = normalizeMaintenanceStatus(item.status)
+      if (role !== 'treballador' && itemStatus !== 'espera') return false
 
       const matchesWorker =
         !canFilterByWorker || workerFilter === 'all'
@@ -99,7 +107,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
               .filter(Boolean)
               .includes(workerNeedle)
 
-      const matchesStatus = statusFilter === 'all' ? true : statusFilter === 'espera'
+      const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
       const haystack = [
         item.title,
         item.location,
@@ -118,11 +126,20 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
 
       return matchesWorker && matchesStatus && matchesSearch
     })
-  }, [waitingTicketItems, kindFilter, canFilterByWorker, workerFilter, statusFilter, searchQuery])
+  }, [
+    filters,
+    pendingTicketItems,
+    kindFilter,
+    role,
+    canFilterByWorker,
+    workerFilter,
+    statusFilter,
+    searchQuery,
+  ])
 
-  const waitingGrouped = useMemo(
+  const pendingGrouped = useMemo(
     () =>
-      waitingFiltered
+      pendingFiltered
         .slice()
         .sort((a, b) => {
           const byDate = String(a.date || '').localeCompare(String(b.date || ''))
@@ -141,20 +158,20 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
           }
           return acc
         }, []),
-    [waitingFiltered]
+    [pendingFiltered]
   )
 
   const itemsForFilters = useMemo(() => {
     const seen = new Set<string>()
     const combined: WorkItem[] = []
-    ;[...filteredByDate, ...waitingFiltered].forEach((item) => {
+    ;[...filteredByDate, ...pendingFiltered].forEach((item) => {
       const key = `${item.kind}:${item.id}`
       if (seen.has(key)) return
       seen.add(key)
       combined.push(item)
     })
     return combined
-  }, [filteredByDate, waitingFiltered])
+  }, [filteredByDate, pendingFiltered])
 
   const workerOptions = useMemo(() => collectWorkerOptions(itemsForFilters), [itemsForFilters])
   const statusOptions = useMemo(() => collectStatusOptions(itemsForFilters, role), [itemsForFilters, role])
@@ -188,7 +205,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
   return {
     plannedItems,
     ticketItems,
-    waitingTicketItems,
+    pendingTicketItems,
     kindFilter,
     setKindFilter,
     workerFilter,
@@ -200,6 +217,6 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
     workerOptions,
     statusOptions,
     grouped,
-    waitingGrouped,
+    pendingGrouped,
   }
 }

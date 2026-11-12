@@ -40,6 +40,26 @@ export function filterItemsByDateRange(
   })
 }
 
+export function filterTicketsOutsideDateRange(
+  filters: JourneyDateFilters,
+  ticketItems: TicketJourneyItem[]
+): TicketJourneyItem[] {
+  const start = parseISO(filters.start)
+  const end = parseISO(filters.end)
+  return ticketItems.filter((item) => {
+    const date = parseISO(item.date)
+    return date < start || date > end
+  })
+}
+
+export function filterTicketsBeforeDateRange(
+  filters: JourneyDateFilters,
+  ticketItems: TicketJourneyItem[]
+): TicketJourneyItem[] {
+  const start = parseISO(filters.start)
+  return ticketItems.filter((item) => parseISO(item.date) < start)
+}
+
 export function groupWorkItems({
   filters,
   plannedItems,

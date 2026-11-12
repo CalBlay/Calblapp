@@ -157,14 +157,16 @@ export async function fetchJourneyTickets(
   }
 }
 
-export async function fetchWaitingJourneyTickets(
+export async function fetchPendingJourneyTickets(
   role: string,
   userId: string
 ): Promise<TicketJourneyItem[]> {
+  if (role === 'treballador' && !userId) return []
+
   try {
     const params = new URLSearchParams()
-    params.set('status', 'espera')
-    params.set('limit', '200')
+    if (role !== 'treballador') params.set('status', 'espera')
+    params.set('limit', '500')
     params.set('ticketType', 'maquinaria')
     if (role === 'treballador' && userId) params.set('assignedToId', userId)
 
@@ -178,8 +180,10 @@ export async function fetchWaitingJourneyTickets(
       .filter((t: Record<string, unknown>) => t.plannedStart && t.plannedEnd)
       .filter((t: Record<string, unknown>) =>
         role === 'treballador'
-          ? normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null) === 'espera'
-          : true
+          ? WORKER_VISIBLE_JOURNEY_STATUSES.has(
+              normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null)
+            )
+          : normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null) === 'espera'
       )
       .map((t: Record<string, unknown>) => {
         const slot = resolveJourneySlot(t)

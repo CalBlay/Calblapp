@@ -72,7 +72,7 @@ export default function PreventiusFullsPage() {
   })
 
   const { selectedTicket, openTicket, closeSelectedTicket } = useJourneySelectedTicket(
-    [...workData.ticketItems, ...workData.waitingTicketItems]
+    [...workData.ticketItems, ...workData.pendingTicketItems]
   )
 
   useJourneyFiltersPanel({
@@ -202,17 +202,21 @@ export default function PreventiusFullsPage() {
           </div>
         </div>
 
-        {workData.waitingGrouped.length > 0 ? (
+        {workData.pendingGrouped.length > 0 ? (
           <div className="overflow-hidden rounded-2xl border bg-white">
             <div className="border-b bg-amber-50/70 px-4 py-3">
-              <div className="text-sm font-semibold text-slate-900">Tickets en espera</div>
+              <div className="text-sm font-semibold text-slate-900">
+                {role === 'treballador' ? 'Tickets pendents anteriors' : 'Tickets en espera'}
+              </div>
               <p className="mt-1 text-xs text-slate-600">
-                Pendents de reprendre, encara que la data planificada no sigui avui.
+                {role === 'treballador'
+                  ? 'Assignats al teu compte i encara oberts, amb data planificada anterior al període seleccionat.'
+                  : 'Pendents de reprendre fora del període seleccionat.'}
               </p>
             </div>
             <div className="divide-y">
               <JourneyWorkList
-                grouped={workData.waitingGrouped}
+                grouped={workData.pendingGrouped}
                 transportById={transportById}
                 onOpenTicket={openTicket}
                 onOpenFitxa={openPreventiuFitxa}
