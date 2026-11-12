@@ -296,7 +296,7 @@ export async function GET(req: Request) {
     | 'updated'
     | 'completed'
   const cursorCreatedAt = Number(searchParams.get('cursorCreatedAt') || 0)
-  const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
+  const limit = Math.max(1, Math.min(500, Number(searchParams.get('limit') || 100)))
 
   const canViewAllTickets =
     ticketType === 'deco'
@@ -321,8 +321,11 @@ export async function GET(req: Request) {
 
     const qualitatScopedQuery = canViewQualitatCuinaCentral && !canViewAllTickets
 
-    if (assignedToId && canViewAllTickets) {
-      ref = ref.where('assignedToIds', 'array-contains', assignedToId)
+    if (assignedToId) {
+      const effectiveAssignedId = canViewAllTickets ? assignedToId : user.id
+      if (effectiveAssignedId) {
+        ref = ref.where('assignedToIds', 'array-contains', effectiveAssignedId)
+      }
     } else if (
       !qualitatScopedQuery &&
       !canViewAllTickets &&
@@ -386,10 +389,17 @@ export async function GET(req: Request) {
             ? Math.max(limit + 1, 500)
           : Math.max(limit + 1, 100)
       try {
-        let orderedRef = ref.orderBy('createdAt', 'desc')
-        if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
-        const snap = await orderedRef.limit(queryLimit).get()
-        rawTickets = mapTickets(snap)
+        if (assignedToId) {
+          const snap = await ref.get()
+          rawTickets = mapTickets(snap).sort(
+            (a, b) => (getTicketDateByMode(b, 'created') || 0) - (getTicketDateByMode(a, 'created') || 0)
+          )
+        } else {
+          let orderedRef = ref.orderBy('createdAt', 'desc')
+          if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
+          const snap = await orderedRef.limit(queryLimit).get()
+          rawTickets = mapTickets(snap)
+        }
       } catch (queryErr: unknown) {
         const message = queryErr instanceof Error ? queryErr.message : ''
         const needsIndex = message.toLowerCase().includes('index')
