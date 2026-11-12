@@ -1,10 +1,34 @@
 export const normalizeAdaEventCode = (code?: string | null) =>
   String(code || '').trim().toUpperCase()
 
-// Les proves de menu (PM, PM2, ...) poden compartir el codi de l'esdeveniment
-// d'origen. La resta de codis ADA son unics per esdeveniment.
+// Els codis creats abans que ADA assigni el codi definitiu son provisionals
+// i sempre comencen per PM (PM, PM2, PM_EMPRESA, ...).
+export const isProvisionalPmCode = (code?: string | null) =>
+  normalizeAdaEventCode(code).startsWith('PM')
+
+// Les proves de menu poden compartir el codi provisional. La resta de codis
+// ADA son unics per esdeveniment.
 export const isRepeatablePmCode = (code?: string | null) =>
-  /^PM\d*(?:[_\-\s]|$)/i.test(String(code || '').trim())
+  isProvisionalPmCode(code)
+
+/** Una PM nomes pot compartir un codi ADA existent amb una coincidencia segura. */
+export const canProvisionalPmShareAdaCode = (
+  currentCode: string | null | undefined,
+  matchScore: number
+) => isProvisionalPmCode(currentCode) && matchScore >= 3
+
+/** Prioritza el codi ADA real quan una dada operativa encara conserva un PM. */
+export const preferRealAdaCode = (
+  storedCode?: string | null,
+  syncedCode?: string | null
+) => {
+  const stored = String(storedCode || '').trim()
+  const synced = String(syncedCode || '').trim()
+  if (isProvisionalPmCode(stored) && synced && !isProvisionalPmCode(synced)) {
+    return synced
+  }
+  return stored || synced
+}
 
 /**
  * Reserva un codi dins d'una execucio de sync. Es fa abans del commit del

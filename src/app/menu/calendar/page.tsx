@@ -589,7 +589,7 @@ export default function CalendarPage() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error')
       alert(
-        `Sync ADA: ${json.updated} actualitzats (3/3: ${json.matched3}, 2/3: ${json.matched2})`
+        `Sync ADA: ${json.updated} actualitzats · coincidències segures: ${json.matched3} · per revisar: ${json.matched2} · codis PM substituïts: ${json.replacedProvisionalCodes || 0}`
       )
       reload()
     } catch {

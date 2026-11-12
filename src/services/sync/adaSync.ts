@@ -1,11 +1,21 @@
 // file: src/services/sync/adaSync.ts
 import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { Agent, request } from 'node:https'
 import {
+  canProvisionalPmShareAdaCode,
+  isProvisionalPmCode,
   isRepeatablePmCode,
   normalizeAdaEventCode,
   reserveAdaEventCode,
 } from './adaCodePolicy'
+import { revalidateEventsListCache } from '@/lib/eventsListCache'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import {
+  buildAdaMatch,
+  stageAdaDateKeys,
+  type AdaMatchResult,
+} from './adaMatchPolicy'
 
 export { isRepeatablePmCode } from './adaCodePolicy'
 
@@ -24,18 +34,21 @@ type StageEvent = {
   NomEvent?: string
   Comercial?: string
   DataInici?: string
+  NomClient?: string
+  MenuTasting1Date?: string
+  MenuTasting2Date?: string
+  MenuTastingCompanyDate?: string
+  Data_1_Prova_Men?: string
+  Data_2a_Part_Tast?: string
+  Data_i_hora?: string
   code?: string
   codeConfirmed?: boolean
   codeSource?: string
   codeMatchScore?: number
   codeMatchFields?: string[]
   manualOverrides?: Record<string, unknown>
-}
-
-type MatchResult = {
-  ada: AdaEvent
-  score: number
-  fields: string[]
+  manualOverrideValues?: Record<string, unknown>
+  adaLinkedMenuTasting?: boolean
 }
 
 const ADA_API_URL = process.env.ADA_API_URL || 'https://api.calblay.com/evento'
@@ -43,6 +56,7 @@ const ADA_API_TOKEN = process.env.ADA_API_TOKEN || ''
 const ADA_TIMEZONE = 'Europe/Madrid'
 const ADA_RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 const ADA_MAX_ATTEMPTS = 3
+const ADA_DEFAULT_MONTHS_AHEAD = 12
 const ADA_SYNC_STAGE_COLLECTIONS = [
   'stage_verd',
   'stage_taronja',
@@ -75,20 +89,6 @@ const normalizeText = (s?: string | null) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const normalizeStageName = (raw?: string | null) => {
-  const base = String(raw || '').split('/')[0] || ''
-  return normalizeText(base)
-}
-
-const normalizeAdaDescription = (raw?: string | null) => {
-  let text = String(raw || '').trim()
-  text = text.replace(/^[A-Z]\s*\d{6}\s*/i, '')
-  text = text.split(/\s+-\s+/)[0] || text
-  return normalizeText(text)
-}
-
-const normalizeCommercial = (raw?: string | null) => normalizeText(raw)
-
 const dateKey = (iso?: string | null) => (iso || '').slice(0, 10)
 
 const formatDateInTZ = (date: Date, timeZone: string) => {
@@ -116,28 +116,6 @@ const getRetryDelayMs = (attempt: number, retryAfter: string | null) => {
   const seconds = Number(retryAfter)
   if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
   return attempt * 1000
-}
-
-const buildMatch = (stage: StageEvent, ada: AdaEvent): MatchResult => {
-  const stageDate = dateKey(stage.DataInici)
-  const adaDate = dateKey(ada.fechaInicio)
-  const dateMatches = stageDate && adaDate && stageDate === adaDate
-
-  const stageCom = normalizeCommercial(stage.Comercial)
-  const adaCom = normalizeCommercial(ada.codigoComercial)
-  const comercialMatches = stageCom && adaCom && stageCom === adaCom
-
-  const stageName = normalizeStageName(stage.NomEvent)
-  const adaName = normalizeAdaDescription(ada.descripcion)
-  const nameMatches = stageName && adaName && stageName === adaName
-
-  const fields: string[] = []
-  if (dateMatches) fields.push('date')
-  if (comercialMatches) fields.push('commercial')
-  if (nameMatches) fields.push('name')
-
-  const score = fields.length
-  return { ada, score, fields }
 }
 
 async function fetchAdaEvents(startDate: string, endDate: string): Promise<AdaEvent[]> {
@@ -230,7 +208,8 @@ export async function syncAdaEventsToFirestore(opts?: {
   endDate?: string
 }) {
   const startDate = opts?.startDate || formatDateInTZ(new Date(), ADA_TIMEZONE)
-  const endDate = opts?.endDate || addMonthsToISO(startDate, 3, ADA_TIMEZONE)
+  const endDate =
+    opts?.endDate || addMonthsToISO(startDate, ADA_DEFAULT_MONTHS_AHEAD, ADA_TIMEZONE)
 
   const adaEvents = await fetchAdaEvents(startDate, endDate)
 
@@ -287,6 +266,7 @@ export async function syncAdaEventsToFirestore(opts?: {
   let updated = 0
   let skippedConfirmedCode = 0
   let repairedDuplicateCodes = 0
+  let replacedProvisionalCodes = 0
 
   const now = new Date().toISOString()
   const codeOwner = new Map<string, string | null>()
@@ -362,22 +342,31 @@ export async function syncAdaEventsToFirestore(opts?: {
     total++
     const data = doc.data() as StageEvent
     const documentKey = `${collectionName}/${doc.id}`
-    const stageDate = dateKey(data.DataInici)
-    if (!stageDate) {
+    const currentCode = String(data.code || '').trim()
+    const provisionalPmCode = isProvisionalPmCode(currentCode)
+    const codeSource = String(data.codeSource || '').toLowerCase()
+    const linkedMenuTasting =
+      data.adaLinkedMenuTasting === true || codeSource === 'ada-menu-tasting'
+    const shareableMenuTastingCode = provisionalPmCode || linkedMenuTasting
+    const matchDates = stageAdaDateKeys(data, shareableMenuTastingCode)
+    if (matchDates.length === 0) {
       noMatch++
       continue
     }
-
-    const codeSource = String(data.codeSource || '').toLowerCase()
     const codeManuallyOverridden = data.manualOverrides?.code === true
-    // Mateixa regla que Zoho: canvi manual a l'app mana sobre qualsevol sync.
-    if (codeSource === 'manual' || codeManuallyOverridden) {
+    // Els codis manuals normals continuen protegits. Un PM es provisional i
+    // ADA el pot substituir quan trobi el codi definitiu del mateix registre.
+    if ((codeSource === 'manual' || codeManuallyOverridden) && !provisionalPmCode) {
       skippedManual++
       continue
     }
-    const currentCode = String(data.code || '').trim()
     const currentOwner = await getCodeOwner(currentCode)
-    if (currentCode && currentOwner && currentOwner !== documentKey) {
+    if (
+      currentCode &&
+      currentOwner &&
+      currentOwner !== documentKey &&
+      !linkedMenuTasting
+    ) {
       // Autocorreccio de duplicats creats per syncs anteriors. Els codis manuals
       // no s'han d'alterar mai des d'una sincronitzacio automatica.
       batch.update(doc.ref, {
@@ -391,33 +380,30 @@ export async function syncAdaEventsToFirestore(opts?: {
       pending++
       repairedDuplicateCodes++
       if (pending >= 450) await flush()
-    } else if (currentCode) {
+    } else if (currentCode && !linkedMenuTasting) {
       reserveAdaEventCode(codeOwner, currentCode, documentKey)
     }
 
-    if (data.codeConfirmed === true) {
-      if (!currentOwner || currentOwner === documentKey) {
+    if (data.codeConfirmed === true && !provisionalPmCode) {
+      if (linkedMenuTasting || !currentOwner || currentOwner === documentKey) {
         skippedConfirmed++
         continue
       }
     }
 
-    const candidates = adaByDate.get(stageDate) || []
+    const candidates = Array.from(
+      new Set(matchDates.flatMap((matchDate) => adaByDate.get(matchDate) || []))
+    )
     if (!candidates.length) {
       noMatch++
       continue
     }
 
-    let best: MatchResult | null = null
+    let best: AdaMatchResult | null = null
     for (const cand of candidates) {
-      const match = buildMatch(data, cand)
-      if (match.score === 3) {
-        best = match
-        break
-      }
-      if (match.score === 2 && !best) {
-        best = match
-      }
+      const match = buildAdaMatch(data, cand, shareableMenuTastingCode)
+      if (!best || match.score > best.score) best = match
+      if (match.score === 4) break
     }
 
     if (!best || best.score < 2) {
@@ -426,55 +412,83 @@ export async function syncAdaEventsToFirestore(opts?: {
     }
 
     const code = String(best.ada.codigo || '').trim()
-    if (!code) {
+    if (!code || isProvisionalPmCode(code)) {
       noMatch++
       continue
     }
 
     const matchScore = best.score
     const matchFields = best.fields
-    const confirmed = matchScore === 3
+    const confirmed = matchScore >= 3
+    const canShareExistingAdaCode = canProvisionalPmShareAdaCode(
+      currentCode,
+      matchScore
+    )
 
     if (confirmed) matched3++
     else matched2++
 
     const existingOwner = await getCodeOwner(code)
-    if (existingOwner && existingOwner !== documentKey) {
+    if (
+      existingOwner &&
+      existingOwner !== documentKey &&
+      !canShareExistingAdaCode
+    ) {
       skippedConfirmedCode++
       continue
     }
 
     // Reserva immediata dins la mateixa execucio. Sense aquesta reserva, dos
     // updates del mateix batch veien el codi com a lliure fins al commit.
-    if (!isRepeatablePmCode(code)) {
+    if (!isRepeatablePmCode(code) && !canShareExistingAdaCode) {
       reserveAdaEventCode(codeOwner, code, documentKey)
     }
 
     const existingFields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
+    const nextCodeSource = canShareExistingAdaCode ? 'ada-menu-tasting' : 'auto'
     const needsUpdate =
       String(data.code || '').trim() !== code ||
       data.codeConfirmed !== confirmed ||
       Number(data.codeMatchScore || 0) !== matchScore ||
       JSON.stringify(existingFields) !== JSON.stringify(matchFields) ||
-      String(data.codeSource || '').toLowerCase() !== 'auto'
+      String(data.codeSource || '').toLowerCase() !== nextCodeSource ||
+      data.adaLinkedMenuTasting !== canShareExistingAdaCode
 
     if (!needsUpdate) continue
 
-    batch.update(doc.ref, {
+    const updatePayload: Record<string, unknown> = {
       code,
       codeConfirmed: confirmed,
       codeMatchScore: matchScore,
       codeMatchFields: matchFields,
-      codeSource: 'auto',
+      codeSource: nextCodeSource,
+      adaLinkedMenuTasting: canShareExistingAdaCode,
       codeMatchedAt: now,
-    })
+    }
+    if (provisionalPmCode && data.manualOverrides?.code === true) {
+      updatePayload['manualOverrides.code'] = FieldValue.delete()
+    }
+    if (
+      provisionalPmCode &&
+      data.manualOverrideValues &&
+      Object.prototype.hasOwnProperty.call(data.manualOverrideValues, 'code')
+    ) {
+      updatePayload['manualOverrideValues.code'] = FieldValue.delete()
+    }
+    batch.update(doc.ref, updatePayload)
     pending++
     updated++
+    if (provisionalPmCode) replacedProvisionalCodes++
 
     if (pending >= 450) await flush()
   }
 
   await flush()
+
+  if (updated > 0 || repairedDuplicateCodes > 0) {
+    revalidateEventsListCache()
+    revalidateQuadrantsListCache()
+  }
 
   return {
     startDate,
@@ -488,6 +502,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     skippedConfirmed,
     skippedConfirmedCode,
     repairedDuplicateCodes,
+    replacedProvisionalCodes,
     duplicateAdaCodes,
     adaCount: adaEvents.length,
   }

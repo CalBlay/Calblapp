@@ -5,6 +5,7 @@ import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
 import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
+import { preferRealAdaCode } from '@/services/sync/adaCodePolicy'
 
 interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
@@ -427,7 +428,10 @@ export function useQuadrantsPageData({
             .trim() || undefined,
         start: `${displayDate}T${q.startTime || '00:00'}:00`,
         end: `${(q.endDate || displayDate)}T${q.endTime || '00:00'}:00`,
-        code: q.code || q.eventCode || '',
+        code: preferRealAdaCode(
+          q.code || q.eventCode,
+          ev?.code || ev?.eventCode
+        ),
         location: cleanText(q.location || ev?.location || ''),
         ln: cleanText(ev?.ln || ev?.lnLabel || q.ln || '') || null,
         responsable: cleanText(q.responsableName || ev?.responsable || ''),

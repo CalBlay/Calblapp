@@ -9,6 +9,7 @@ import {
   groupWeddingMenuTastingOccurrences,
   MENU_TASTING_CONFIGS,
 } from '@/lib/calendar/menuTastingOccurrences'
+import { filterAdaLinkedMainEventDuplicates } from '@/lib/calendar/calendarAdaLinkedDuplicates'
 
 const padHhMm = (raw: unknown): string | null => {
   if (raw == null || typeof raw !== 'string') return null
@@ -200,6 +201,7 @@ export async function computeCalendarEventsInRange(
           typeof d.cancellationNoticeSentAt === 'string'
             ? d.cancellationNoticeSentAt
             : '',
+        adaLinkedMenuTasting: d.adaLinkedMenuTasting === true,
       })
     }
 
@@ -267,5 +269,9 @@ export async function computeCalendarEventsInRange(
     })
   }
 
-  return { events: groupWeddingMenuTastingOccurrences(base) }
+  return {
+    events: filterAdaLinkedMainEventDuplicates(
+      groupWeddingMenuTastingOccurrences(base)
+    ),
+  }
 }

@@ -4,7 +4,10 @@ const path = require('node:path')
 const { test } = require('node:test')
 
 const {
+  canProvisionalPmShareAdaCode,
+  isProvisionalPmCode,
   isRepeatablePmCode,
+  preferRealAdaCode,
   reserveAdaEventCode,
 } = require('../src/services/sync/adaCodePolicy.ts')
 
@@ -25,6 +28,27 @@ test('PM codes remain repeatable', () => {
   assert.equal(reserveAdaEventCode(owners, 'PM_2600588', 'event-1'), true)
   assert.equal(reserveAdaEventCode(owners, 'PM_2600588', 'event-2'), true)
   assert.equal(owners.size, 0)
+})
+
+test('every PM-prefixed calendar code is provisional', () => {
+  assert.equal(isProvisionalPmCode('PM'), true)
+  assert.equal(isProvisionalPmCode(' pm-client-sense-projecte '), true)
+  assert.equal(isProvisionalPmCode('PM2_2600588'), true)
+  assert.equal(isProvisionalPmCode('E2600588'), false)
+  assert.equal(isRepeatablePmCode('PMCLIENT'), true)
+})
+
+test('a real ADA code replaces a provisional PM in operational views', () => {
+  assert.equal(preferRealAdaCode('PM_CLIENT', 'E2600588'), 'E2600588')
+  assert.equal(preferRealAdaCode('PM_CLIENT', 'PM_ADA'), 'PM_CLIENT')
+  assert.equal(preferRealAdaCode('MANUAL-1', 'E2600588'), 'MANUAL-1')
+  assert.equal(preferRealAdaCode('', 'E2600588'), 'E2600588')
+})
+
+test('only a safely matched PM may share the real event ADA code', () => {
+  assert.equal(canProvisionalPmShareAdaCode('PM181120262', 3), true)
+  assert.equal(canProvisionalPmShareAdaCode('PM181120262', 2), false)
+  assert.equal(canProvisionalPmShareAdaCode('E2700036', 4), false)
 })
 
 test('manual calendar updates reject duplicate codes with event details', () => {
