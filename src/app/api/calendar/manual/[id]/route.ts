@@ -22,6 +22,8 @@ import {
   assertCalendarEventCodeAvailable,
   CalendarCodeConflictError,
 } from '@/lib/calendar/eventCodeConflicts.server'
+import { revalidateEventsListCache } from '@/lib/eventsListCache'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 function accessUserFromSession(user: {
   id: string
@@ -209,6 +211,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         { merge: true }
       )
     })
+
+    revalidateEventsListCache()
+    revalidateQuadrantsListCache()
 
     console.log(`✅ Esdeveniment ${id} actualitzat correctament a ${collection}`)
     return NextResponse.json({ ok: true })

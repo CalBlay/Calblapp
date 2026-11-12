@@ -17,6 +17,7 @@ import {
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
 import { documentHasInvalidZohoAttachments } from '@/services/zoho/attachments'
+import { EVENTS_LIST_CACHE_TAG } from '@/lib/eventsListCache'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
@@ -263,6 +264,7 @@ const getEventsListCached = unstable_cache(
       else deptsToUse = []
     }
 
+    const tastingStageCollections = ['stage_groc', 'stage_taronja', 'stage_verd']
     const [stageDocs, finquesSnapshot, tastingDocsByConfig] = await Promise.all([
       queryStageCollectionDocsInDateRange(
         db,
@@ -273,19 +275,24 @@ const getEventsListCached = unstable_cache(
       db.collection('finques').get(),
       Promise.all(
         MENU_TASTING_CONFIGS.map(async (config) => {
-          const docsByField = await Promise.all(
-            config.dateFields.map((field) =>
-              queryStageCollectionDocsByDateFieldInRange(
-                db,
-                'stage_verd',
-                field,
-                start.slice(0, 10),
-                end.slice(0, 10)
+          const docsByCollection = await Promise.all(
+            tastingStageCollections.map(async (collection) => {
+              const docsByField = await Promise.all(
+                config.dateFields.map((field) =>
+                  queryStageCollectionDocsByDateFieldInRange(
+                    db,
+                    collection,
+                    field,
+                    start.slice(0, 10),
+                    end.slice(0, 10)
+                  )
+                )
               )
-            )
+              return docsByField.flat()
+            })
           )
           return Array.from(
-            new Map(docsByField.flat().map((doc) => [doc.id, doc] as const)).values()
+            new Map(docsByCollection.flat().map((doc) => [doc.id, doc] as const)).values()
           )
         })
       ),
@@ -473,7 +480,10 @@ const getEventsListCached = unstable_cache(
       })
     })
 
-    const menuTastings = groupWeddingMenuTastingOccurrences(tastingOccurrences).map(
+    const codedTastingOccurrences = tastingOccurrences.filter((occurrence) =>
+      Boolean(String(occurrence.code || '').trim())
+    )
+    const menuTastings = groupWeddingMenuTastingOccurrences(codedTastingOccurrences).map(
       (occurrence) => {
         const startIso = String(occurrence.start || '')
         const day = String(occurrence.day || startIso.slice(0, 10))
@@ -654,8 +664,8 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v5-menu-tastings'],
-  { revalidate: EVENTS_LIST_REVALIDATE_SEC }
+  ['api-events-list-v6-coded-menu-tastings'],
+  { revalidate: EVENTS_LIST_REVALIDATE_SEC, tags: [EVENTS_LIST_CACHE_TAG] }
 )
 
 /* ================== Handler ================== */

@@ -349,6 +349,7 @@ export function groupWeddingMenuTastingOccurrences(
     const sourceTastings = items.map((item) => ({
       id: String(item.sourceEventId || ''),
       occurrenceType: item.calendarOccurrenceType as MenuTastingOccurrenceType,
+      collection: String(item.collection || 'stage_verd'),
     })).filter((tasting) => tasting.id)
     if (items.length === 1) {
       return {

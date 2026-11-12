@@ -77,6 +77,13 @@ type CalendarCodeConflict = {
   location: string
 }
 
+type MenuTastingCodeRow = {
+  id: string
+  name: string
+  code: string
+  initialCode: string
+}
+
 type CalendarDealRecord = Deal & Record<string, unknown>
 
 const toCalendarPax = (value: unknown): number | string | null => {
@@ -158,8 +165,9 @@ export default function CalendarModal({
       : sourceEventIds.map((id) => ({
           id,
           occurrenceType: deal.calendarOccurrenceType || 'menu_tasting_1',
+          collection: deal.collection || 'stage_verd',
         }))
-    : [{ id: deal.id, occurrenceType: undefined }]
+    : [{ id: deal.id, occurrenceType: undefined, collection: deal.collection || 'stage_verd' }]
   const mutationDocIds = mutationTargets.map((target) => target.id)
   const mutationDocId = mutationDocIds[0] || deal.id
   const isGroupedMenuTasting = isMenuTasting && mutationDocIds.length > 1
@@ -191,6 +199,16 @@ export default function CalendarModal({
   const [comercialLoading, setComercialLoading] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
   const [codeConflicts, setCodeConflicts] = useState<CalendarCodeConflict[]>([])
+  const [menuTastingCodes, setMenuTastingCodes] = useState<MenuTastingCodeRow[]>(() =>
+    Array.isArray(deal.sourceEvents)
+      ? deal.sourceEvents.map((event) => ({
+          id: event.id,
+          name: event.name,
+          code: event.code,
+          initialCode: event.code,
+        }))
+      : []
+  )
 
   // Helper per recuperar camps sense importar majúscules/minúscules
   const get = (obj: Record<string, unknown> | null | undefined, ...keys: string[]) => {
@@ -320,8 +338,10 @@ export default function CalendarModal({
   const canEditCode =
     !readonly &&
     !isGroupedMenuTasting &&
-    (isZohoVerd || isManual) &&
+    (isZohoVerd || isManual || isMenuTasting) &&
     canUpdate
+  const canEditGroupedMenuTastingCodes =
+    !readonly && isGroupedMenuTasting && canUpdate
   const canEditComercialIntern =
     !readonly && !isMenuTasting && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
@@ -341,7 +361,9 @@ export default function CalendarModal({
   const canSendCancellation =
     permsReady && uiActions[CALENDAR_PERM.sendCancellation] === true
   const canSendDocuments = canSendEmail && files.length > 0
-  const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
+  const canSave =
+    (canEdit || canEditCode || canEditGroupedMenuTastingCodes || canEditComercialIntern) &&
+    canUpdate
   const canDeleteEvent =
     canEdit && canDeleteManual && !isProductionOperationalWorker
   const canEditEventFields = canEdit && !isMenuTasting
@@ -557,8 +579,18 @@ export default function CalendarModal({
     setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
     setCodeConflicts([])
+    setMenuTastingCodes(
+      Array.isArray(deal.sourceEvents)
+        ? deal.sourceEvents.map((event) => ({
+            id: event.id,
+            name: event.name,
+            code: event.code,
+            initialCode: event.code,
+          }))
+        : []
+    )
     setCancelled(deal.cancelled === true)
-  }, [dealRecord, deal.cancelled])
+  }, [dealRecord, deal.cancelled, deal.sourceEvents])
 
   // 🔄 Quan canviï el deal, carregar directament els adjunts estructurats
   useEffect(() => {
@@ -636,16 +668,29 @@ export default function CalendarModal({
 
       const responses = await Promise.all(
         mutationTargets.map((target) => {
+          const groupedCodeRow = isGroupedMenuTasting
+            ? menuTastingCodes.find((row) => row.id === target.id)
+            : undefined
+          const targetCode = groupedCodeRow
+            ? String(groupedCodeRow.code || '').trim()
+            : nextCode
+          const targetCodeChanged = groupedCodeRow
+            ? targetCode !== String(groupedCodeRow.initialCode || '').trim()
+            : codeDirty || prevCode !== nextCode
           const payload = isMenuTasting && target.occurrenceType
             ? {
-                ...buildMenuTastingManualUpdate(target.occurrenceType, editData, {
-                  includePax: !isGroupedMenuTasting,
-                }),
-                ...(canEditCode ? { code: nextCode } : {}),
-                ...(canEditCode && (codeDirty || prevCode !== nextCode)
-                  ? { codeConfirmed: Boolean(nextCode) }
+                ...(canEdit
+                  ? buildMenuTastingManualUpdate(target.occurrenceType, editData, {
+                      includePax: !isGroupedMenuTasting,
+                    })
                   : {}),
-                collection: COLLECTION,
+                ...((canEditCode || canEditGroupedMenuTastingCodes) && targetCodeChanged
+                  ? { code: targetCode }
+                  : {}),
+                ...((canEditCode || canEditGroupedMenuTastingCodes) && targetCodeChanged
+                  ? { codeConfirmed: Boolean(targetCode) }
+                  : {}),
+                collection: target.collection || COLLECTION,
                 updatedAt: new Date().toISOString(),
               }
             : regularPayload
@@ -907,7 +952,38 @@ export default function CalendarModal({
           </div>
 
           {/* Codi */}
-          {(isZohoVerd || isManual) && !readonly && canEditCode ? (
+          {canEditGroupedMenuTastingCodes ? (
+            <div className="space-y-2">
+              <label className="block text-xs text-gray-500">Codis</label>
+              {menuTastingCodes.map((row) => (
+                <div key={row.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center">
+                  <span className="truncate text-xs text-gray-600" title={row.name}>
+                    {row.name || 'Prova de menú'}
+                  </span>
+                  <Input
+                    value={row.code}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setCodeConflicts([])
+                      setMenuTastingCodes((current) =>
+                        current.map((item) =>
+                          item.id === row.id ? { ...item, code: value } : item
+                        )
+                      )
+                    }}
+                    placeholder="Codi del projecte"
+                    aria-label={`Codi de ${row.name || 'la prova de menú'}`}
+                    aria-invalid={codeConflicts.length > 0}
+                  />
+                </div>
+              ))}
+              {codeConflicts.length > 0 && (
+                <p role="alert" className="text-xs text-red-700">
+                  Aquest codi ja està assignat a un altre esdeveniment.
+                </p>
+              )}
+            </div>
+          ) : canEditCode ? (
             <div>
               <label className="block text-xs text-gray-500 mb-1">Codi</label>
               <Input

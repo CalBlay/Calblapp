@@ -48,6 +48,7 @@ export interface Deal {
   sourceTastings?: Array<{
     id: string
     occurrenceType: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+    collection: 'stage_verd' | 'stage_taronja' | 'stage_groc'
   }>
   files?: {
     key: string
@@ -290,6 +291,10 @@ export function useCalendarData(filters?: {
                       occurrenceType === 'menu_tasting_company'
                         ? occurrenceType
                         : 'menu_tasting_1' as const,
+                    collection:
+                      source.collection === 'stage_taronja' || source.collection === 'stage_groc'
+                        ? source.collection
+                        : 'stage_verd' as const,
                   }
                 })
                 .filter((item) => item.id)

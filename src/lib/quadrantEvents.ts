@@ -144,21 +144,27 @@ export async function listQuadrantEventsInRange(
     })
     .filter((ev) => ev.start && ev.day && ev.day >= start && ev.day <= end)
 
+  const tastingStageCollections = ['stage_groc', 'stage_taronja', 'stage_verd']
   const tastingDocsByConfig = await Promise.all(
     MENU_TASTING_CONFIGS.map(async (config) => {
-      const docsByField = await Promise.all(
-        config.dateFields.map((field) =>
-          queryStageCollectionDocsByDateFieldInRange(
-            db,
-            'stage_verd',
-            field,
-            start,
-            end
+      const docsByCollection = await Promise.all(
+        tastingStageCollections.map(async (collection) => {
+          const docsByField = await Promise.all(
+            config.dateFields.map((field) =>
+              queryStageCollectionDocsByDateFieldInRange(
+                db,
+                collection,
+                field,
+                start,
+                end
+              )
+            )
           )
-        )
+          return docsByField.flat()
+        })
       )
       return Array.from(
-        new Map(docsByField.flat().map((doc) => [doc.id, doc] as const)).values()
+        new Map(docsByCollection.flat().map((doc) => [doc.id, doc] as const)).values()
       )
     })
   )
@@ -201,7 +207,10 @@ export async function listQuadrantEventsInRange(
     })
   })
 
-  const menuTastings = groupWeddingMenuTastingOccurrences(tastingOccurrences)
+  const codedTastingOccurrences = tastingOccurrences.filter((occurrence) =>
+    Boolean(String(occurrence.code || '').trim())
+  )
+  const menuTastings = groupWeddingMenuTastingOccurrences(codedTastingOccurrences)
     .map((occurrence): QuadrantCalendarEvent | null => {
       const startIso = String(occurrence.start || '')
       const day = String(occurrence.day || startIso.slice(0, 10))
