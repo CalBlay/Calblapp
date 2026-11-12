@@ -21,6 +21,7 @@ import {
   filterPersonnelPool,
   normalizeAssignPersonKey,
 } from '@/lib/manualAssignModel'
+import { formatPersonnelWorkloadLabel } from '@/components/quadrants/PersonnelWorkloadIndicator'
 
 type Vehicle = {
   id: string
@@ -215,13 +216,21 @@ export default function ManualAssignRow({
             })
           }}
           disabled={isLocked}
-          className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm"
+          className={cn(
+            'h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm',
+            people.find((person) => person.id === row.id)?.workload?.monthlyExceeded &&
+              'font-semibold text-red-700'
+          )}
           aria-label="Persona"
         >
           <option value="">Tria persona…</option>
           {people.map((p) => (
-            <option key={p.id} value={p.id}>
-              {formatPersonLabel(p)}
+            <option
+              key={p.id}
+              value={p.id}
+              className={p.workload?.monthlyExceeded ? 'font-semibold text-red-700' : undefined}
+            >
+              {formatPersonnelWorkloadLabel(formatPersonLabel(p), p.workload)}
             </option>
           ))}
         </select>

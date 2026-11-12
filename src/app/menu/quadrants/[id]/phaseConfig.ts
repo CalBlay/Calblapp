@@ -1,3 +1,5 @@
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
+
 export type LogisticPhaseKey = 'entrega' | 'event' | 'recollida'
 
 /** Ordre de pintat / payload: Event primer (fase principal), després Entrega i Recollida. */
@@ -90,6 +92,7 @@ export type AvailableConductor = {
   isDriver?: boolean
   camioPetit?: boolean
   camioGran?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 export type AvailableVehicle = {

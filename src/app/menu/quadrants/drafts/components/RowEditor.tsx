@@ -11,6 +11,8 @@ import {
   normalizeTransportType,
 } from '@/lib/transportTypes'
 import { getExternalWorkerBaseLabel } from '@/lib/quadrantExternalWorkers'
+import { formatPersonnelWorkloadLabel } from '@/components/quadrants/PersonnelWorkloadIndicator'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 type AvailablePerson = {
   id: string
@@ -21,6 +23,7 @@ type AvailablePerson = {
   isJamonero?: boolean
   status?: 'available' | 'conflict' | 'notfound'
   reason?: string
+  workload?: PersonnelWorkloadSummary
 }
 
 type AvailableVehicle = {
@@ -89,10 +92,12 @@ const formatPersonOptionLabel = (person: AvailablePerson) => {
   const name = (person.name || person.alias || person.id || '').trim()
   if (person.status === 'conflict') {
     const hint = person.reason ? ` — ${person.reason}` : ' — ocupat'
-    return `${name}${hint}`
+    return formatPersonnelWorkloadLabel(`${name}${hint}`, person.workload)
   }
-  if (person.status === 'notfound') return `${name} — sense disponibilitat`
-  return `${name} · disponible`
+  if (person.status === 'notfound') {
+    return formatPersonnelWorkloadLabel(`${name} — sense disponibilitat`, person.workload)
+  }
+  return formatPersonnelWorkloadLabel(`${name} · disponible`, person.workload)
 }
 
 const sortPeopleByAvailability = (people: AvailablePerson[]) =>
@@ -339,7 +344,9 @@ function EditorFields({
                   ...((clearInvalidSelection || clearNonJamoneroSelection) ? { id: '', name: '' } : {}),
                 })
               }}
-              className="w-full rounded border px-2 py-1 text-sm"
+              className={`w-full rounded border px-2 py-1 text-sm ${
+                rowPerson?.workload?.monthlyExceeded ? 'font-semibold text-red-700' : ''
+              }`}
               disabled={isLocked}
             >
               {canSelectResponsible && <option value="responsable">Responsable</option>}
@@ -404,7 +411,9 @@ function EditorFields({
                   key={p.id}
                   value={p.id}
                   className={
-                    p.status === 'conflict'
+                    p.workload?.monthlyExceeded
+                      ? 'font-semibold text-red-700'
+                      : p.status === 'conflict'
                       ? 'text-amber-800'
                       : p.status === 'available'
                       ? 'text-emerald-900'

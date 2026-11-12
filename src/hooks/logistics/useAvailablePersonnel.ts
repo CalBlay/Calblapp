@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 export interface PersonnelOption {
   id: string
@@ -14,6 +15,7 @@ export interface PersonnelOption {
   isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 export interface UseAvailablePersonnelOptions {
@@ -84,6 +86,7 @@ const cleanList = (
       isResponsible: person.isResponsible === true,
       camioPetit: person.camioPetit === true,
       camioGran: person.camioGran === true,
+      workload: person.workload,
     }))
 
 const DEFAULT_START_TIME = '00:00'

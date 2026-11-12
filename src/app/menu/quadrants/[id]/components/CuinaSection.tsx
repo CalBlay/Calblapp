@@ -10,10 +10,13 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
 import type { CuinaDriverAssignment } from './quadrantModalTypes'
+import { PersonnelWorkloadIndicator } from '@/components/quadrants/PersonnelWorkloadIndicator'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 type PersonnelOption = {
   id: string
   name: string
+  workload?: PersonnelWorkloadSummary
 }
 
 type ConductorOption = PersonnelOption & {
@@ -214,8 +217,15 @@ export default function CuinaSection({
                       <SelectItem value={cuinaNoResponsible}>Sense responsable</SelectItem>
                       <SelectItem value={manualPickResponsible}>Selecciona un responsable…</SelectItem>
                       {availableResponsables.map((resp) => (
-                        <SelectItem key={resp.id} value={resp.id}>
-                          {resp.name}
+                        <SelectItem
+                          key={resp.id}
+                          value={resp.id}
+                          className={resp.workload?.monthlyExceeded ? 'font-semibold text-red-700' : undefined}
+                        >
+                          <span className="flex w-full items-center justify-between gap-2">
+                            <span>{resp.name}</span>
+                            <PersonnelWorkloadIndicator workload={resp.workload} />
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -235,8 +245,15 @@ export default function CuinaSection({
                     <SelectContent>
                       <SelectItem value="__auto__">Automàtic</SelectItem>
                       {availableResponsables.map((resp) => (
-                        <SelectItem key={resp.id} value={resp.id}>
-                          {resp.name}
+                        <SelectItem
+                          key={resp.id}
+                          value={resp.id}
+                          className={resp.workload?.monthlyExceeded ? 'font-semibold text-red-700' : undefined}
+                        >
+                          <span className="flex w-full items-center justify-between gap-2">
+                            <span>{resp.name}</span>
+                            <PersonnelWorkloadIndicator workload={resp.workload} />
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

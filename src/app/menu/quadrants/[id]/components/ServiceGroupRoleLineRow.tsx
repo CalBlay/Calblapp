@@ -6,6 +6,8 @@ import { Check, ChevronsUpDown, GraduationCap, Truck, User, X } from 'lucide-rea
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { PersonnelWorkloadIndicator } from '@/components/quadrants/PersonnelWorkloadIndicator'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import type { ServeiGroupRoleLine, ServeiRoleKey } from '../phaseConfig'
 import {
@@ -29,6 +31,7 @@ type PersonOption = {
   isJamonero?: boolean
   role?: string
   isResponsible?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 type Props = {
@@ -84,6 +87,7 @@ function peopleForRole(
         status: person.status,
         reason: person.reason,
         conflictType: person.conflictType,
+        workload: person.workload,
       }))
   }
   if (role === 'conductor') {
@@ -287,7 +291,10 @@ export default function ServiceGroupRoleLineRow({
                 aria-autocomplete="list"
                 aria-label="Persona"
                 autoComplete="off"
-                className="h-8 bg-white pr-8 text-sm"
+                className={cn(
+                  'h-8 bg-white pr-8 text-sm',
+                  selectedInPool?.workload?.monthlyExceeded && 'font-semibold text-red-700'
+                )}
               />
             </PopoverAnchor>
             <ChevronsUpDown
@@ -348,15 +355,21 @@ export default function ServiceGroupRoleLineRow({
                           line.personId === person.id && 'bg-slate-100'
                         )}
                       >
-                        <span className="truncate">
+                        <span
+                          className={cn(
+                            'truncate',
+                            person.workload?.monthlyExceeded && 'font-semibold text-red-700'
+                          )}
+                        >
                           {formatPersonLabel(
                             person,
                             useCrewOrdering && isCrewMember(person, crewMembers)
                           )}
                         </span>
-                        {line.personId === person.id ? (
-                          <Check className="ml-2 h-4 w-4 shrink-0" />
-                        ) : null}
+                        <span className="ml-2 flex shrink-0 items-center gap-2">
+                          <PersonnelWorkloadIndicator workload={person.workload} />
+                          {line.personId === person.id ? <Check className="h-4 w-4" /> : null}
+                        </span>
                       </button>
                     </li>
                   ))}

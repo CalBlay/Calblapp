@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select"
 
 import type { ServeiGroup } from "./autoGenerate/types"
+import { PersonnelWorkloadIndicator } from '@/components/quadrants/PersonnelWorkloadIndicator'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 type Totals = {
   workers: number
@@ -28,7 +30,7 @@ type Props = {
   updateGroup: (id: string, patch: Partial<ServeiGroup>) => void
   eventStartDate: string
   meetingPoint: string
-  availableConductors: Array<{ id: string; name: string }>
+  availableConductors: Array<{ id: string; name: string; workload?: PersonnelWorkloadSummary }>
 }
 
 export default function QuadrantServeisAutoGenerate({
@@ -159,8 +161,15 @@ export default function QuadrantServeisAutoGenerate({
                     <SelectContent>
                       <SelectItem value="__none__">Sense assignar</SelectItem>
                       {availableConductors.map((conductor) => (
-                        <SelectItem key={conductor.id} value={conductor.id}>
-                          {conductor.name}
+                        <SelectItem
+                          key={conductor.id}
+                          value={conductor.id}
+                          className={conductor.workload?.monthlyExceeded ? 'font-semibold text-red-700' : undefined}
+                        >
+                          <span className="flex w-full items-center justify-between gap-2">
+                            <span>{conductor.name}</span>
+                            <PersonnelWorkloadIndicator workload={conductor.workload} />
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -26,6 +26,9 @@ import {
 import type { AvailableVehicle, ServeiGroupRoleLine, ServeiRoleKey, VehicleAssignment } from '../phaseConfig'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 import SubtleTimeInput from './SubtleTimeInput'
+import { cn } from '@/lib/utils'
+import { formatPersonnelWorkloadLabel } from '@/components/quadrants/PersonnelWorkloadIndicator'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 type PersonOption = {
   id: string
@@ -35,6 +38,7 @@ type PersonOption = {
   isDriver?: boolean
   camioPetit?: boolean
   camioGran?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 type Props = {
@@ -313,7 +317,10 @@ export default function LogisticRoleLineRow({
               personName: selected?.name || '',
             })
           }}
-          className={`${fieldClass} min-w-[14rem] w-[16rem] shrink-0 rounded-md border border-slate-200 bg-white px-2`}
+          className={cn(
+            `${fieldClass} min-w-[14rem] w-[16rem] shrink-0 rounded-md border border-slate-200 bg-white px-2`,
+            selectedInPool?.workload?.monthlyExceeded && 'font-semibold text-red-700'
+          )}
           aria-label="Persona"
         >
           {mode !== 'manual' ? <option value="__auto__">Automàtic</option> : null}
@@ -322,8 +329,12 @@ export default function LogisticRoleLineRow({
             <option value={`__slot__:${line.slotId}`}>{line.personName}</option>
           ) : null}
           {peoplePool.map((person) => (
-            <option key={person.id} value={person.id}>
-              {formatPersonLabel(person)}
+            <option
+              key={person.id}
+              value={person.id}
+              className={person.workload?.monthlyExceeded ? 'font-semibold text-red-700' : undefined}
+            >
+              {formatPersonnelWorkloadLabel(formatPersonLabel(person), person.workload)}
             </option>
           ))}
         </select>

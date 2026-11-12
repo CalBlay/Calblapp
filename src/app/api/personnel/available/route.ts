@@ -10,6 +10,15 @@ import { evaluateRangeEligibility } from '@/services/eligibility'
 import { worksInDepartment } from '@/lib/additionalWorkDepartments'
 import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 import {
+  aggregatePersonnelWorkload,
+  buildPersonnelWorkloadSummary,
+  candidateHoursInPeriod,
+  hoursForPerson,
+  workloadPeriodsForDate,
+  type PersonnelWorkloadSummary,
+  type WorkloadLine,
+} from '@/lib/personnelWorkload'
+import {
   loadPersonnelRules,
   listQuadrantCollections,
   fetchQuadrantDocsByEndDate,
@@ -28,6 +37,7 @@ type AvailEntry = {
   isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 type PersonRef = {
@@ -85,6 +95,7 @@ interface PersonnelDoc {
     camioGran?: boolean
     camioPetit?: boolean
   }
+  maxHoursWeek?: number
   [key: string]: unknown
 }
 
@@ -222,6 +233,7 @@ export async function GET(request: NextRequest) {
   const ed = searchParams.get('endDate')
   const et = searchParams.get('endTime')
   const excludeEventId = searchParams.get('excludeEventId')
+  const excludeEventIdNorm = String(excludeEventId || '').trim().split('__')[0]
   const excludeMaintenancePlannedId = searchParams.get('excludeMaintenancePlannedId')
   const excludeMaintenanceTicketId = searchParams.get('excludeMaintenanceTicketId')
   const excludeIds = new Set(searchParams.getAll('excludeId').map((value) => norm(value)).filter(Boolean))
@@ -250,17 +262,53 @@ export async function GET(request: NextRequest) {
     const reqEnd = buildDate(ed, et || '23:59')
     const reqRange = normalizeRange(reqStart, reqEnd)
     const premisesRules = await loadPersonnelRules(deptNorm)
+    const workloadPeriods = workloadPeriodsForDate(sd)
+    if (!workloadPeriods) {
+      return NextResponse.json(
+        { responsables: [], conductors: [], treballadors: [], error: 'Invalid start date' },
+        { status: 400 }
+      )
+    }
+    const workloadRangeStart = [
+      sd,
+      workloadPeriods.week.startDate,
+      workloadPeriods.month.startDate,
+    ].sort()[0]
+    const workloadRangeEnd = [
+      ed,
+      workloadPeriods.week.endDate,
+      workloadPeriods.month.endDate,
+    ].sort().at(-1)!
+    const workloadLines: WorkloadLine[] = []
 
     const occupancyIndex = new Map<string, OccupiedRange[]>()
     const colIds = await listQuadrantCollections()
+    const quadrantDocsByCollection = await Promise.all(
+      colIds.map(async (colId) => {
+        try {
+          const docs = await fetchQuadrantDocsByEndDate(
+            colId,
+            workloadRangeEnd,
+            workloadRangeStart
+          )
+          return { colId, docs }
+        } catch (error) {
+          console.error(`[available] Error reading ${colId}:`, error)
+          return { colId, docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] }
+        }
+      })
+    )
 
-    for (const colId of colIds) {
-      try {
-        const docs = await fetchQuadrantDocsByEndDate(colId, ed, sd)
-        docs.forEach((docSnap) => {
-          if (excludeEventId && docSnap.id === excludeEventId) return
+    quadrantDocsByCollection.forEach(({ colId, docs }) => {
+      docs.forEach((docSnap) => {
           const q = docSnap.data() as QuadrantOccupancyDoc
-          if (excludeEventId && q?.eventId === excludeEventId) return
+          const docEventId = String(q?.eventId || docSnap.id).trim().split('__')[0]
+          if (
+            excludeEventIdNorm &&
+            (docSnap.id === excludeEventId ||
+              docSnap.id.startsWith(`${excludeEventIdNorm}__`) ||
+              docEventId === excludeEventIdNorm)
+          ) return
           if (!shouldCountQuadrantOccupancy(q)) return
 
           const baseSource = {
@@ -270,21 +318,30 @@ export async function GET(request: NextRequest) {
             status: String(q?.status || '').trim() || undefined,
           }
 
-          collectQuadrantLinePersonnel(q).forEach((person) =>
+          const scheduledPeople = collectQuadrantLinePersonnel(q)
+          scheduledPeople.forEach((person) => {
             addRangesFromRef(occupancyIndex, person, q, {
               ...baseSource,
               role: `line.${person.role}`,
             })
-          )
+            workloadLines.push({
+              id: person.id,
+              name: person.name,
+              startDate: person.startDate,
+              endDate: person.endDate,
+              startTime: person.startTime,
+              endTime: person.endTime,
+              endTimeReal:
+                typeof person.endTimeReal === 'string' ? person.endTimeReal : undefined,
+              noShow: person.noShow === true,
+            })
+          })
           const legacyExternalWorkers = readLegacyExternalWorkersFromDoc(q)
           legacyExternalWorkers.forEach((line) =>
             addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'legacyExternalWorkers' })
           )
-        })
-      } catch (error) {
-        console.error(`[available] Error reading ${colId}:`, error)
-      }
-    }
+      })
+    })
 
     /**
      * Finestra ampliada per cobrir comprovacions de descans minim
@@ -400,6 +457,20 @@ export async function GET(request: NextRequest) {
       })
     }
     const deptPersonnel = Array.from(departmentPersonnelById.values())
+    const workloadTotals = aggregatePersonnelWorkload(
+      workloadLines,
+      workloadPeriods.week,
+      workloadPeriods.month
+    )
+    const candidateHours = candidateHoursInPeriod(
+      {
+        startDate: sd,
+        endDate: ed,
+        startTime: st || '00:00',
+        endTime: et || '23:59',
+      },
+      workloadPeriods.week
+    )
 
     const responsables: AvailEntry[] = []
     const workers: AvailEntry[] = []
@@ -488,6 +559,18 @@ export async function GET(request: NextRequest) {
         isResponsible: data.isResponsible === true,
         camioPetit: data.driver?.camioPetit === true || data.camioPetit === true,
         camioGran: data.driver?.camioGran === true || data.camioGran === true,
+        workload: buildPersonnelWorkloadSummary({
+          maxHoursWeek: data.maxHoursWeek,
+          weeklyHours: hoursForPerson(workloadTotals.weeklyHoursByPerson, {
+            id: doc.id,
+            name: data.name,
+          }),
+          candidateHours,
+          monthlyActualHours: hoursForPerson(
+            workloadTotals.monthlyActualHoursByPerson,
+            { id: doc.id, name: data.name }
+          ),
+        }),
       }
 
       if (personIsResponsible(data)) {

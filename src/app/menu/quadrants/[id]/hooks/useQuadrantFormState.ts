@@ -36,6 +36,7 @@ import { LOGISTICS_ETT_RECIPIENT } from '@/lib/quadrantEttEmail'
 import { ensureLogisticRoleLines, collectAllLogisticaRoleLines } from '../lib/logisticPhaseRoleLines'
 import { validateNoLocalQuadrantPersonDuplicates } from '@/lib/quadrantLocalAvailability'
 import { isResponsiblePerson, isSelectableResponsible } from '@/lib/personnelRoles'
+import type { PersonnelWorkloadSummary } from '@/lib/personnelWorkload'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 const normalizeTime = (value?: string) => {
@@ -96,6 +97,7 @@ export type ResponsableAvailabilityOption = {
   conflictType?: 'overlap' | 'same_day_not_allowed' | 'rest_violation'
   role?: string
   isResponsible?: boolean
+  workload?: PersonnelWorkloadSummary
 }
 
 export type ServiceGroupPayload = {
@@ -212,8 +214,8 @@ export interface QuadrantFormState {
   updateLogisticsEtt: (groupId: string, patch: Partial<ServicePhaseEttData>) => void
   availableResponsables: ResponsableAvailabilityOption[]
   availableConductors: AvailableConductor[]
-  availableJamoneros: Array<{ id: string; name: string }>
-  availableTreballadors: Array<{ id: string; name: string }>
+  availableJamoneros: Array<{ id: string; name: string; workload?: PersonnelWorkloadSummary }>
+  availableTreballadors: Array<{ id: string; name: string; workload?: PersonnelWorkloadSummary }>
   personnelRules?: PersonnelAvailabilityRules
   serviceTotals: {
     workers: number
@@ -335,6 +337,7 @@ export function useQuadrantFormState({
           conflictType: r.conflictType,
           role: r.role,
           isResponsible: r.isResponsible === true,
+          workload: r.workload,
         })),
     [responsables]
   )
@@ -360,7 +363,7 @@ export function useQuadrantFormState({
           (person, index, arr) =>
             arr.findIndex((candidate) => candidate.id === person.id) === index
         )
-        .map((person) => ({ id: person.id, name: person.name })),
+        .map((person) => ({ id: person.id, name: person.name, workload: person.workload })),
     [conductors, responsables, treballadors]
   )
 
@@ -368,15 +371,15 @@ export function useQuadrantFormState({
     () =>
       treballadors
         .filter((p) => p.status === 'available' && Boolean(p.id?.trim()))
-        .map((p) => ({ id: p.id, name: p.name })),
+        .map((p) => ({ id: p.id, name: p.name, workload: p.workload })),
     [treballadors]
   )
 
   const servicePersonnelPools = useMemo(() => {
     const merged = [
-      ...headerAvailableResponsables.map((p) => ({ id: p.id, name: p.name })),
-      ...availableConductors.map((p) => ({ id: p.id, name: p.name })),
-      ...availableTreballadors.map((p) => ({ id: p.id, name: p.name })),
+      ...headerAvailableResponsables.map((p) => ({ id: p.id, name: p.name, workload: p.workload })),
+      ...availableConductors.map((p) => ({ id: p.id, name: p.name, workload: p.workload })),
+      ...availableTreballadors.map((p) => ({ id: p.id, name: p.name, workload: p.workload })),
     ]
     return merged.filter(
       (person, index, arr) => arr.findIndex((candidate) => candidate.id === person.id) === index
@@ -520,6 +523,7 @@ export function useQuadrantFormState({
         conflictType: person.conflictType,
         role: person.role,
         isResponsible: person.isResponsible === true,
+        workload: person.workload,
       }))
   }, [department, headerAvailableResponsables, serviceAvailability, serviceRangeResponsables])
 
