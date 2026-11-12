@@ -34,6 +34,7 @@ import {
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
 import { countSpacesSearchEvents, filterSpacesRows } from '@/lib/spacesSearch'
+import { compareSpaceReservationRows } from '@/lib/spacesReservationSort'
 
 type SpacesViewMode = 'week' | 'month'
 
@@ -104,17 +105,19 @@ const {
     dies: Array<{ date: string; events: Array<Record<string, unknown>> }>
   }>>(
     () =>
-      spaces.map((row: SpaceApiRow) => ({
-        fincaId: row.fincaId,
-        isOwn: row.isOwn,
-        finca: row.finca ?? '',
-        dies: Array.isArray(row.dies)
-          ? row.dies.map((day) => ({
-              date: day?.date ?? '',
-              events: Array.isArray(day?.events) ? day.events : [],
-            }))
-          : [],
-      })),
+      spaces
+        .map((row: SpaceApiRow) => ({
+          fincaId: row.fincaId,
+          isOwn: row.isOwn,
+          finca: row.finca ?? '',
+          dies: Array.isArray(row.dies)
+            ? row.dies.map((day) => ({
+                date: day?.date ?? '',
+                events: Array.isArray(day?.events) ? day.events : [],
+              }))
+            : [],
+        }))
+        .sort(compareSpaceReservationRows),
     [spaces]
   )
 
