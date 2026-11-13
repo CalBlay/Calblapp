@@ -35,6 +35,24 @@ test('manual cancellation records and clears its source explicitly', () => {
 
   assert.match(source, /cancellationSource: 'manual'/)
   assert.match(source, /cancellationSource: null/)
+  assert.match(source, /cancellationReason: cancellationReason \|\| null/)
+  assert.match(source, /cancellationReason: null/)
+})
+
+test('calendar cancellation dialog captures and displays a short reason', () => {
+  const modalSource = fs.readFileSync(
+    path.join(ROOT, 'src/components/calendar/CalendarModal.tsx'),
+    'utf8'
+  )
+  const rangeSource = fs.readFileSync(
+    path.join(ROOT, 'src/lib/api/calendarEventsRange.ts'),
+    'utf8'
+  )
+
+  assert.match(modalSource, /Motiu de cancel·lació/)
+  assert.match(modalSource, /maxLength=\{300\}/)
+  assert.match(modalSource, /cancellationReason: nextCancelled \? reason\.trim\(\) : ''/)
+  assert.match(rangeSource, /cancellationReason/)
 })
 
 test('cancellation email requires a cancelled event before sending through Outlook', () => {

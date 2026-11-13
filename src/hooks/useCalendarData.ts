@@ -34,6 +34,7 @@ export interface Deal {
   cancelled?: boolean
   cancelledAt?: string
   cancelledByName?: string
+  cancellationReason?: string
   cancellationNoticeSentAt?: string
   sourceEventId?: string
   sourceEventIds?: string[]
@@ -256,6 +257,8 @@ export function useCalendarData(filters?: {
           cancelledAt: typeof ev.cancelledAt === 'string' ? ev.cancelledAt : undefined,
           cancelledByName:
             typeof ev.cancelledByName === 'string' ? ev.cancelledByName : undefined,
+          cancellationReason:
+            typeof ev.cancellationReason === 'string' ? ev.cancellationReason : undefined,
           cancellationNoticeSentAt:
             typeof ev.cancellationNoticeSentAt === 'string'
               ? ev.cancellationNoticeSentAt

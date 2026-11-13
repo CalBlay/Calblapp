@@ -6,12 +6,14 @@ import { useSession } from 'next-auth/react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
 import { Ban, ExternalLink, Loader2, Mail, RotateCcw, Save, Trash2 } from 'lucide-react'
@@ -258,8 +260,13 @@ export default function CalendarModal({
   >([])
   const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
   const [sendCancellationOpen, setSendCancellationOpen] = useState(false)
+  const [cancelReasonOpen, setCancelReasonOpen] = useState(false)
+  const [cancelReasonDraft, setCancelReasonDraft] = useState('')
   const [updatingCancellation, setUpdatingCancellation] = useState(false)
   const [cancelled, setCancelled] = useState(deal.cancelled === true)
+  const [cancellationReason, setCancellationReason] = useState(
+    String(deal.cancellationReason || '')
+  )
   const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null)
   const [multiDay, setMultiDay] = useState(false)
 
@@ -775,24 +782,30 @@ export default function CalendarModal({
   }
 
   // 🔁 Restaura canvis locals no desats
-  const handleCancellationChange = async (nextCancelled: boolean) => {
+  const handleCancellationChange = async (
+    nextCancelled: boolean,
+    reason = ''
+  ) => {
     if (!canCancelEvent || updatingCancellation) return
-    const question = nextCancelled
-      ? 'Vols cancel·lar aquest esdeveniment? No s\'eliminarà.'
-      : 'Vols reactivar aquest esdeveniment?'
-    if (!confirm(question)) return
+    if (!nextCancelled && !confirm('Vols reactivar aquest esdeveniment?')) return
 
     try {
       setUpdatingCancellation(true)
       const res = await fetch(`/api/calendar/manual/${mutationDocId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection: COLLECTION, cancelled: nextCancelled }),
+        body: JSON.stringify({
+          collection: COLLECTION,
+          cancelled: nextCancelled,
+          cancellationReason: nextCancelled ? reason.trim() : '',
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(data?.error || 'No s\'ha pogut actualitzar'))
 
       setCancelled(nextCancelled)
+      setCancellationReason(nextCancelled ? reason.trim() : '')
+      if (nextCancelled) setCancelReasonOpen(false)
       document.dispatchEvent(new CustomEvent('calendar:reload'))
       onSaved?.()
       if (nextCancelled && canSendCancellation) setSendCancellationOpen(true)
@@ -802,6 +815,12 @@ export default function CalendarModal({
     } finally {
       setUpdatingCancellation(false)
     }
+  }
+
+  const openCancellationReason = () => {
+    if (!canCancelEvent || updatingCancellation) return
+    setCancelReasonDraft('')
+    setCancelReasonOpen(true)
   }
 
   // Elimina l'esdeveniment o buida la data de la PM virtual al document origen.
@@ -897,6 +916,11 @@ export default function CalendarModal({
                     : ''}
                   {deal.cancelledAt && deal.cancelledByName ? ' · ' : ''}
                   {deal.cancelledByName || ''}
+                </p>
+              )}
+              {cancellationReason && (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-red-900">
+                  <span className="font-medium">Motiu:</span> {cancellationReason}
                 </p>
               )}
             </div>
@@ -1346,7 +1370,11 @@ export default function CalendarModal({
               variant={cancelled ? 'outline' : 'destructive'}
               className="h-8 min-w-0 px-2 text-xs"
               disabled={updatingCancellation}
-              onClick={() => void handleCancellationChange(!cancelled)}
+              onClick={() =>
+                cancelled
+                  ? void handleCancellationChange(false)
+                  : openCancellationReason()
+              }
             >
               {updatingCancellation ? (
                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -1439,6 +1467,7 @@ export default function CalendarModal({
       eventCode={editData.code}
       eventDate={editData.DataInici}
       eventLocation={editData.Ubicacio}
+      cancellationReason={cancellationReason}
       files={[]}
       recipientCandidates={emailRecipientCandidates}
       eventLN={editData.LN}
@@ -1446,11 +1475,62 @@ export default function CalendarModal({
     />
   )
 
+  const cancelEventDialog = (
+    <Dialog open={cancelReasonOpen} onOpenChange={setCancelReasonOpen}>
+      <DialogContent className="w-[94vw] max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel·lar esdeveniment</DialogTitle>
+          <DialogDescription>
+            L’esdeveniment deixarà d’aparèixer als mòduls d’esdeveniments i quadrants.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <label htmlFor="calendar-cancellation-reason" className="text-sm font-medium">
+            Motiu de cancel·lació
+          </label>
+          <Textarea
+            id="calendar-cancellation-reason"
+            value={cancelReasonDraft}
+            onChange={(event) => setCancelReasonDraft(event.target.value)}
+            maxLength={300}
+            rows={3}
+            className="min-h-20 resize-none"
+            placeholder="Escriu una breu descripció (opcional)"
+            autoFocus
+          />
+          <p className="text-right text-xs text-slate-500">
+            {cancelReasonDraft.length}/300
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setCancelReasonOpen(false)}
+            disabled={updatingCancellation}
+          >
+            Tornar
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => void handleCancellationChange(true, cancelReasonDraft)}
+            disabled={updatingCancellation}
+          >
+            {updatingCancellation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Confirmar cancel·lació
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
   if (embedded) {
     return (
       <>
         {sendDocumentsDialog}
         {sendCancellationDialog}
+        {cancelEventDialog}
       <div className="flex h-full min-h-0 w-full flex-col bg-white">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
           <div className="min-w-0">
@@ -1489,6 +1569,7 @@ export default function CalendarModal({
     <>
       {sendDocumentsDialog}
       {sendCancellationDialog}
+      {cancelEventDialog}
 
       <Dialog modal={false} open={open} onOpenChange={setOpen}>
       {trigger ? (

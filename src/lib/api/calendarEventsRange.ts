@@ -197,6 +197,8 @@ export async function computeCalendarEventsInRange(
         cancelledAt: typeof d.cancelledAt === 'string' ? d.cancelledAt : '',
         cancelledByName:
           typeof d.cancelledByName === 'string' ? d.cancelledByName : '',
+        cancellationReason:
+          typeof d.cancellationReason === 'string' ? d.cancellationReason : '',
         cancellationNoticeSentAt:
           typeof d.cancellationNoticeSentAt === 'string'
             ? d.cancellationNoticeSentAt
@@ -249,6 +251,8 @@ export async function computeCalendarEventsInRange(
           cancelledAt: typeof d.cancelledAt === 'string' ? d.cancelledAt : '',
           cancelledByName:
             typeof d.cancelledByName === 'string' ? d.cancelledByName : '',
+          cancellationReason:
+            typeof d.cancellationReason === 'string' ? d.cancellationReason : '',
           cancellationNoticeSentAt:
             typeof d.cancellationNoticeSentAt === 'string'
               ? d.cancellationNoticeSentAt

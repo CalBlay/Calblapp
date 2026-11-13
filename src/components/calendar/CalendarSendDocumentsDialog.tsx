@@ -42,6 +42,7 @@ type Props = {
   mode?: 'documents' | 'cancellation'
   eventDate?: string
   eventLocation?: string
+  cancellationReason?: string
 }
 
 export default function CalendarSendDocumentsDialog({
@@ -58,6 +59,7 @@ export default function CalendarSendDocumentsDialog({
   mode = 'documents',
   eventDate,
   eventLocation,
+  cancellationReason,
 }: Props) {
   const isCancellation = mode === 'cancellation'
   const [loadingRecipients, setLoadingRecipients] = useState(false)
@@ -89,6 +91,7 @@ export default function CalendarSendDocumentsDialog({
       const details = [
         eventDate ? `Data: ${eventDate}` : '',
         eventLocation ? `Ubicació: ${eventLocation}` : '',
+        cancellationReason ? `Motiu: ${cancellationReason}` : '',
       ].filter(Boolean)
       return [
         `Us informem que l’esdeveniment «${title}» ha estat cancel·lat.`,
@@ -98,7 +101,7 @@ export default function CalendarSendDocumentsDialog({
       ].join('\n')
     }
     return `Us adjunto la documentació relativa a l’esdeveniment «${title}».`
-  }, [eventDate, eventLocation, eventTitle, isCancellation])
+  }, [cancellationReason, eventDate, eventLocation, eventTitle, isCancellation])
 
   useEffect(() => {
     if (!open) return

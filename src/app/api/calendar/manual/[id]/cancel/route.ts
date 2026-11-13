@@ -25,7 +25,11 @@ export async function POST(
     if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
-    const body = (await req.json()) as { collection?: string; cancelled?: boolean }
+    const body = (await req.json()) as {
+      collection?: string
+      cancelled?: boolean
+      cancellationReason?: unknown
+    }
     const collection = String(body.collection || '').trim()
     if (!id || !isAllowedCalendarManualCollection(collection)) {
       return NextResponse.json({ error: 'Esdeveniment o col·lecció invàlids' }, { status: 400 })
@@ -38,6 +42,16 @@ export async function POST(
     }
 
     const cancelled = body.cancelled !== false
+    const cancellationReason =
+      typeof body.cancellationReason === 'string'
+        ? body.cancellationReason.trim()
+        : ''
+    if (cancellationReason.length > 300) {
+      return NextResponse.json(
+        { error: 'El motiu de cancel·lació no pot superar els 300 caràcters' },
+        { status: 400 }
+      )
+    }
     const now = new Date().toISOString()
     await docRef.set(
       cancelled
@@ -46,6 +60,7 @@ export async function POST(
             cancelledAt: now,
             cancelledByUserId: auth.user.id,
             cancelledByName: String(auth.user.name || auth.user.email || '').trim(),
+            cancellationReason: cancellationReason || null,
             cancellationSource: 'manual',
             updatedAt: now,
           }
@@ -54,6 +69,7 @@ export async function POST(
             cancelledAt: null,
             cancelledByUserId: null,
             cancelledByName: null,
+            cancellationReason: null,
             cancellationSource: null,
             cancellationNoticeSentAt: null,
             cancellationNoticeSentByUserId: null,
