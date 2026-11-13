@@ -1,7 +1,10 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
-import { queryStageCollectionDocsByDateFieldInRange } from '@/lib/firestoreStageRangeQuery'
+import {
+  queryStageCollectionDocsByDateFieldInRange,
+  queryStageCollectionDocsInDateRange,
+} from '@/lib/firestoreStageRangeQuery'
 import {
   buildMenuTastingOccurrence,
   groupWeddingMenuTastingOccurrences,
@@ -37,6 +40,54 @@ export type QuadrantCalendarEvent = {
   sourceEvents?: Array<{ id: string; name: string; code: string }>
 }
 
+const normalizeEventKey = (value: unknown): string =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+export async function listCancelledQuadrantEventKeysInRange(
+  start: string,
+  end: string
+): Promise<string[]> {
+  const snap = await queryStageCollectionDocsInDateRange(
+    db,
+    'stage_verd',
+    start,
+    end
+  )
+
+  return Array.from(
+    new Set(
+      snap.flatMap((doc) => {
+        const data = doc.data() as Record<string, unknown>
+        if (data.cancelled !== true) return []
+        return [doc.id, data.code, data.Code, data.C_digo, data.codi, data.Codi]
+          .map(normalizeEventKey)
+          .filter(Boolean)
+      })
+    )
+  )
+}
+
+export function hideQuadrantsForCancelledEvents<T extends Record<string, unknown>>(
+  quadrants: T[],
+  cancelledKeys: readonly string[]
+): T[] {
+  if (cancelledKeys.length === 0) return quadrants
+  const cancelled = new Set(cancelledKeys)
+
+  return quadrants.filter((quadrant) =>
+    [quadrant.eventId, quadrant.eventCode, quadrant.code]
+      .map(normalizeEventKey)
+      .filter(Boolean)
+      .every((key) => !cancelled.has(key))
+  )
+}
+
 export async function listQuadrantEventsInRange(
   start: string,
   end: string
@@ -60,6 +111,8 @@ export async function listQuadrantEventsInRange(
   const regularEvents = (snap.docs || [])
     .flatMap((doc) => {
       const d = doc.data() as Record<string, unknown>
+      if (d.cancelled === true) return []
+
       const startDateRaw =
         typeof d?.DataInici === 'string' ? d.DataInici.slice(0, 10) : ''
       const endDateRaw =

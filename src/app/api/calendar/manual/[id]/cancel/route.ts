@@ -5,6 +5,8 @@ import { isUiPermissionGranted } from '@/lib/server/permissions'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 import { accessUserFromSession } from '@/lib/calendar/calendarApiAuth'
 import { isAllowedCalendarManualCollection } from '@/lib/calendar/calendarManualCollection'
+import { revalidateEventsListCache } from '@/lib/eventsListCache'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 
@@ -60,6 +62,9 @@ export async function POST(
           },
       { merge: true }
     )
+
+    revalidateEventsListCache()
+    revalidateQuadrantsListCache()
 
     return NextResponse.json({ ok: true, cancelled })
   } catch (error) {

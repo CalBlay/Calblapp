@@ -3,7 +3,11 @@ import { unstable_cache } from 'next/cache'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
 import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
-import { listQuadrantEventsInRange } from '@/lib/quadrantEvents'
+import {
+  hideQuadrantsForCancelledEvents,
+  listCancelledQuadrantEventKeysInRange,
+  listQuadrantEventsInRange,
+} from '@/lib/quadrantEvents'
 import { listSurveyKeysByDepartmentAndRange } from '@/lib/quadrantSurveys'
 import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 import {
@@ -24,19 +28,23 @@ const normalize = (s?: string | null): string =>
 
 const getDashboardCached = unstable_cache(
   async (start: string, end: string, department: string) => {
-    const [events, quadrantsResult, surveyKeys] = await Promise.all([
+    const [events, quadrantsResult, surveyKeys, cancelledEventKeys] = await Promise.all([
       listQuadrantEventsInRange(start, end),
       computeQuadrantsGet(start, end, department),
       listSurveyKeysByDepartmentAndRange(department, start, end),
+      listCancelledQuadrantEventKeysInRange(start, end),
     ])
 
     return {
       events,
-      quadrants: quadrantsResult.quadrants,
+      quadrants: hideQuadrantsForCancelledEvents(
+        quadrantsResult.quadrants,
+        cancelledEventKeys
+      ),
       surveyKeys,
     }
   },
-  ['api-quadrants-dashboard-v2'],
+  ['api-quadrants-dashboard-v3-hide-cancelled'],
   { revalidate: DASHBOARD_REVALIDATE_SEC, tags: [QUADRANTS_LIST_CACHE_TAG] }
 )
 
@@ -61,17 +69,25 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const payload = skipCache
-      ? {
-          events: await listQuadrantEventsInRange(start, end),
-          ...(await computeQuadrantsGet(start, end, department)),
-          surveyKeys: await listSurveyKeysByDepartmentAndRange(
-            department,
-            start,
-            end
-          ),
-        }
-      : await getDashboardCached(start, end, department)
+    let payload
+    if (skipCache) {
+      const [events, quadrantsResult, surveyKeys, cancelledEventKeys] = await Promise.all([
+        listQuadrantEventsInRange(start, end),
+        computeQuadrantsGet(start, end, department),
+        listSurveyKeysByDepartmentAndRange(department, start, end),
+        listCancelledQuadrantEventKeysInRange(start, end),
+      ])
+      payload = {
+        events,
+        quadrants: hideQuadrantsForCancelledEvents(
+          quadrantsResult.quadrants,
+          cancelledEventKeys
+        ),
+        surveyKeys,
+      }
+    } else {
+      payload = await getDashboardCached(start, end, department)
+    }
 
     const decisions = await listMeetingDecisions(start, end)
     const adjusted = applyMeetingDecisionsToDashboard(

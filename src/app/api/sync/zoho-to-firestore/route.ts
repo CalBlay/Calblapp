@@ -6,6 +6,8 @@ import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
 import { invalidateEventDocumentsCache } from '@/lib/events/eventDocumentsCache.server'
+import { revalidateEventsListCache } from '@/lib/eventsListCache'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 
@@ -28,6 +30,8 @@ export async function GET(req: Request) {
 
       const result = await syncZohoDealsToFirestore(syncOptions)
       invalidateEventDocumentsCache()
+      revalidateEventsListCache()
+      revalidateQuadrantsListCache()
       return NextResponse.json({
         ok: true,
         mode: 'cron',
@@ -48,6 +52,8 @@ export async function GET(req: Request) {
 
     const result = await syncZohoDealsToFirestore(syncOptions)
     invalidateEventDocumentsCache()
+    revalidateEventsListCache()
+    revalidateQuadrantsListCache()
 
     return NextResponse.json({
       ok: true,

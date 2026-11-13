@@ -316,8 +316,9 @@ const getEventsListCached = unstable_cache(
       if (name) fincaAddressByName.set(normalize(name), address)
     })
 
-    const base = stageDocs.map((doc) => {
+    const base = stageDocs.flatMap((doc) => {
       const d = doc.data() as StageVerdDoc
+      if (d.cancelled === true) return []
 
       const startISO = d?.DataInici ? `${d.DataInici}T00:00:00.000Z` : null
       const endISO = d?.DataFi ? `${d.DataFi}T00:00:00.000Z` : startISO
@@ -387,7 +388,7 @@ const getEventsListCached = unstable_cache(
         firstDocString(d, ['Responsable', 'RESPONSABLE', 'responsable']) || ''
       const servei = String(d.Servei || d.Servicio || '')
 
-      return {
+      return [{
         id: doc.id,
         summary,
         start: startISO,
@@ -412,7 +413,7 @@ const getEventsListCached = unstable_cache(
         fincaCode: fincaCode ?? null,
         hasDocuments: eventRecordHasAttachedDocuments(d),
         hasInvalidZohoDocuments: documentHasInvalidZohoAttachments(d),
-      }
+      }]
     })
 
     const expandedByRange = base.flatMap((ev) => {
@@ -664,7 +665,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v6-coded-menu-tastings'],
+  ['api-events-list-v7-hide-cancelled'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC, tags: [EVENTS_LIST_CACHE_TAG] }
 )
 

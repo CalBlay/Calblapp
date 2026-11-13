@@ -28,6 +28,26 @@ test('quadrants only expose coded menu tastings from every commercial stage', ()
   assert.match(source, /codedTastingOccurrences/)
 })
 
+test('cancelled regular events are hidden from events and quadrants', () => {
+  const eventsSource = read('src/app/api/events/list/route.ts')
+  const quadrantsSource = read('src/lib/quadrantEvents.ts')
+  const cancelRouteSource = read('src/app/api/calendar/manual/[id]/cancel/route.ts')
+  const zohoSyncRouteSource = read('src/app/api/sync/zoho-to-firestore/route.ts')
+
+  assert.match(eventsSource, /if \(d\.cancelled === true\) return \[\]/)
+  assert.match(quadrantsSource, /if \(d\.cancelled === true\) return \[\]/)
+  assert.match(quadrantsSource, /hideQuadrantsForCancelledEvents/)
+  assert.match(quadrantsSource, /quadrant\.eventId, quadrant\.eventCode, quadrant\.code/)
+  assert.match(
+    read('src/app/api/quadrants/dashboard/route.ts'),
+    /listCancelledQuadrantEventKeysInRange/
+  )
+  assert.match(cancelRouteSource, /revalidateEventsListCache\(\)/)
+  assert.match(cancelRouteSource, /revalidateQuadrantsListCache\(\)/)
+  assert.match(zohoSyncRouteSource, /revalidateEventsListCache\(\)/)
+  assert.match(zohoSyncRouteSource, /revalidateQuadrantsListCache\(\)/)
+})
+
 test('calendar lets current editors assign codes to menu tastings before stage verd', () => {
   const source = read('src/components/calendar/CalendarModal.tsx')
 
