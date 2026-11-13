@@ -17,6 +17,7 @@ import {
   createEmptyRoleLine,
   ensureGroupRoleLines,
   getPrimaryServiceRoleLines,
+  keepGlobalResponsibleInSingleServiceGroup,
   resizeServiceGroupWorkerSlots,
   syncGroupFromRoleLines,
 } from '../lib/serviceGroupRoleLines'
@@ -215,7 +216,22 @@ export function useServicePhasesState({
 
     if (existingDraft && modalOpen) {
       const hydrated = hydrateServiceGroupsFromDraft(existingDraft, [])
-      setServicePhaseGroups(normalizeLoadedGroups(hydrated.groups))
+      const normalizedGroups = normalizeLoadedGroups(hydrated.groups)
+      setServicePhaseGroups(
+        keepGlobalResponsibleInSingleServiceGroup(
+          normalizedGroups,
+          existingDraft.responsableId ||
+            (typeof existingDraft.responsable?.id === 'string'
+              ? existingDraft.responsable.id
+              : ''),
+          (typeof existingDraft.responsableName === 'string'
+            ? existingDraft.responsableName
+            : '') ||
+            (typeof existingDraft.responsable?.name === 'string'
+              ? existingDraft.responsable.name
+              : '')
+        )
+      )
       setServiceJamoneroAssignments([])
       setServicePhaseVisibility(hydrated.visibility)
       setServicePhaseSettings(hydrated.settings)

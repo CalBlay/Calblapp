@@ -7,6 +7,8 @@ export interface NormalizedWorker {
   id?: string
   name: string
   role: NormalizedRole
+  startDate?: string
+  endDate?: string
   startTime: string
   endTime: string
   meetingPoint: string
@@ -25,6 +27,9 @@ export type TornWorkerInput = {
   nom?: unknown
   displayName?: unknown
   role?: unknown
+  startDate?: unknown
+  endDate?: unknown
+  serviceDate?: unknown
   startTime?: unknown
   endTime?: unknown
   meetingPoint?: unknown
@@ -78,6 +83,9 @@ export function normalizeTornWorker(w?: TornWorkerInput | null): NormalizedWorke
 
   const role = normalizeRole(w?.role != null && w.role !== '' ? String(w.role) : undefined)
 
+  const startDate = String(w?.startDate ?? w?.serviceDate ?? '').trim()
+  const endDate = String(w?.endDate ?? startDate).trim()
+
   const startTime = toHHMM(w?.startTime as string | number | Date | null | undefined)
   const endTime = toHHMM(w?.endTime as string | number | Date | null | undefined)
 
@@ -98,6 +106,8 @@ export function normalizeTornWorker(w?: TornWorkerInput | null): NormalizedWorke
     id: id ? String(id) : undefined,
     name: String(name),
     role,
+    startDate: startDate || undefined,
+    endDate: endDate || startDate || undefined,
     startTime,
     endTime,
     meetingPoint,

@@ -38,6 +38,9 @@ export interface RawWorker {
   name?: string
   nom?: string
   displayName?: string
+  startDate?: string
+  endDate?: string
+  serviceDate?: string
   startTime?: string
   endTime?: string
   meetingPoint?: string
@@ -76,6 +79,27 @@ function parseAnyDateToISO(v: unknown): string {
   if (m) return `${m[3]}-${m[2]}-${m[1]}`
   const d = new Date(s)
   return isNaN(d.getTime()) ? '' : toISODate(d)
+}
+
+export function splitWorkersByEffectiveDate(
+  workers: NormalizedWorker[],
+  fallbackDate: string
+): Array<{ date: string; workers: NormalizedWorker[] }> {
+  const effectiveDates = Array.from(
+    new Set(
+      workers
+        .map((worker) => parseAnyDateToISO(worker.startDate) || fallbackDate)
+        .filter(Boolean)
+    )
+  )
+  if (effectiveDates.length === 0 && fallbackDate) effectiveDates.push(fallbackDate)
+
+  return effectiveDates.map((date) => ({
+    date,
+    workers: workers.filter(
+      (worker) => (parseAnyDateToISO(worker.startDate) || fallbackDate) === date
+    ),
+  }))
 }
 
 function norm(s?: string | null): string {
@@ -372,18 +396,23 @@ async function fetchDeptCollectionRange(
             }))
           : t.__rawWorkers
 
-        out.push({
-          ...t,
-          date: gDate,
-          dayNote: String(g?.dateLabel || '').trim() || undefined,
-          startDate: gDate,
-          endDate: gDate,
-          startTime: gStart,
-          endTime: gEnd,
-          meetingPoint: gMeeting,
-          __rawWorkers: groupWorkers,
-        })
-        pushed = true
+        const effectiveSchedules = splitWorkersByEffectiveDate(groupWorkers || [], gDate)
+        for (const schedule of effectiveSchedules) {
+          const effectiveDate = schedule.date
+          if (!rangesOverlap(effectiveDate, effectiveDate, startISO, endISO)) continue
+          out.push({
+            ...t,
+            date: effectiveDate,
+            dayNote: String(g?.dateLabel || '').trim() || undefined,
+            startDate: effectiveDate,
+            endDate: effectiveDate,
+            startTime: gStart,
+            endTime: gEnd,
+            meetingPoint: gMeeting,
+            __rawWorkers: schedule.workers,
+          })
+          pushed = true
+        }
       }
 
       if (pushed) return

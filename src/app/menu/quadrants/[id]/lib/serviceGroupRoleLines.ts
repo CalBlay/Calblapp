@@ -127,8 +127,21 @@ export function syncGroupFromRoleLines(group: ServeiGroup, roleLines: ServeiGrou
     return acc
   }, {})
 
+  const lineDates = Array.from(
+    new Set(
+      normalizedRoleLines
+        .map((line) => String(line.serviceDate || '').trim())
+        .filter(Boolean)
+    )
+  )
+  // Quan totes les persones del grup tenen el mateix dia, aquesta és la data
+  // efectiva del grup. Evita que la capçalera conservi la data de l'esdeveniment
+  // mentre totes les files (p. ex. Muntatge) ja estan al dia anterior.
+  const effectiveServiceDate = lineDates.length === 1 ? lineDates[0] : group.serviceDate
+
   return {
     ...group,
+    serviceDate: effectiveServiceDate,
     roleLines: normalizedRoleLines,
     wantsResponsible: normalizedRoleLines.some((line) => line.role === 'responsable'),
     responsibleId: responsable?.personId || '',
@@ -216,4 +229,77 @@ export function applyGroupDefaultsToRoleLines(group: ServeiGroup): ServeiGroup {
     endTime: group.endTime,
   }))
   return syncGroupFromRoleLines(group, lines)
+}
+
+const normalizedPersonName = (name?: string | null) =>
+  String(name || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isSamePerson = (
+  left: { id?: string | null; name?: string | null },
+  right: { id?: string | null; name?: string | null }
+) => {
+  const leftId = String(left.id || '').trim()
+  const rightId = String(right.id || '').trim()
+  if (leftId && rightId && leftId === rightId) return true
+
+  const leftName = normalizedPersonName(left.name)
+  const rightName = normalizedPersonName(right.name)
+  return Boolean(leftName && rightName && leftName === rightName)
+}
+
+/**
+ * Repara borradors antics on el responsable general de l'esdeveniment es va
+ * copiar a tots els grups. Es conserva al grup on també actua de conductor;
+ * si no n'hi ha cap, només al primer grup on apareix.
+ */
+export function keepGlobalResponsibleInSingleServiceGroup(
+  groups: ServeiGroup[],
+  responsibleId?: string | null,
+  responsibleName?: string | null
+): ServeiGroup[] {
+  const globalResponsible = { id: responsibleId, name: responsibleName }
+  if (!String(responsibleId || '').trim() && !normalizedPersonName(responsibleName)) {
+    return groups
+  }
+
+  const matchesGlobalResponsible = (line: ServeiGroupRoleLine) =>
+    isSamePerson(
+      { id: line.personId, name: line.personName },
+      globalResponsible
+    )
+
+  const matchingGroupIndexes = groups.flatMap((group, index) => {
+    const hasMatch = ensureGroupRoleLines(group).some(
+      (line) =>
+        line.role === 'responsable' &&
+        matchesGlobalResponsible(line)
+    )
+    return hasMatch ? [index] : []
+  })
+  if (matchingGroupIndexes.length === 0) return groups
+
+  const conductorGroupIndex = groups.findIndex((group) =>
+    ensureGroupRoleLines(group).some(
+      (line) =>
+        line.role === 'conductor' &&
+        matchesGlobalResponsible(line)
+    )
+  )
+  if (conductorGroupIndex < 0 && matchingGroupIndexes.length <= 1) return groups
+  const keepIndex = conductorGroupIndex >= 0 ? conductorGroupIndex : matchingGroupIndexes[0]
+
+  return groups.map((group, index) => {
+    if (index === keepIndex || !matchingGroupIndexes.includes(index)) return group
+    const roleLines = ensureGroupRoleLines(group).filter(
+      (line) =>
+        line.role !== 'responsable' ||
+        !matchesGlobalResponsible(line)
+    )
+    return syncGroupFromRoleLines(group, roleLines)
+  })
 }

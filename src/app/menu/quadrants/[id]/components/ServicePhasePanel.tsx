@@ -239,7 +239,15 @@ export default function ServicePhasePanel({
                             <Input
                               type="date"
                               value={group.serviceDate}
-                              onChange={(e) => updateGroup(group.id, { serviceDate: e.target.value })}
+                              onChange={(e) => {
+                                const serviceDate = e.target.value
+                                updateGroup(
+                                  group.id,
+                                  patchGroupRoleLines(group, (lines) =>
+                                    lines.map((line) => ({ ...line, serviceDate }))
+                                  )
+                                )
+                              }}
                               className={cn(
                                 "w-[9rem] shrink-0 px-2",
                                 compact ? "h-8 text-xs" : "h-9 text-sm"

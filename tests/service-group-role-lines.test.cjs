@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   countServiceGroupRoleLineTotals,
   createEmptyRoleLine,
+  keepGlobalResponsibleInSingleServiceGroup,
   resizeServiceGroupToTotalPersonSlots,
   resizeServiceGroupWorkerSlots,
   syncGroupFromRoleLines,
@@ -92,4 +93,73 @@ test('service totals count blank worker and jamonero slots but not other roles',
     drivers: 0,
     responsables: 0,
   })
+})
+
+test('a shared role-line date becomes the effective group header date', () => {
+  const base = group({ serviceDate: '2026-11-17' })
+  const lines = [
+    { ...createEmptyRoleLine(base, 'conductor'), serviceDate: '2026-11-16' },
+    { ...createEmptyRoleLine(base, 'treballador'), serviceDate: '2026-11-16' },
+  ]
+
+  const synced = syncGroupFromRoleLines(base, lines)
+  assert.equal(synced.serviceDate, '2026-11-16')
+})
+
+test('legacy global responsible stays only in the group where they are the driver', () => {
+  const responsible = {
+    ...createEmptyRoleLine(group(), 'responsable'),
+    personId: 'resp-1',
+    personName: 'Digno Belliard',
+  }
+  const first = syncGroupFromRoleLines(group({ id: 'group-1' }), [
+    {
+      ...createEmptyRoleLine(group(), 'conductor'),
+      personId: 'resp-1',
+      personName: 'Digno Belliard',
+    },
+    responsible,
+  ])
+  const second = syncGroupFromRoleLines(group({ id: 'group-2' }), [
+    createEmptyRoleLine(group(), 'conductor'),
+    { ...responsible, slotId: 'responsible-2' },
+  ])
+
+  const repaired = keepGlobalResponsibleInSingleServiceGroup(
+    [first, second],
+    'resp-1',
+    'Digno Belliard'
+  )
+
+  assert.equal(repaired[0].roleLines.filter((line) => line.role === 'responsable').length, 1)
+  assert.equal(repaired[1].roleLines.filter((line) => line.role === 'responsable').length, 0)
+})
+
+test('global responsible is removed from later groups when already driving the first group', () => {
+  const first = syncGroupFromRoleLines(group({ id: 'group-1' }), [
+    {
+      ...createEmptyRoleLine(group(), 'conductor'),
+      personId: 'driver-record-id',
+      personName: 'Digno Belliard',
+    },
+    createEmptyRoleLine(group(), 'treballador'),
+  ])
+  const second = syncGroupFromRoleLines(group({ id: 'group-2' }), [
+    createEmptyRoleLine(group(), 'conductor'),
+    {
+      ...createEmptyRoleLine(group(), 'responsable'),
+      personId: 'responsible-record-id',
+      personName: 'Digno Belliard',
+    },
+  ])
+
+  const repaired = keepGlobalResponsibleInSingleServiceGroup(
+    [first, second],
+    'top-bar-id',
+    'Digno Belliard'
+  )
+
+  assert.equal(repaired[0].roleLines.filter((line) => line.role === 'conductor').length, 1)
+  assert.equal(repaired[0].roleLines.filter((line) => line.role === 'responsable').length, 0)
+  assert.equal(repaired[1].roleLines.filter((line) => line.role === 'responsable').length, 0)
 })

@@ -84,6 +84,32 @@ test('legacy quadrants still fall back to person and header hours', () => {
   assert.equal(person.endTime, '16:00')
 })
 
+test('legacy top-level responsible belongs to only the first service group', () => {
+  const rows = collectQuadrantLinePersonnel({
+    startDate: '2026-11-17',
+    responsable: { id: 'resp-1', name: 'Digno Belliard' },
+    groups: [
+      {
+        id: 'group-muntatge',
+        serviceDate: '2026-11-16',
+        startTime: '15:00',
+        endTime: '19:00',
+      },
+      {
+        id: 'group-event',
+        serviceDate: '2026-11-17',
+        startTime: '07:00',
+        endTime: '15:00',
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    rows.map((row) => ({ name: row.name, groupId: row.groupId, startDate: row.startDate })),
+    [{ name: 'Digno Belliard', groupId: 'group-muntatge', startDate: '2026-11-16' }]
+  )
+})
+
 test('logistics manual worker lines keep their own schedule when saved', () => {
   const [worker] = attachManualWorkerLineSchedules(
     [{ name: 'Anna' }],

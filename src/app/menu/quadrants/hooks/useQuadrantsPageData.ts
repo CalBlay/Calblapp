@@ -6,6 +6,7 @@ import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
 import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { preferRealAdaCode } from '@/services/sync/adaCodePolicy'
+import { mergeQuadrantPeople } from '@/lib/quadrantPeopleMerge'
 
 interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
@@ -27,6 +28,13 @@ type QuadrantPerson = {
   plate?: string | null
   vehicleType?: string | null
   arrivalTime?: string | null
+  startDate?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  isExternal?: boolean | null
+  externalType?: string | null
+  groupId?: string | null
+  ettGroupKey?: string | null
 }
 
 type QuadrantGroup = {
@@ -175,19 +183,6 @@ const pickEdgeTime = (
   return bestText
 }
 
-const mergePeople = (groups: QuadrantPerson[][]) => {
-  const merged: QuadrantPerson[] = []
-  const seen = new Set<string>()
-  groups.flat().forEach((person) => {
-    if (!person?.name) return
-    const key = `${normalizeNameKey(person.name)}__${normalizeNameKey(person.meetingPoint)}`
-    if (seen.has(key)) return
-    seen.add(key)
-    merged.push(person)
-  })
-  return merged
-}
-
 const isQuadrantDraft = (value: unknown): value is QuadrantDraft =>
   typeof value === 'object' && value !== null
 
@@ -269,8 +264,12 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
       id: String(base.eventId || base.id || ''),
       startTime: startTime || baseDraft.startTime || '',
       endTime: endTime || baseDraft.endTime || '',
-      conductors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
-      treballadors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
+      conductors: mergeQuadrantPeople(
+        drafts.map((draft) => (Array.isArray(draft?.conductors) ? draft.conductors : []))
+      ),
+      treballadors: mergeQuadrantPeople(
+        drafts.map((draft) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))
+      ),
       groups: mergedGroups,
       totalWorkers: drafts.reduce((sum: number, draft) => sum + Number(draft?.totalWorkers || 0), 0),
       numDrivers: drafts.reduce((sum: number, draft) => sum + Number(draft?.numDrivers || 0), 0),

@@ -237,7 +237,20 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
 
   for (const base of people) {
     if (represented.has(identity(base))) continue
-    const person = scheduledPerson({ doc, base, fallbackRole: base.role })
+    const explicitGroupId = text(base.groupId)
+    const fallbackGroup = groups.find(
+      (group) => explicitGroupId && text(group.id || group.groupId) === explicitGroupId
+    ) || (base.role === 'responsable' ? groups[0] : undefined)
+    // En quadrants antics, el responsable només existeix a la capçalera. Si
+    // també hi ha grups, l'assignem a un únic grup (l'explícit o el primer) i
+    // no el deixem sense groupId, perquè això el replicava a tots els horaris.
+    // Conductors i treballadors antics conserven l'horari general.
+    const person = scheduledPerson({
+      doc,
+      base,
+      group: fallbackGroup,
+      fallbackRole: base.role,
+    })
     if (person) result.push(person)
   }
 
