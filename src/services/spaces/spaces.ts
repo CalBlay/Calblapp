@@ -19,6 +19,7 @@ import {
 } from '@/lib/costServeis/spaceOwnership'
 import { compareSpaceReservationRows } from '@/lib/spacesReservationSort'
 import { isActiveSpaceReservation } from '@/lib/spacesReservationStatus'
+import { eventSpaceNames } from '@/lib/spacesEventSpaceNames'
 
 type FirestoreDateLike = { toDate: () => Date }
 
@@ -282,7 +283,7 @@ export async function getSpacesByWeek(
         if (!(start instanceof Date) || Number.isNaN(start.getTime())) return
         if (!(end instanceof Date) || Number.isNaN(end.getTime())) return
 
-        const spaceNames = eventSpaceNames(data)
+        const spaceNames = eventSpaceNames(data, collection === 'stage_verd')
         const commercial = normalizeText(data.Comercial)
         const ln = normalizeText(data.LN)
 
@@ -566,26 +567,6 @@ function dedupeStageEventsByPriority(events: RawEvent[]): RawEvent[] {
     }
   }
   return Array.from(byId.values())
-}
-
-/** Extreu totes les finques de Zoho, mantenint compatibilitat amb documents antics. */
-export function eventSpaceNames(data: Record<string, unknown>): string[] {
-  const values: unknown[] = [
-    ...(Array.isArray(data.Ubicacions) ? data.Ubicacions : []),
-    ...(Array.isArray(data.Finca_2) ? data.Finca_2 : []),
-    ...(Array.isArray(data.Espai_2) ? data.Espai_2 : []),
-  ]
-
-  if (values.length === 0) values.push(data.Ubicacio)
-
-  const byKey = new Map<string, string>()
-  for (const value of values) {
-    const name = normalizeText(value).split('(')[0].trim()
-    const key = name.toLocaleLowerCase('ca')
-    if (!byKey.has(key)) byKey.set(key, name)
-  }
-
-  return Array.from(byKey.values())
 }
 
 function shouldIncludeManualReserves(stageFilters: string[]): boolean {
