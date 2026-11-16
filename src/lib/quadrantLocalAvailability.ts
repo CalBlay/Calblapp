@@ -12,6 +12,7 @@ import {
   type LocalPersonnelRules,
   type RoleLineReservation,
 } from '@/app/menu/quadrants/[id]/lib/quadrantPayloadShared'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 export const LOCAL_QUADRANT_PERSON_CONFLICT = 'local_quadrant_person_duplicate'
 
@@ -64,6 +65,7 @@ export function collectLocalExcludeIdsAndNames(
 
   for (const line of lines) {
     if (excludeSlotId && line.slotId === excludeSlotId) continue
+    if (isReusableExternalExtra({ personName: line.personName })) continue
     const id = String(line.personId || '').trim()
     const name = String(line.personName || '').trim()
     if (id) excludeIds.push(id)

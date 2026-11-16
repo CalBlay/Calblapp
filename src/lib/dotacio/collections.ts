@@ -11,4 +11,6 @@ export const DOTACIO_COLLECTIONS = {
   purchaseEmailLog: 'dotacio_purchase_email_log',
   /** Valors de classificació (grup / família / subfamília) creats manualment des de Roba personal. */
   productTaxonomy: 'dotacio_roba_taxonomy',
+  /** Perfils de talles reutilitzables i assignables a famílies o productes concrets. */
+  sizeProfiles: 'dotacio_roba_size_profiles',
 } as const

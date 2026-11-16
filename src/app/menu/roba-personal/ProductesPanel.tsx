@@ -27,7 +27,12 @@ import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/rob
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { ChevronDown, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Search, Trash2, X } from 'lucide-react'
+import {
+  defaultRobaSizeOptions,
+  robaSizesForFamily,
+  type RobaSizeType,
+} from '@/lib/roba-personal/sizeProfiles'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -78,12 +83,32 @@ type TaxonomyTerm = {
   kind: string
   label: string
   parentKey?: string
+  sizeType?: RobaSizeType
+  sizeOptions?: string[]
+  sizeProfileId?: string | null
+}
+
+type SizeProfile = {
+  id: string
+  name: string
+  sizeType: RobaSizeType
+  sizeOptions: string[]
+  isActive?: boolean
 }
 
 function uniqSorted(values: string[]): string[] {
   return [...new Set(values.map((s) => s.trim()).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, 'ca', { sensitivity: 'base' })
   )
+}
+
+function foldProductSearch(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('ca')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 export function ProductesPanel() {
@@ -96,6 +121,7 @@ export function ProductesPanel() {
       supplierSku?: string | null
       name: string
       size?: string
+      sizeProfileId?: string | null
       grup?: string | null
       familia?: string | null
       subfamilia?: string | null
@@ -109,6 +135,7 @@ export function ProductesPanel() {
   const [loading, setLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [terms, setTerms] = useState<TaxonomyTerm[]>([])
+  const [sizeProfiles, setSizeProfiles] = useState<SizeProfile[]>([])
   const [supplierId, setSupplierId] = useState('')
   const [showNewSupplier, setShowNewSupplier] = useState(false)
   const [newSupplier, setNewSupplier] = useState<SupplierForm>(emptySupplierForm)
@@ -126,6 +153,7 @@ export function ProductesPanel() {
     subfamilia: '',
     minStock: '',
     departments: [] as string[],
+    sizeProfileId: '',
   })
   const [productActiveBusyId, setProductActiveBusyId] = useState<string | null>(null)
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
@@ -133,6 +161,18 @@ export function ProductesPanel() {
   const [editId, setEditId] = useState('')
   const [newProductOpen, setNewProductOpen] = useState(true)
   const [activeProductsOpen, setActiveProductsOpen] = useState(true)
+  const [productSearch, setProductSearch] = useState('')
+  const [sizeSettingsOpen, setSizeSettingsOpen] = useState(true)
+  const [sizeFamilyId, setSizeFamilyId] = useState('')
+  const [familyDefaultProfileId, setFamilyDefaultProfileId] = useState('')
+  const [newSizeFamilyGroup, setNewSizeFamilyGroup] = useState('Roba')
+  const [newSizeFamilyName, setNewSizeFamilyName] = useState('')
+  const [newSizeFamilyProfileId, setNewSizeFamilyProfileId] = useState('')
+  const [editingSizeProfileId, setEditingSizeProfileId] = useState('')
+  const [sizeProfileName, setSizeProfileName] = useState('')
+  const [sizeType, setSizeType] = useState<RobaSizeType>('none')
+  const [sizeOptionsText, setSizeOptionsText] = useState('')
+  const [sizeSettingsBusy, setSizeSettingsBusy] = useState(false)
   const [editForm, setEditForm] = useState({
     code: '',
     name: '',
@@ -145,6 +185,7 @@ export function ProductesPanel() {
     minStock: '',
     departments: [] as string[],
     magatzem: '',
+    sizeProfileId: '',
   })
 
   const loadProducts = useCallback(async () => {
@@ -181,11 +222,21 @@ export function ProductesPanel() {
     }
   }, [])
 
+  const loadSizeProfiles = useCallback(async () => {
+    try {
+      const data = await api<{ profiles: SizeProfile[] }>('/api/roba-personal/size-profiles')
+      setSizeProfiles(Array.isArray(data.profiles) ? data.profiles : [])
+    } catch {
+      setSizeProfiles([])
+    }
+  }, [])
+
   useEffect(() => {
     void loadProducts()
     void loadSuppliers()
     void loadTaxonomy()
-  }, [loadProducts, loadSuppliers, loadTaxonomy])
+    void loadSizeProfiles()
+  }, [loadProducts, loadSuppliers, loadTaxonomy, loadSizeProfiles])
 
   const grupOptions = useMemo(() => {
     const fromT = terms.filter((t) => t.kind === 'grup').map((t) => t.label)
@@ -240,6 +291,209 @@ export function ProductesPanel() {
         .concat(editForm.subfamilia ? [editForm.subfamilia] : [])
     )
   }, [terms, editForm.grup, editForm.familia, editForm.subfamilia])
+
+  const familyTerms = useMemo(
+    () =>
+      terms
+        .filter((term) => term.kind === 'familia')
+        .sort((a, b) =>
+          `${a.parentKey || ''}|${a.label}`.localeCompare(
+            `${b.parentKey || ''}|${b.label}`,
+            'ca',
+            { sensitivity: 'base' }
+          )
+        ),
+    [terms]
+  )
+
+  const sizeProfileNameById = useMemo(
+    () => new Map(sizeProfiles.map((profile) => [profile.id, profile.name])),
+    [sizeProfiles]
+  )
+
+  const selectedNewProductFamily = useMemo(() => {
+    const group = form.grup.trim() || 'Roba'
+    const family = form.familia.trim()
+    return terms.find(
+      (term) =>
+        term.kind === 'familia' &&
+        (term.parentKey || '') === group &&
+        term.label.trim().toLocaleLowerCase('ca') === family.toLocaleLowerCase('ca')
+    )
+  }, [terms, form.grup, form.familia])
+
+  const selectedNewProductProfile = useMemo(() => {
+    const profileId = form.sizeProfileId || selectedNewProductFamily?.sizeProfileId || ''
+    return sizeProfiles.find((profile) => profile.id === profileId)
+  }, [sizeProfiles, form.sizeProfileId, selectedNewProductFamily])
+
+  const newProductSizes = useMemo(() => {
+    if (selectedNewProductProfile) return selectedNewProductProfile.sizeOptions
+    return selectedNewProductFamily
+      ? robaSizesForFamily(
+          selectedNewProductFamily.sizeType,
+          selectedNewProductFamily.sizeOptions
+        )
+      : []
+  }, [selectedNewProductFamily, selectedNewProductProfile])
+
+  const selectedEditFamily = useMemo(() => {
+    const group = editForm.grup.trim() || 'Roba'
+    const family = editForm.familia.trim()
+    return terms.find(
+      (item) =>
+        item.kind === 'familia' &&
+        (item.parentKey || '') === group &&
+        item.label.trim().toLocaleLowerCase('ca') === family.toLocaleLowerCase('ca')
+    )
+  }, [terms, editForm.grup, editForm.familia])
+
+  const configuredEditFamilySizes = useMemo(() => {
+    const profileId = editForm.sizeProfileId || selectedEditFamily?.sizeProfileId || ''
+    const profile = sizeProfiles.find((item) => item.id === profileId)
+    return profile
+      ? profile.sizeOptions
+      : selectedEditFamily
+        ? robaSizesForFamily(selectedEditFamily.sizeType, selectedEditFamily.sizeOptions)
+        : []
+  }, [sizeProfiles, editForm.sizeProfileId, selectedEditFamily])
+
+  const editFamilySizeOptions = useMemo(() => {
+    const current = editForm.size.trim()
+    return current && !configuredEditFamilySizes.includes(current)
+      ? [...configuredEditFamilySizes, current]
+      : configuredEditFamilySizes
+  }, [configuredEditFamilySizes, editForm.size])
+
+  const selectSizeFamily = (id: string) => {
+    setSizeFamilyId(id)
+    const family = familyTerms.find((term) => term.id === id)
+    setFamilyDefaultProfileId(family?.sizeProfileId || '')
+  }
+
+  const selectSizeProfile = (id: string) => {
+    setEditingSizeProfileId(id)
+    const profile = sizeProfiles.find((item) => item.id === id)
+    setSizeProfileName(profile?.name || '')
+    const nextType = profile?.sizeType || 'none'
+    setSizeType(nextType)
+    setSizeOptionsText(profile?.sizeOptions?.join(', ') || '')
+  }
+
+  const changeSizeType = (nextType: RobaSizeType) => {
+    setSizeType(nextType)
+    if (nextType === 'none') setSizeOptionsText('')
+    else if (nextType !== 'custom') setSizeOptionsText(defaultRobaSizeOptions(nextType).join(', '))
+  }
+
+  const saveSizeProfile = async () => {
+    if (!sizeProfileName.trim()) {
+      toast({ title: 'Indiqueu el nom del perfil', variant: 'destructive' })
+      return
+    }
+    const sizeOptions = sizeOptionsText
+      .split(/[,;\n]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+    if (sizeType !== 'none' && sizeOptions.length === 0) {
+      toast({ title: 'Afegiu almenys una talla', variant: 'destructive' })
+      return
+    }
+    setSizeSettingsBusy(true)
+    try {
+      await api<SizeProfile>('/api/roba-personal/size-profiles', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: editingSizeProfileId || undefined,
+          name: sizeProfileName.trim(),
+          sizeType,
+          sizeOptions,
+        }),
+      })
+      await loadSizeProfiles()
+      const wasEditing = Boolean(editingSizeProfileId)
+      setEditingSizeProfileId('')
+      setSizeProfileName('')
+      setSizeType('none')
+      setSizeOptionsText('')
+      toast({ title: wasEditing ? 'Perfil de talles actualitzat' : 'Perfil de talles creat' })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut desar el perfil',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSizeSettingsBusy(false)
+    }
+  }
+
+  const saveFamilyDefaultProfile = async () => {
+    if (!sizeFamilyId) {
+      toast({ title: 'Trieu una família', variant: 'destructive' })
+      return
+    }
+    setSizeSettingsBusy(true)
+    try {
+      await api('/api/roba-personal/taxonomy', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: sizeFamilyId, sizeProfileId: familyDefaultProfileId }),
+      })
+      await loadTaxonomy()
+      toast({ title: 'Perfil predeterminat assignat' })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut assignar el perfil',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSizeSettingsBusy(false)
+    }
+  }
+
+  const createSizeFamily = async () => {
+    const group = newSizeFamilyGroup.trim() || 'Roba'
+    const family = newSizeFamilyName.trim()
+    if (!family) {
+      toast({ title: 'Indiqueu el nom de la família', variant: 'destructive' })
+      return
+    }
+    setSizeSettingsBusy(true)
+    try {
+      await api('/api/roba-personal/taxonomy', {
+        method: 'POST',
+        body: JSON.stringify({ kind: 'grup', label: group, parentKey: '' }),
+      })
+      const created = await api<TaxonomyTerm>('/api/roba-personal/taxonomy', {
+        method: 'POST',
+        body: JSON.stringify({ kind: 'familia', label: family, parentKey: group }),
+      })
+      if (newSizeFamilyProfileId) {
+        await api('/api/roba-personal/taxonomy', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: created.id, sizeProfileId: newSizeFamilyProfileId }),
+        })
+      }
+      await loadTaxonomy()
+      setSizeFamilyId(created.id)
+      setFamilyDefaultProfileId(newSizeFamilyProfileId)
+      setNewSizeFamilyName('')
+      toast({
+        title: newSizeFamilyProfileId
+          ? 'Família creada i perfil assignat'
+          : 'Família creada',
+      })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut crear la família',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSizeSettingsBusy(false)
+    }
+  }
 
   const postTaxonomyIfNeeded = async (kind: 'grup' | 'familia' | 'subfamilia', label: string, parentKey: string) => {
     const v = label.trim()
@@ -371,7 +625,7 @@ export function ProductesPanel() {
       if (f) await postTaxonomyIfNeeded('familia', f, g)
       if (s && f) await postTaxonomyIfNeeded('subfamilia', s, `${g}|${f}`)
 
-      await api('/api/roba-personal/products', {
+      const created = await api<{ createdCount?: number }>('/api/roba-personal/products', {
         method: 'POST',
         body: JSON.stringify({
           code: form.code.trim(),
@@ -383,9 +637,16 @@ export function ProductesPanel() {
           subfamilia: s || undefined,
           departments: form.departments,
           minStock: form.minStock ? Number(form.minStock) : undefined,
+          sizes: newProductSizes,
+          sizeProfileId: form.sizeProfileId || null,
         }),
       })
-      toast({ title: 'Producte creat' })
+      toast({
+        title:
+          (created.createdCount || 0) > 1
+            ? `${created.createdCount} variants de talla creades`
+            : 'Producte creat',
+      })
       setForm({
         code: '',
         supplierSku: '',
@@ -395,6 +656,7 @@ export function ProductesPanel() {
         subfamilia: '',
         minStock: '',
         departments: [],
+        sizeProfileId: '',
       })
       setSupplierId('')
       void loadProducts()
@@ -447,12 +709,21 @@ export function ProductesPanel() {
       minStock: r.minStock != null && !Number.isNaN(Number(r.minStock)) ? String(r.minStock) : '',
       departments: Array.isArray(r.departments) ? [...r.departments] : [],
       magatzem: r.magatzem?.trim() || DEFAULT_DOTACIO_MAGATZEM,
+      sizeProfileId: r.sizeProfileId || '',
     })
     setEditOpen(true)
   }
 
   const saveEdit = async () => {
     if (!editId) return
+    if (configuredEditFamilySizes.length > 0 && !editForm.size.trim()) {
+      toast({
+        title: 'Trieu la talla de la variant actual',
+        description: 'Les altres variants del perfil es crearan automàticament amb estoc zero.',
+        variant: 'destructive',
+      })
+      return
+    }
     const sid = editForm.supplierId.trim()
     if (!sid) {
       toast({
@@ -486,15 +757,65 @@ export function ProductesPanel() {
             ? Number(editForm.minStock)
             : null,
           magatzem: editForm.magatzem.trim() || DEFAULT_DOTACIO_MAGATZEM,
+          sizeProfileId: editForm.sizeProfileId || null,
+          applySizeProfileToVariants: true,
         }),
       })
-      toast({ title: 'Producte actualitzat' })
+      let createdVariants = 0
+      if (configuredEditFamilySizes.length > 0) {
+        const variantResult = await api<{ createdCount: number }>(
+          `/api/roba-personal/products/${editId}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              sizes: configuredEditFamilySizes,
+              sizeProfileId: editForm.sizeProfileId || null,
+            }),
+          }
+        )
+        createdVariants = variantResult.createdCount
+      }
+      toast({
+        title:
+          createdVariants > 0
+            ? `Producte actualitzat · ${createdVariants} variants creades`
+            : 'Producte actualitzat',
+      })
       setEditOpen(false)
       setEditId('')
       void loadProducts()
     } catch (e: unknown) {
       toast({
         title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const createMissingSizeVariants = async () => {
+    if (!editId || configuredEditFamilySizes.length === 0) return
+    try {
+      const result = await api<{ createdCount: number }>(
+        `/api/roba-personal/products/${editId}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            sizes: configuredEditFamilySizes,
+            sizeProfileId: editForm.sizeProfileId || null,
+          }),
+        }
+      )
+      await loadProducts()
+      toast({
+        title:
+          result.createdCount > 0
+            ? `${result.createdCount} variants creades`
+            : 'Aquest article ja té totes les variants',
+      })
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’han pogut crear les variants',
         description: e instanceof Error ? e.message : String(e),
         variant: 'destructive',
       })
@@ -562,11 +883,42 @@ export function ProductesPanel() {
     return list
   }, [rows])
 
+  const filteredProductesTaula = useMemo(() => {
+    const tokens = foldProductSearch(productSearch).split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return productesTaula
+
+    return productesTaula.filter((product) => {
+      const profile = sizeProfileNameById.get(product.sizeProfileId || '') || 'heretat'
+      const activeLabel = product.isActive === false ? 'inactiu desactivat' : 'actiu'
+      const searchable = foldProductSearch(
+        [
+          product.code,
+          product.name,
+          product.size,
+          profile,
+          product.grup,
+          product.familia,
+          product.subfamilia,
+          ...(product.departments || []),
+          product.supplier,
+          product.supplierSku,
+          product.magatzem,
+          product.quantityOnHand,
+          product.minStock,
+          activeLabel,
+        ].join(' ')
+      )
+      return tokens.every((token) => searchable.includes(token))
+    })
+  }, [productSearch, productesTaula, sizeProfileNameById])
+
   const buildProductExportRows = useCallback(
     () =>
       productesActius.map((r) => ({
         Codi: r.code,
         Nom: r.name,
+        Talla: r.size ?? '',
+        PerfilTalles: sizeProfileNameById.get(r.sizeProfileId || '') ?? '',
         Grup: r.grup ?? '',
         Familia: r.familia ?? '',
         Subfamilia: r.subfamilia ?? '',
@@ -577,7 +929,7 @@ export function ProductesPanel() {
         Estoc: r.quantityOnHand ?? 0,
         Minim: r.minStock ?? '',
       })),
-    [productesActius]
+    [productesActius, sizeProfileNameById]
   )
 
   const handleExportXlsx = useCallback(async () => {
@@ -619,6 +971,229 @@ export function ProductesPanel() {
 
   return (
     <div className="space-y-6 w-full">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setSizeSettingsOpen((open) => !open)}
+          aria-expanded={sizeSettingsOpen}
+        >
+          <div>
+            <h2 className="font-semibold text-base">Perfils de talles</h2>
+            <p className="mt-1 text-xs font-normal text-muted-foreground">
+              Crea tallatges reutilitzables i assigna&apos;ls per defecte a una família.
+            </p>
+          </div>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              sizeSettingsOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {sizeSettingsOpen ? (
+          <div className="space-y-3">
+          <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs leading-relaxed text-blue-950 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-blue-100">
+            <strong>Perfil</strong> és l’escala de talles (p. ex. «Lletres proveïdor A»).
+            <strong className="ml-1">Família</strong> és el tipus de peça (p. ex. «Pantalons»).
+            Primer crea el perfil i després crea o selecciona la família per assignar-l’hi.
+          </div>
+          <div className="grid gap-3 rounded-lg border border-indigo-200/60 bg-indigo-50/40 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:grid-cols-[minmax(11rem,1fr)_minmax(11rem,1fr)_minmax(9rem,12rem)_minmax(14rem,2fr)_auto] sm:items-end">
+            <div className="space-y-1">
+              <Label htmlFor="size-profile" className="text-xs text-muted-foreground">
+                Perfil
+              </Label>
+              <select
+                id="size-profile"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={editingSizeProfileId}
+                onChange={(event) => selectSizeProfile(event.target.value)}
+              >
+                <option value="">+ Nou perfil</option>
+                {sizeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="size-profile-name" className="text-xs text-muted-foreground">
+                Nom del perfil
+              </Label>
+              <Input
+                id="size-profile-name"
+                className="h-9 text-sm"
+                value={sizeProfileName}
+                onChange={(event) => setSizeProfileName(event.target.value)}
+                placeholder="Pantalons · Proveïdor A"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="size-type" className="text-xs text-muted-foreground">
+                Format
+              </Label>
+              <select
+                id="size-type"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={sizeType}
+                onChange={(event) => changeSizeType(event.target.value as RobaSizeType)}
+              >
+                <option value="none">Sense talla</option>
+                <option value="letters">Lletres</option>
+                <option value="numeric">Números</option>
+                <option value="custom">Personalitzat</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="size-options" className="text-xs text-muted-foreground">
+                Talles (separades per comes)
+              </Label>
+              <Input
+                id="size-options"
+                className="h-9 text-sm"
+                value={sizeOptionsText}
+                disabled={sizeType === 'none'}
+                onChange={(event) => setSizeOptionsText(event.target.value)}
+                placeholder="XS, S, M, L, XL"
+              />
+            </div>
+            <Button
+              type="button"
+              className="h-9"
+              disabled={!sizeProfileName.trim() || sizeSettingsBusy}
+              onClick={() => void saveSizeProfile()}
+            >
+              {sizeSettingsBusy
+                ? 'Desant…'
+                : editingSizeProfileId
+                  ? 'Actualitzar perfil'
+                  : 'Crear perfil'}
+            </Button>
+          </div>
+          <div className="rounded-lg border border-border bg-background p-3">
+            <p className="mb-2 text-xs font-medium text-foreground">
+              Perfils disponibles ({sizeProfiles.length})
+            </p>
+            {sizeProfiles.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {sizeProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs hover:bg-muted"
+                    onClick={() => selectSizeProfile(profile.id)}
+                    title={`Editar ${profile.name}`}
+                  >
+                    {profile.name} · {profile.sizeOptions.length > 0 ? profile.sizeOptions.join(', ') : 'sense talla'}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Encara no hi ha cap perfil desat.</p>
+            )}
+          </div>
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-muted/20 p-3 dark:border-slate-700 sm:grid-cols-[minmax(13rem,1fr)_minmax(13rem,1fr)_auto] sm:items-end">
+            <div className="space-y-1">
+              <Label htmlFor="size-family" className="text-xs text-muted-foreground">
+                Família
+              </Label>
+              <select
+                id="size-family"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={sizeFamilyId}
+                onChange={(event) => selectSizeFamily(event.target.value)}
+              >
+                <option value="">— Trieu —</option>
+                {familyTerms.map((family) => (
+                  <option key={family.id} value={family.id}>
+                    {family.parentKey} · {family.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="family-size-profile" className="text-xs text-muted-foreground">
+                Perfil predeterminat
+              </Label>
+              <select
+                id="family-size-profile"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={familyDefaultProfileId}
+                disabled={!sizeFamilyId}
+                onChange={(event) => setFamilyDefaultProfileId(event.target.value)}
+              >
+                <option value="">Sense perfil</option>
+                {sizeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="button"
+              className="h-9"
+              disabled={!sizeFamilyId || sizeSettingsBusy}
+              onClick={() => void saveFamilyDefaultProfile()}
+            >
+              Assignar a la família
+            </Button>
+          </div>
+          <div className="grid gap-3 rounded-lg border border-emerald-200/70 bg-emerald-50/40 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20 sm:grid-cols-[minmax(9rem,12rem)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto] sm:items-end">
+            <div className="space-y-1">
+              <Label htmlFor="new-size-family-group" className="text-xs text-muted-foreground">
+                Grup de la nova família
+              </Label>
+              <Input
+                id="new-size-family-group"
+                className="h-9 text-sm"
+                value={newSizeFamilyGroup}
+                onChange={(event) => setNewSizeFamilyGroup(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new-size-family-profile" className="text-xs text-muted-foreground">
+                Perfil predeterminat
+              </Label>
+              <select
+                id="new-size-family-profile"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={newSizeFamilyProfileId}
+                onChange={(event) => setNewSizeFamilyProfileId(event.target.value)}
+              >
+                <option value="">Sense perfil</option>
+                {sizeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new-size-family-name" className="text-xs text-muted-foreground">
+                Nova família
+              </Label>
+              <Input
+                id="new-size-family-name"
+                className="h-9 text-sm"
+                value={newSizeFamilyName}
+                onChange={(event) => setNewSizeFamilyName(event.target.value)}
+                placeholder="Pantalons, Samarretes, Calçat…"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9"
+              disabled={!newSizeFamilyName.trim() || sizeSettingsBusy}
+              onClick={() => void createSizeFamily()}
+            >
+              Crear família
+              {newSizeFamilyProfileId ? ' i assignar perfil' : ''}
+            </Button>
+          </div>
+          </div>
+        ) : null}
+      </div>
+
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <button
           type="button"
@@ -838,19 +1413,23 @@ export function ProductesPanel() {
                 <Label htmlFor="p-fam" className="text-xs text-muted-foreground">
                   Família
                 </Label>
-                <Input
+                <select
                   id="p-fam"
-                  className="h-9 text-sm"
-                  list="roba-fam-list"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={form.familia}
-                  onChange={(e) => setForm((f) => ({ ...f, familia: e.target.value }))}
-                  placeholder="p. ex. Calçat, Pantalons…"
-                />
-                <datalist id="roba-fam-list">
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      familia: e.target.value,
+                      subfamilia: '',
+                    }))
+                  }
+                >
+                  <option value="">— Sense família —</option>
                   {familiaOptions.map((x) => (
-                    <option key={x} value={x} />
+                    <option key={x} value={x}>{x}</option>
                   ))}
-                </datalist>
+                </select>
               </div>
               <div className="space-y-1 min-w-0">
                 <Label htmlFor="p-sub" className="text-xs text-muted-foreground">
@@ -895,6 +1474,30 @@ export function ProductesPanel() {
                 />
               </div>
             </div>
+            <div className="mt-4 grid gap-1 sm:max-w-md">
+              <Label htmlFor="p-size-profile" className="text-xs text-muted-foreground">
+                Perfil de talles
+              </Label>
+              <select
+                id="p-size-profile"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={form.sizeProfileId}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, sizeProfileId: event.target.value }))
+                }
+              >
+                <option value="">
+                  Hereta de la família
+                  {selectedNewProductProfile ? ` · ${selectedNewProductProfile.name}` : ''}
+                </option>
+                {sizeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Trieu un perfil específic quan el proveïdor utilitzi un tallatge diferent.
+              </p>
+            </div>
             <div className="mt-4 space-y-2">
               <Label className="text-xs text-muted-foreground">Departaments</Label>
               <div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2">
@@ -910,6 +1513,15 @@ export function ProductesPanel() {
                 ))}
               </div>
             </div>
+            {form.familia.trim() || form.sizeProfileId ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {newProductSizes.length > 0
+                  ? `Perfil ${selectedNewProductProfile?.name || 'heretat'}: es crearan ${newProductSizes.length} variants (${newProductSizes.join(', ')}).`
+                  : selectedNewProductFamily
+                    ? 'Aquesta família està configurada sense talla.'
+                    : 'La família encara no té un format de talles configurat.'}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -944,12 +1556,43 @@ export function ProductesPanel() {
           L’interruptor <strong className="font-medium text-foreground">Actiu</strong> el mostra o amaga del catàleg
           (mateix patró que auditoria).
         </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xl">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={productSearch}
+              onChange={(event) => setProductSearch(event.target.value)}
+              className="h-10 pl-9 pr-10"
+              placeholder="Cerca intel·ligent: nom, codi, talla, família, departament, proveïdor…"
+              aria-label="Cercar productes actius"
+              autoComplete="off"
+            />
+            {productSearch ? (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setProductSearch('')}
+                aria-label="Netejar cerca de productes"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            ) : null}
+          </div>
+          <p className="shrink-0 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+            {filteredProductesTaula.length} de {productesTaula.length} productes
+          </p>
+        </div>
         <div className={taulaContentidorScroll}>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className={cn(taulaThText, 'whitespace-nowrap')}>Codi</TableHead>
                 <TableHead className={taulaThText}>Nom</TableHead>
+                <TableHead className={taulaThText}>Talla</TableHead>
+                <TableHead className={taulaThText}>Perfil talles</TableHead>
                 <TableHead className={taulaThText}>Grup</TableHead>
                 <TableHead className={taulaThText}>Família</TableHead>
                 <TableHead className={taulaThText}>Subfam.</TableHead>
@@ -965,18 +1608,24 @@ export function ProductesPanel() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-muted-foreground">
+                  <TableCell colSpan={14} className="text-muted-foreground">
                     Carregant…
                   </TableCell>
                 </TableRow>
               ) : productesTaula.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-muted-foreground text-center py-8 text-sm">
+                  <TableCell colSpan={14} className="text-muted-foreground text-center py-8 text-sm">
                     Encara no hi ha cap article. Creeu-ne un amb el formulari de dalt.
                   </TableCell>
                 </TableRow>
+              ) : filteredProductesTaula.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={14} className="py-10 text-center text-sm text-muted-foreground">
+                    Cap producte coincideix amb «{productSearch.trim()}».
+                  </TableCell>
+                </TableRow>
               ) : (
-                productesTaula.map((r) => {
+                filteredProductesTaula.map((r) => {
                   const actiu = r.isActive !== false
                   return (
                     <TableRow
@@ -997,6 +1646,10 @@ export function ProductesPanel() {
                     >
                       <TableCell className="font-mono text-xs whitespace-nowrap">{r.code}</TableCell>
                       <TableCell className="text-sm max-w-[220px]">{r.name}</TableCell>
+                      <TableCell className="text-sm font-medium">{r.size?.trim() || '—'}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {sizeProfileNameById.get(r.sizeProfileId || '') || 'Heretat'}
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{r.grup || '—'}</TableCell>
                       <TableCell className="text-xs">{r.familia || '—'}</TableCell>
                       <TableCell className="text-xs">{r.subfamilia || '—'}</TableCell>
@@ -1162,6 +1815,28 @@ export function ProductesPanel() {
             <DialogTitle>Editar article</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-1">
+            <div className="space-y-1">
+              <Label htmlFor="e-size-profile" className="text-xs text-muted-foreground">
+                Perfil de talles
+              </Label>
+              <select
+                id="e-size-profile"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={editForm.sizeProfileId}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    sizeProfileId: event.target.value,
+                    size: '',
+                  }))
+                }
+              >
+                <option value="">Hereta de la família</option>
+                {sizeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="e-code" className="text-xs text-muted-foreground">
@@ -1181,13 +1856,27 @@ export function ProductesPanel() {
                 <Label htmlFor="e-size" className="text-xs text-muted-foreground">
                   Talla / variant
                 </Label>
-                <Input
-                  id="e-size"
-                  className="h-9 text-sm"
-                  value={editForm.size}
-                  onChange={(e) => setEditForm((f) => ({ ...f, size: e.target.value }))}
-                  placeholder="Opcional"
-                />
+                {configuredEditFamilySizes.length > 0 ? (
+                  <select
+                    id="e-size"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={editForm.size}
+                    onChange={(e) => setEditForm((f) => ({ ...f, size: e.target.value }))}
+                  >
+                    <option value="">— Trieu —</option>
+                    {editFamilySizeOptions.map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="e-size"
+                    className="h-9 text-sm"
+                    value={editForm.size}
+                    onChange={(e) => setEditForm((f) => ({ ...f, size: e.target.value }))}
+                    placeholder="Opcional"
+                  />
+                )}
               </div>
             </div>
             <div className="space-y-1">
@@ -1255,18 +1944,23 @@ export function ProductesPanel() {
                 <Label htmlFor="e-fam" className="text-xs text-muted-foreground">
                   Família
                 </Label>
-                <Input
+                <select
                   id="e-fam"
-                  className="h-9 text-sm"
-                  list="roba-edit-fam-list"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={editForm.familia}
-                  onChange={(e) => setEditForm((f) => ({ ...f, familia: e.target.value }))}
-                />
-                <datalist id="roba-edit-fam-list">
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      familia: e.target.value,
+                      subfamilia: '',
+                    }))
+                  }
+                >
+                  <option value="">— Sense família —</option>
                   {editFamiliaOptions.map((x) => (
-                    <option key={x} value={x} />
+                    <option key={x} value={x}>{x}</option>
                   ))}
-                </datalist>
+                </select>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="e-sub" className="text-xs text-muted-foreground">
@@ -1324,6 +2018,21 @@ export function ProductesPanel() {
                 ))}
               </div>
             </div>
+            {configuredEditFamilySizes.length > 0 ? (
+              <div className="flex flex-col gap-2 rounded-md border border-indigo-200 bg-indigo-50/50 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Variants de la família: {configuredEditFamilySizes.join(', ')}.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void createMissingSizeVariants()}
+                >
+                  Crear variants que falten
+                </Button>
+              </div>
+            ) : null}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button

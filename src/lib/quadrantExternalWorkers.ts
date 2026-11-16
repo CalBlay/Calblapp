@@ -12,13 +12,12 @@ export function getExternalWorkerTypeFromName(
 ): ExternalWorkerType | null {
   const normalized = normalize(value)
   if (!normalized) return null
+  const normalizedExternalExtra = normalized
+    .replace(/^extra\s+c\s*\.\s*extern\b/, 'extra extern')
+    .replace(/^extra\s+c\s+extern\b/, 'extra extern')
   if (
-    normalized === 'extra c.extern' ||
-    normalized.startsWith('extra c.extern -') ||
-    normalized === 'extra c extern' ||
-    normalized.startsWith('extra c extern -') ||
-    normalized === 'extra extern' ||
-    normalized.startsWith('extra extern -')
+    normalizedExternalExtra === 'extra extern' ||
+    normalizedExternalExtra.startsWith('extra extern -')
   ) {
     return 'centerExternalExtra'
   }
@@ -41,6 +40,8 @@ export function isReusableExternalExtra(value?: {
   if (!value) return false
   if (value.externalType === 'centerExternalExtra') return true
   if (value.isCenterExternalExtra === true) return true
+  // `Extra` és també una plaça pendent/genèrica creada pel motor, mai una persona.
+  if (normalize(value.name || value.personName) === 'extra') return true
   return getExternalWorkerTypeFromName(value.name || value.personName) === 'centerExternalExtra'
 }
 
@@ -68,8 +69,20 @@ export function normalizeExternalWorkerName(params: {
     return basePrefix
   }
 
-  if (/^extra\s*c\.extern(?:\s*-\s*)?/i.test(raw)) {
-    const suffix = raw.replace(/^extra\s*c\.extern\s*-\s*/i, '').trim()
+  const centerExternalPrefix = /^extra\s*c(?:\s*\.\s*|\s+)extern/i
+  if (centerExternalPrefix.test(raw)) {
+    const suffix = raw
+      .replace(centerExternalPrefix, '')
+      .replace(/^\s*-\s*/, '')
+      .trim()
+    return suffix ? `${basePrefix} - ${suffix}` : basePrefix
+  }
+
+  if (/^extra\s+extern\b/i.test(raw)) {
+    const suffix = raw
+      .replace(/^extra\s+extern\b/i, '')
+      .replace(/^\s*-\s*/, '')
+      .trim()
     return suffix ? `${basePrefix} - ${suffix}` : basePrefix
   }
 

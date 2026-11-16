@@ -7,6 +7,7 @@ import type {
   QuadrantSaveRequestBody,
 } from '@/lib/quadrantsPost/types'
 import { attachManualWorkerLineSchedules } from '@/lib/quadrantLinePersonnel'
+import { getTargetInternalWorkerCount } from '@/lib/quadrantWorkerCounts'
 
 export function buildQuadrantSave(
   deptNorm: string,
@@ -368,12 +369,12 @@ export function buildQuadrantSave(
           })
         })
 
-        const targetWorkers = Math.max(
-          Number(bodyForSave.totalWorkers || 0) -
-            Number(bodyForSave.numDrivers || 0) -
-            responsibleNames.size,
-          0
-        )
+        const targetWorkers = getTargetInternalWorkerCount({
+          totalWorkers: Number(bodyForSave.totalWorkers || 0),
+          numDrivers: Number(bodyForSave.numDrivers || 0),
+          responsibleCount: responsibleNames.size,
+          externalWorkerCount: externalWorkerLines.length,
+        })
 
         while (uniqueWorkers.length < targetWorkers) {
           uniqueWorkers.push({

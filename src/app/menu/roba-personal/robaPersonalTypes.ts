@@ -43,6 +43,7 @@ export type ProductRow = {
   supplierSku?: string | null
   name: string
   size?: string
+  sizeProfileId?: string | null
   grup?: string | null
   familia?: string | null
   subfamilia?: string | null

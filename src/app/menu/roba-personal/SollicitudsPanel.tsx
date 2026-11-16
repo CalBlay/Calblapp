@@ -1331,7 +1331,7 @@ export function SollicitudsPanel({
                 <div className="hidden md:block min-w-[1px]" aria-hidden />
               )}
               <div className="space-y-1 min-w-0">
-                <Label className="text-xs text-muted-foreground">Producte</Label>
+                <Label className="text-xs text-muted-foreground">Producte i talla</Label>
                 <div className="mt-0.5">
                   <ProductSearchCombobox
                     products={products}

@@ -169,6 +169,9 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
         startTime: line.startTime || group.startTime || startTime,
         endTime: line.endTime || group.endTime || endTime,
         arrivalTime: line.arrivalTime || group.arrivalTime || null,
+        ...(line.isExternal === true ? { isExternal: true } : {}),
+        ...(line.externalType ? { externalType: line.externalType } : {}),
+        ...(line.isCenterExternalExtra === true ? { isCenterExternalExtra: true } : {}),
       })),
       ...(manualWorkersOrNull ? { manualWorkers: manualWorkersOrNull } : {}),
     }
@@ -192,11 +195,14 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
           getExternalWorkerTypeFromName(line.personName) === 'centerExternalExtra'
       )
       .map((line) => ({
+        id: `center-external-${group.id}-${line.slotId}`,
+        groupId: group.id,
         name: normalizeExternalWorkerName({
           rawName: line.personName,
           type: 'centerExternalExtra',
         }),
         isExternal: true,
+        externalType: 'centerExternalExtra' as const,
         meetingPoint: line.meetingPoint || group.meetingPoint || meetingPoint,
         startDate: line.serviceDate || group.serviceDate || startDate,
         endDate: line.serviceDate || group.serviceDate || endDate,

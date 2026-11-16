@@ -17,6 +17,7 @@ import {
 } from '@/lib/roba-personal/deptScope'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { normalizeRobaProductDepartments } from '@/data/departments'
+import { normalizeRobaSizeOptions } from '@/lib/roba-personal/sizeProfiles'
 
 const COL = DOTACIO_COLLECTIONS.products
 
@@ -108,7 +109,15 @@ export async function POST(req: Request) {
       )
     }
 
-    const size = str(body.size)
+    const postedSizes = normalizeRobaSizeOptions(body.sizes)
+    const sizes = postedSizes.length > 0 ? postedSizes : [str(body.size)]
+    const sizeProfileId = str(body.sizeProfileId)
+    if (sizeProfileId) {
+      const profile = await db.collection(DOTACIO_COLLECTIONS.sizeProfiles).doc(sizeProfileId).get()
+      if (!profile.exists) {
+        return NextResponse.json({ error: 'Perfil de talles no trobat.' }, { status: 400 })
+      }
+    }
     const now = FieldValue.serverTimestamp()
     const magatzemRaw = str(body.magatzem)
     const magatzem = magatzemRaw || DEFAULT_DOTACIO_MAGATZEM
@@ -118,15 +127,15 @@ export async function POST(req: Request) {
       : []
     const departments = normalizeRobaProductDepartments(departmentsRaw)
 
-    const doc: Record<string, unknown> = {
+    const baseDoc: Record<string, unknown> = {
       code,
       supplier,
       supplierId: supplierId || null,
       name,
-      size: size || '',
       grup: str(body.grup) || 'Roba',
       familia: str(body.familia) || null,
       subfamilia: str(body.subfamilia) || null,
+      sizeProfileId: sizeProfileId || null,
       departments: departments.length ? departments : null,
       magatzem,
       supplierSku: str(body.supplierSku) || null,
@@ -144,10 +153,33 @@ export async function POST(req: Request) {
       updatedAt: now,
     }
 
-    const ref = await db.collection(COL).add(doc)
-    const created = await ref.get()
+    const existingSnap = await db.collection(COL).where('code', '==', code).get()
+    const existingSizes = new Set(
+      existingSnap.docs
+        .filter((doc) => {
+          const row = doc.data() as Record<string, unknown>
+          return str(row.name).toLocaleLowerCase('ca') === name.toLocaleLowerCase('ca')
+        })
+        .map((doc) => str((doc.data() as Record<string, unknown>).size).toLocaleUpperCase('ca'))
+    )
+    const sizesToCreate = sizes.filter((size) => !existingSizes.has(size.toLocaleUpperCase('ca')))
+    if (sizesToCreate.length === 0) {
+      return NextResponse.json({ error: 'Aquest article ja existeix amb les talles indicades.' }, { status: 409 })
+    }
+
+    const batch = db.batch()
+    const refs = sizesToCreate.map((size) => {
+      const ref = db.collection(COL).doc()
+      batch.set(ref, { ...baseDoc, size: size || '' })
+      return ref
+    })
+    await batch.commit()
+    const created = await db.getAll(...refs)
+    const products = created.map((snap) =>
+      serializeFirestoreDoc(snap.id, snap.data() as Record<string, unknown>)
+    )
     return NextResponse.json(
-      serializeFirestoreDoc(created.id, created.data() as Record<string, unknown>),
+      { products, createdCount: products.length, skippedCount: sizes.length - products.length },
       { status: 201 }
     )
   } catch (e: unknown) {

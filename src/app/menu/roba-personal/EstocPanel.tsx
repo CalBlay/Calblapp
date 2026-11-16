@@ -998,7 +998,7 @@ export function EstocPanel() {
         >
           <div className="flex flex-col gap-3 min-w-0 md:flex-row md:flex-nowrap md:items-end md:gap-x-2 md:gap-y-2 lg:gap-x-3">
             <div className="space-y-1 min-w-0 w-full md:flex-1 md:basis-0 md:min-w-[10rem]">
-              <Label className="text-xs text-muted-foreground">Producte</Label>
+              <Label className="text-xs text-muted-foreground">Producte i talla</Label>
               <ProductSearchCombobox
                 products={products}
                 value={productId}

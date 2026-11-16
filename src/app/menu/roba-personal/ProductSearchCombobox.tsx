@@ -64,7 +64,7 @@ export function ProductSearchCombobox({
   products,
   value,
   onChange,
-  placeholder = 'Cercar producte…',
+  placeholder = 'Cercar producte i talla…',
   commandInputPlaceholder = 'Codi, nom, classificació, proveïdor…',
   disabled,
   className,
@@ -125,6 +125,7 @@ export function ProductSearchCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={selected ? `Producte i talla: ${labelSelected}` : placeholder}
           disabled={disabled}
           className={cn(
             'h-10 w-full justify-between font-normal px-3',
