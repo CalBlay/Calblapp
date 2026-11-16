@@ -100,7 +100,7 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
       : department === 'serveis'
         ? row.meetingComment
         : stored?.text || ''
-    return text || 'Sense observacions.'
+    return text || ''
   }
   const body = rows.map((row) => `
     <tr>
@@ -129,7 +129,7 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
     <div class="meta">Període del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
     <table class="minutes-grid"><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
     <div class="notes"><strong>Assistència</strong><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th><th>Rep correu</th></tr></thead><tbody>${attendanceRows}</tbody></table></div>
-    <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes) || 'Sense observacions.'}</p></div></body></html>`
+    <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes)}</p></div></body></html>`
 }
 
 function MeetingAttendeesPanel({
@@ -384,7 +384,7 @@ function DepartmentCommentCell({
         }}
         rows={3}
         maxLength={4000}
-        placeholder={canEdit ? 'Observacions del departament…' : 'Sense observacions'}
+        placeholder={canEdit ? 'Observacions del departament…' : ''}
         className={cn(
           'w-full rounded-lg border px-2.5 py-2 text-sm outline-none',
           canEdit
@@ -918,7 +918,7 @@ export default function QuadrantsWeeklyMeetingPage() {
                 </select>
               </div>
               {selectedHistoryId && selectedSession ? (
-                <div className="space-y-4"><div><div className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">Acta històrica · {selectedSession.status === 'finalized' ? 'Finalitzada' : 'Esborrany'}</div><div className="min-h-32 whitespace-pre-wrap rounded-xl border border-slate-200 p-3 text-sm">{selectedSession.notes || 'Sense observacions.'}</div></div>{selectedSession.attendees?.length ? <MeetingAttendeesPanel attendees={selectedSession.attendees} disabled onChange={() => undefined} /> : null}</div>
+                <div className="space-y-4"><div><div className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">Acta històrica · {selectedSession.status === 'finalized' ? 'Finalitzada' : 'Esborrany'}</div><div className="min-h-32 whitespace-pre-wrap rounded-xl border border-slate-200 p-3 text-sm">{selectedSession.notes}</div></div>{selectedSession.attendees?.length ? <MeetingAttendeesPanel attendees={selectedSession.attendees} disabled onChange={() => undefined} /> : null}</div>
               ) : (
                 <div className="space-y-4"><label className="block"><span className="mb-2 block text-sm font-semibold">Anotacions de la reunió</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void saveMinutes('save', { closeAfter: true }) } }} rows={currentSession?.status === 'finalized' ? 7 : 14} placeholder={'• Comentari general\n• Acord\n• Següent pas…'} className="w-full resize-y rounded-xl border border-slate-300 p-3 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /><span className="mt-2 block text-xs text-slate-400">Ctrl+Enter per desar i tornar al tauler.</span></label>{currentSession?.status === 'finalized' ? <MeetingAttendeesPanel attendees={attendees} onChange={setAttendees} /> : null}</div>
               )}

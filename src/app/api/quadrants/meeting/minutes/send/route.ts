@@ -77,9 +77,9 @@ function buildMinutesHtml(input: {
       <td><strong>${escapeHtml(row.location || 'Ubicació pendent')}</strong>${row.eventName ? `<br><small>${escapeHtml(row.eventName)}</small>` : ''}${row.servicesSetup ? `<br><strong>Muntatge: ${escapeHtml(row.servicesSetup).replaceAll('\n', '<br>Muntatge: ')}</strong>` : ''}${row.servicesTeam ? `<br><small>${escapeHtml(row.servicesTeam).replaceAll('\n', '<br>')}</small>` : ''}</td>
       <td>${escapeHtml(row.pax)}</td>
       <td>${escapeHtml(row.scheduleNotes || row.eventSchedule).replaceAll('\n', '<br>')}</td>
-      <td>${escapeHtml(departmentComment(row, 'serveis') || 'Sense observacions.').replaceAll('\n', '<br>')}</td>
-      <td>${escapeHtml(departmentComment(row, 'logistica') || 'Sense observacions.').replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'logistica'))}</td>
-      <td>${escapeHtml(departmentComment(row, 'cuina') || 'Sense observacions.').replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
+      <td>${escapeHtml(departmentComment(row, 'serveis')).replaceAll('\n', '<br>')}</td>
+      <td>${escapeHtml(departmentComment(row, 'logistica')).replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'logistica'))}</td>
+      <td>${escapeHtml(departmentComment(row, 'cuina')).replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
     </tr>`).join('')
   const attendanceHtml = input.attendees.map((attendee) => `
     <tr><td>${escapeHtml(attendee.name)}</td><td>${escapeHtml(attendee.department || '—')}</td><td>${escapeHtml(attendanceLabel(attendee))}</td><td>${attendee.receiveEmail === false ? 'No' : 'Sí'}</td></tr>`).join('')
@@ -90,7 +90,7 @@ function buildMinutesHtml(input: {
     <div class="meta">Període del ${escapeHtml(formatDay(input.weekStart))} al ${escapeHtml(formatDay(input.weekEnd))}${input.finalizedByName ? ` · Tancada per ${escapeHtml(input.finalizedByName)}` : ''}</div>
     <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${rowsHtml}</tbody></table>
     <div class="section"><h2>Assistència</h2><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th><th>Rep correu</th></tr></thead><tbody>${attendanceHtml}</tbody></table></div>
-    <div class="section"><h2>Observacions generals</h2><div class="notes">${escapeHtml(input.notes) || 'Sense observacions.'}</div></div>
+    <div class="section"><h2>Observacions generals</h2><div class="notes">${escapeHtml(input.notes)}</div></div>
     </body></html>`
 }
 
