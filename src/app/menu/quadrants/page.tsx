@@ -9,7 +9,7 @@ import { useSession } from 'next-auth/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays, Clock3, FileText } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { CorporateFiltersShell, CorporateFilterField, CorporateFilterSelect } from '@/components/layout/corporate-filters'
@@ -38,10 +38,12 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import {
   QUADRANTS_ACTION,
+  QUADRANTS_MEETING_MINUTES_PERM,
   QUADRANTS_UI_PATH,
   canAccessQuadrantsPremissesDepartment,
 } from '@/lib/quadrantsPermissions'
 import { buildPendingExpandKey } from '@/lib/buildPendingQuadrantDraft'
+import { Button } from '@/components/ui/button'
 
 type SessionDepartmentSource = {
   department?: string
@@ -101,6 +103,14 @@ const fetchDashboard = async (url: string): Promise<DashboardResponse> => {
   return res.json()
 }
 
+const fetchMeetingMinutesState = async (url: string): Promise<{
+  session: { status?: 'draft' | 'finalized' } | null
+}> => {
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
 
 export default function QuadrantsPage() {
   const searchParams = useSearchParams()
@@ -152,6 +162,17 @@ export default function QuadrantsPage() {
       sessionDept: permissionDepartment,
       requestedDept: department,
     })
+  const canMeetingMinutes =
+    permsReady && hasAction(QUADRANTS_MEETING_MINUTES_PERM)
+  const meetingMinutesUrl = canMeetingMinutes
+    ? `/api/quadrants/meeting/minutes?weekStart=${filters.start}&weekEnd=${filters.end}`
+    : null
+  const { data: meetingMinutesData } = useSWR<{
+    session: { status?: 'draft' | 'finalized' } | null
+  }>(meetingMinutesUrl, fetchMeetingMinutesState)
+  const meetingStatus = meetingMinutesData?.session?.status || null
+  const meetingHref = `/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}&acta=1`
+  const meetingHistoryHref = `/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}&history=1`
   const openEventId = useMemo(() => {
     const raw = String(searchParamsSafe.get('openEventId') || '').trim()
     return raw ? raw.split('__')[0] : null
@@ -597,6 +618,47 @@ export default function QuadrantsPage() {
             >
               Reunió setmanal
             </Link>
+            {canMeetingMinutes ? (
+              <div className="flex items-center gap-0.5 rounded-xl border border-indigo-200/70 bg-indigo-50/70 p-1">
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 whitespace-nowrap px-2 text-slate-700 hover:bg-white hover:text-slate-950"
+                >
+                  <Link
+                    href={meetingHref}
+                    title={
+                      meetingStatus === 'draft'
+                        ? 'Apunts de la reunió'
+                        : meetingStatus === 'finalized'
+                          ? 'Tancar acta'
+                          : 'Acta de la reunió'
+                    }
+                  >
+                    <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>
+                      {meetingStatus === 'draft'
+                        ? 'Apunts'
+                        : meetingStatus === 'finalized'
+                          ? 'Tancar acta'
+                          : 'Acta'}
+                    </span>
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 whitespace-nowrap px-2 text-slate-700 hover:bg-white hover:text-slate-950"
+                >
+                  <Link href={meetingHistoryHref} title="Historial d'actes" aria-label="Historial d'actes">
+                    <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="hidden xl:inline">Historial</span>
+                  </Link>
+                </Button>
+              </div>
+            ) : null}
             {canPremisses ? (
               <Link
                 href="/menu/quadrants/premisses"

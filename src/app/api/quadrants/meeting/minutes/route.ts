@@ -1,12 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
-import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
+import { requireQuadrantsMeetingMinutes } from '@/lib/server/quadrantsReadAuth'
 import { QUADRANTS_MEETING_MINUTES_COLLECTION } from '@/lib/quadrantsWeeklyMeeting'
+import {
+  meetingAttendeesForFirestore,
+  normalizeMeetingAttendance,
+  type IncidentMeetingAttendee,
+} from '@/lib/incidentMeetingSession'
+import {
+  loadDefaultQuadrantsMeetingAttendees,
+  refreshQuadrantsMeetingAttendees,
+} from '@/lib/server/quadrantsMeetingMinutesData'
 
 export const runtime = 'nodejs'
 
 function serialize(id: string, data: Record<string, unknown>) {
+  const attendees = Array.isArray(data.attendees)
+    ? data.attendees.map((row) => {
+        const item = row as Record<string, unknown>
+        return {
+          key: String(item.key || `user:${item.userId || item.email || ''}`).trim(),
+          userId: String(item.userId || '').trim(),
+          name: String(item.name || item.email || '').trim(),
+          email: String(item.email || '').trim().toLowerCase(),
+          department: String(item.department || '').trim(),
+          attendance: normalizeMeetingAttendance(item),
+          absenceReason: String(item.absenceReason || '').trim(),
+          receiveEmail: item.receiveEmail === false ? false : true,
+        } satisfies IncidentMeetingAttendee
+      })
+    : []
   return {
     id,
     weekStart: String(data.weekStart || ''),
@@ -14,16 +38,41 @@ function serialize(id: string, data: Record<string, unknown>) {
     status: data.status === 'finalized' ? 'finalized' : 'draft',
     notes: String(data.notes || ''),
     rows: Array.isArray(data.rows) ? data.rows : [],
+    attendees,
     createdAt: String(data.createdAt || ''),
     updatedAt: String(data.updatedAt || ''),
     createdByName: String(data.createdByName || ''),
     finalizedAt: String(data.finalizedAt || ''),
     finalizedByName: String(data.finalizedByName || ''),
+    emailSentAt: String(data.emailSentAt || ''),
+    emailSentByName: String(data.emailSentByName || ''),
   }
 }
 
+function parseAttendees(raw: unknown): IncidentMeetingAttendee[] | null {
+  if (!Array.isArray(raw)) return null
+  return raw
+    .map((row) => {
+      const item = row as Record<string, unknown>
+      const key = String(item.key || '').trim()
+      const name = String(item.name || '').trim()
+      if (!key || !name) return null
+      return {
+        key,
+        userId: String(item.userId || '').trim(),
+        name,
+        email: String(item.email || '').trim().toLowerCase(),
+        department: String(item.department || '').trim(),
+        attendance: normalizeMeetingAttendance(item),
+        absenceReason: String(item.absenceReason || '').trim(),
+        receiveEmail: item.receiveEmail === false ? false : true,
+      } satisfies IncidentMeetingAttendee
+    })
+    .filter(Boolean) as IncidentMeetingAttendee[]
+}
+
 export async function GET(req: NextRequest) {
-  const auth = await requireQuadrantsModuleRead()
+  const auth = await requireQuadrantsMeetingMinutes()
   if (!auth.ok) return auth.res
 
   try {
@@ -50,10 +99,17 @@ export async function GET(req: NextRequest) {
       .collection(QUADRANTS_MEETING_MINUTES_COLLECTION)
       .doc(id)
       .get()
+    const defaultAttendees = await loadDefaultQuadrantsMeetingAttendees()
+    if (!snap.exists) {
+      return NextResponse.json({ session: null, attendees: defaultAttendees })
+    }
+    const session = serialize(snap.id, snap.data() as Record<string, unknown>)
     return NextResponse.json({
-      session: snap.exists
-        ? serialize(snap.id, snap.data() as Record<string, unknown>)
-        : null,
+      session: {
+        ...session,
+        attendees: await refreshQuadrantsMeetingAttendees(session.attendees),
+      },
+      attendees: defaultAttendees,
     })
   } catch (error) {
     console.error('[quadrants/meeting/minutes GET]', error)
@@ -62,7 +118,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireQuadrantsModuleRead()
+  const auth = await requireQuadrantsMeetingMinutes()
   if (!auth.ok) return auth.res
 
   try {
@@ -87,6 +143,13 @@ export async function POST(req: NextRequest) {
       : null
     const now = new Date().toISOString()
     const userName = String(auth.user.name || auth.user.email || '')
+    const parsedAttendees = parseAttendees(body.attendees)
+    const defaultAttendees = await loadDefaultQuadrantsMeetingAttendees()
+    const attendees = parsedAttendees && parsedAttendees.length > 0
+      ? parsedAttendees
+      : current?.attendees?.length
+        ? await refreshQuadrantsMeetingAttendees(current.attendees)
+        : defaultAttendees
 
     if (action === 'finalize' && current?.status === 'finalized') {
       return NextResponse.json({ error: 'L’acta ja està finalitzada' }, { status: 400 })
@@ -98,7 +161,8 @@ export async function POST(req: NextRequest) {
     const payload: Record<string, unknown> = {
       weekStart,
       weekEnd,
-      notes: String(body.notes || current?.notes || ''),
+      notes: typeof body.notes === 'string' ? body.notes : current?.notes || '',
+      attendees: meetingAttendeesForFirestore(attendees),
       updatedAt: now,
       updatedById: auth.user.id,
       updatedByName: userName,
@@ -132,5 +196,30 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[quadrants/meeting/minutes POST]', error)
     return NextResponse.json({ error: 'No s’ha pogut desar l’acta' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const auth = await requireQuadrantsMeetingMinutes()
+  if (!auth.ok) return auth.res
+
+  try {
+    const body = (await req.json()) as { id?: string }
+    const id = String(body.id || '').trim()
+    if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+
+    const ref = firestoreAdmin
+      .collection(QUADRANTS_MEETING_MINUTES_COLLECTION)
+      .doc(id)
+    const snap = await ref.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Acta no trobada' }, { status: 404 })
+    }
+
+    await ref.delete()
+    return NextResponse.json({ ok: true, id })
+  } catch (error) {
+    console.error('[quadrants/meeting/minutes DELETE]', error)
+    return NextResponse.json({ error: 'No s’ha pogut eliminar l’acta' }, { status: 500 })
   }
 }

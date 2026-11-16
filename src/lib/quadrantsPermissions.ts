@@ -5,10 +5,16 @@ import { normalizeRole } from '@/lib/roles'
 export const QUADRANTS_UI_PATH = '/menu/quadrants'
 
 export const QUADRANTS_ACTION = {
+  MEETING_MINUTES: 'meeting-minutes',
   PREMISSES_EDIT: 'premisses:edit',
   /** Permís explícit per reobrir un quadrant confirmat. No s’implica des de confirmar. */
   REOPEN: 'draft:unconfirm',
 } as const
+
+export const QUADRANTS_MEETING_MINUTES_PERM = PERM.action(
+  QUADRANTS_UI_PATH,
+  QUADRANTS_ACTION.MEETING_MINUTES
+)
 
 export const QUADRANTS_REOPEN_PERM = PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.REOPEN)
 

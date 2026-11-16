@@ -10,6 +10,7 @@ import {
 } from '@/lib/reservaComercialsPermissions'
 import {
   QUADRANTS_ACTION,
+  QUADRANTS_MEETING_MINUTES_PERM,
   QUADRANTS_UI_PATH,
   baseCanEditQuadrantsPremisses,
 } from '@/lib/quadrantsPermissions'
@@ -169,6 +170,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/quadrants', action: 'draft:save' },
   { path: '/menu/quadrants', action: 'draft:confirm' },
   { path: '/menu/quadrants', action: 'draft:delete' },
+  { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.MEETING_MINUTES },
   { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.REOPEN },
   { path: QUADRANTS_UI_PATH, action: QUADRANTS_ACTION.PREMISSES_EDIT },
   { path: RESERVA_COMERCIALS_UI_PATH, action: RESERVA_COMERCIALS_ACTION.REQUEST },
@@ -454,6 +456,15 @@ export async function GET() {
     (baseCanEditQuadrantsPremisses(accessUser) || quadrantsPremissesEffect === 'allow')
   ) {
     actions[PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)] = true
+  }
+
+  // Acta de quadrants: opt-in explícit, igual que l'acta d'incidències.
+  actions[QUADRANTS_MEETING_MINUTES_PERM] = false
+  if (
+    map[QUADRANTS_UI_PATH] === true &&
+    effectFor(assignment, QUADRANTS_MEETING_MINUTES_PERM) === 'allow'
+  ) {
+    actions[QUADRANTS_MEETING_MINUTES_PERM] = true
   }
 
   // Incidències: quadre i acta només amb allow explícit (Settings → permisos)

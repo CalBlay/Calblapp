@@ -271,9 +271,13 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     id: 'quadrantsActions',
     title: 'Quadrants · Accions',
     subtitle:
-      'Accions especials dins del mòdul Quadrants. «Premisses» permet el botó i editar la configuració. «Reobrir quadrant» no s’atorga amb confirmar: cal assignar-lo a l’usuari.',
+      'Accions especials dins del mòdul Quadrants. «Acta reunió» i «Reobrir quadrant» són permisos explícits: cal assignar-los a l’usuari.',
     visibleWhen: { path: '/menu/quadrants' },
     actions: [
+      {
+        key: PERM.action('/menu/quadrants', 'meeting-minutes'),
+        label: 'Acta reunió de Quadrants',
+      },
       {
         key: PERM.action('/menu/quadrants', 'premisses:edit'),
         label: 'Premisses (configuració)',
