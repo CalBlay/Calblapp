@@ -47,7 +47,7 @@ function attendanceLabel(attendee: IncidentMeetingAttendee) {
   if (attendee.attendance === 'absent') {
     return `Absent${attendee.absenceReason ? ` · ${attendee.absenceReason}` : ''}`
   }
-  return 'Pendent'
+  return 'Presencial'
 }
 
 function departmentComment(row: WeeklyMeetingRow, department: 'serveis' | 'logistica' | 'cuina') {
@@ -82,15 +82,15 @@ function buildMinutesHtml(input: {
       <td>${escapeHtml(departmentComment(row, 'cuina')).replaceAll('\n', '<br>')}<hr>${escapeHtml(decisionLabel(row, 'cuina'))}</td>
     </tr>`).join('')
   const attendanceHtml = input.attendees.map((attendee) => `
-    <tr><td>${escapeHtml(attendee.name)}</td><td>${escapeHtml(attendee.department || '—')}</td><td>${escapeHtml(attendanceLabel(attendee))}</td><td>${attendee.receiveEmail === false ? 'No' : 'Sí'}</td></tr>`).join('')
+    <tr><td>${escapeHtml(attendee.name)}</td><td>${escapeHtml(attendee.department || '—')}</td><td>${escapeHtml(attendanceLabel(attendee))}</td></tr>`).join('')
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>Acta reunió de quadrants</title>
     <style>body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:10px}h1{font-size:20px;margin:0 0 5px}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:6px;vertical-align:top}th{background:#111827;color:white;text-align:left}hr{border:0;border-top:1px solid #cbd5e1;margin:7px 0}.section{margin-top:20px}.notes{white-space:pre-wrap;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
     <div class="meta">Període del ${escapeHtml(formatDay(input.weekStart))} al ${escapeHtml(formatDay(input.weekEnd))}${input.finalizedByName ? ` · Tancada per ${escapeHtml(input.finalizedByName)}` : ''}</div>
     <table><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-    <div class="section"><h2>Assistència</h2><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th><th>Rep correu</th></tr></thead><tbody>${attendanceHtml}</tbody></table></div>
-    <div class="section"><h2>Observacions generals</h2><div class="notes">${escapeHtml(input.notes)}</div></div>
+    <div class="section"><h2>Assistència</h2><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th></tr></thead><tbody>${attendanceHtml}</tbody></table></div>
+    ${input.notes.trim() ? `<div class="section"><h2>Observacions generals</h2><div class="notes">${escapeHtml(input.notes)}</div></div>` : ''}
     </body></html>`
 }
 
@@ -119,10 +119,17 @@ export async function POST(req: Request) {
     }
 
     const attendees = parseAttendees(data.attendees)
-    const recipients = attendees
+    const attendeeRecipients = attendees
       .filter((attendee) => attendee.receiveEmail !== false)
       .map((attendee) => ({ email: attendee.email, name: attendee.name }))
       .filter((recipient) => recipient.email.includes('@'))
+    const additionalRecipients = (Array.isArray(data.additionalEmails) ? data.additionalEmails : [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter((email) => email.includes('@'))
+      .map((email) => ({ email, name: email }))
+    const recipients = [...new Map(
+      [...attendeeRecipients, ...additionalRecipients].map((recipient) => [recipient.email, recipient])
+    ).values()]
     if (!recipients.length) {
       return NextResponse.json({ error: 'No hi ha destinataris amb correu seleccionats' }, { status: 400 })
     }

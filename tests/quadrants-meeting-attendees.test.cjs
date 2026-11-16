@@ -28,4 +28,5 @@ test('quadrants meeting resolves the seven fixed attendees in order', () => {
   assert.equal(attendees.at(-1).userId, 'jordi')
   assert.deepEqual(QUADRANTS_MEETING_CORE_NAMES.slice(0, 3), ['Jona', 'Gaston', 'David'])
   assert.ok(attendees.every((attendee) => attendee.receiveEmail === true))
+  assert.ok(attendees.every((attendee) => attendee.attendance === 'in_person'))
 })

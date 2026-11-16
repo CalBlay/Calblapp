@@ -25,7 +25,7 @@ function serialize(id: string, data: Record<string, unknown>) {
           name: String(item.name || item.email || '').trim(),
           email: String(item.email || '').trim().toLowerCase(),
           department: String(item.department || '').trim(),
-          attendance: normalizeMeetingAttendance(item),
+          attendance: normalizeMeetingAttendance(item) || 'in_person',
           absenceReason: String(item.absenceReason || '').trim(),
           receiveEmail: item.receiveEmail === false ? false : true,
         } satisfies IncidentMeetingAttendee
@@ -39,6 +39,9 @@ function serialize(id: string, data: Record<string, unknown>) {
     notes: String(data.notes || ''),
     rows: Array.isArray(data.rows) ? data.rows : [],
     attendees,
+    additionalEmails: Array.isArray(data.additionalEmails)
+      ? data.additionalEmails.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+      : [],
     createdAt: String(data.createdAt || ''),
     updatedAt: String(data.updatedAt || ''),
     createdByName: String(data.createdByName || ''),
@@ -63,7 +66,7 @@ function parseAttendees(raw: unknown): IncidentMeetingAttendee[] | null {
         name,
         email: String(item.email || '').trim().toLowerCase(),
         department: String(item.department || '').trim(),
-        attendance: normalizeMeetingAttendance(item),
+        attendance: normalizeMeetingAttendance(item) || 'in_person',
         absenceReason: String(item.absenceReason || '').trim(),
         receiveEmail: item.receiveEmail === false ? false : true,
       } satisfies IncidentMeetingAttendee
@@ -144,6 +147,11 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
     const userName = String(auth.user.name || auth.user.email || '')
     const parsedAttendees = parseAttendees(body.attendees)
+    const additionalEmails = Array.isArray(body.additionalEmails)
+      ? [...new Set(body.additionalEmails
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter((value) => value.includes('@')))]
+      : current?.additionalEmails || []
     const defaultAttendees = await loadDefaultQuadrantsMeetingAttendees()
     const attendees = parsedAttendees && parsedAttendees.length > 0
       ? parsedAttendees
@@ -163,6 +171,7 @@ export async function POST(req: NextRequest) {
       weekEnd,
       notes: typeof body.notes === 'string' ? body.notes : current?.notes || '',
       attendees: meetingAttendeesForFirestore(attendees),
+      additionalEmails,
       updatedAt: now,
       updatedById: auth.user.id,
       updatedByName: userName,

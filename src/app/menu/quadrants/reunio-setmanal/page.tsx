@@ -54,6 +54,7 @@ type MeetingSession = {
   notes: string
   rows: WeeklyMeetingRow[]
   attendees: IncidentMeetingAttendee[]
+  additionalEmails: string[]
   updatedAt: string
   createdByName: string
   finalizedAt: string
@@ -119,8 +120,8 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
         ? 'En línia'
         : attendee.attendance === 'absent'
           ? `Absent${attendee.absenceReason ? ` · ${attendee.absenceReason}` : ''}`
-          : 'Pendent'
-    return `<tr><td>${escapeHtml(attendee.name)}</td><td>${escapeHtml(attendee.department || '—')}</td><td>${escapeHtml(attendance)}</td><td>${attendee.receiveEmail === false ? 'No' : 'Sí'}</td></tr>`
+          : 'Presencial'
+    return `<tr><td>${escapeHtml(attendee.name)}</td><td>${escapeHtml(attendee.department || '—')}</td><td>${escapeHtml(attendance)}</td></tr>`
   }).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Acta reunió de quadrants</title>
     <style>
@@ -128,8 +129,8 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
     <div class="meta">Període del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
     <table class="minutes-grid"><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
-    <div class="notes"><strong>Assistència</strong><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th><th>Rep correu</th></tr></thead><tbody>${attendanceRows}</tbody></table></div>
-    <div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes)}</p></div></body></html>`
+    <div class="notes"><strong>Assistència</strong><table><thead><tr><th>Nom</th><th>Departament</th><th>Assistència</th></tr></thead><tbody>${attendanceRows}</tbody></table></div>
+    ${session.notes.trim() ? `<div class="notes"><strong>Observacions de l’acta</strong><p>${escapeHtml(session.notes)}</p></div>` : ''}</body></html>`
 }
 
 function MeetingAttendeesPanel({
@@ -159,16 +160,15 @@ function MeetingAttendeesPanel({
               <p className="truncate text-xs text-slate-500">{attendee.department || 'Sense departament'}</p>
             </div>
             <select
-              value={attendee.attendance || ''}
+              value={attendee.attendance || 'in_person'}
               disabled={disabled}
               onChange={(event) => patchAttendee(attendee.key, {
-                attendance: (event.target.value || null) as MeetingAttendance,
+                attendance: event.target.value as MeetingAttendance,
                 ...(event.target.value !== 'absent' ? { absenceReason: '' } : {}),
               })}
               aria-label={`Assistència de ${attendee.name}`}
               className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm disabled:bg-slate-100"
             >
-              <option value="">Pendent</option>
               <option value="in_person">Presencial</option>
               <option value="online">En línia</option>
               <option value="absent">Absent</option>
@@ -430,6 +430,7 @@ export default function QuadrantsWeeklyMeetingPage() {
   const [minutesOpen, setMinutesOpen] = useState(false)
   const [notes, setNotes] = useState('')
   const [attendees, setAttendees] = useState<IncidentMeetingAttendee[]>([])
+  const [additionalEmailsText, setAdditionalEmailsText] = useState('')
   const [minutesBusy, setMinutesBusy] = useState(false)
   const [minutesSending, setMinutesSending] = useState(false)
   const [selectedHistoryId, setSelectedHistoryId] = useState('')
@@ -464,8 +465,9 @@ export default function QuadrantsWeeklyMeetingPage() {
     setAttendees(currentSession?.attendees?.length
       ? currentSession.attendees
       : minutesData?.attendees || [])
+    setAdditionalEmailsText((currentSession?.additionalEmails || []).join(', '))
     setSelectedHistoryId('')
-  }, [currentSession?.id, currentSession?.notes, currentSession?.attendees, minutesData?.attendees, weekStart, weekEnd])
+  }, [currentSession?.id, currentSession?.notes, currentSession?.attendees, currentSession?.additionalEmails, minutesData?.attendees, weekStart, weekEnd])
 
   useEffect(() => {
     if (!canMeetingMinutes) return
@@ -641,6 +643,10 @@ export default function QuadrantsWeeklyMeetingPage() {
           action,
           notes,
           attendees,
+          additionalEmails: additionalEmailsText
+            .split(/[;,\n]+/)
+            .map((email) => email.trim().toLowerCase())
+            .filter(Boolean),
           rows: data?.rows || [],
         }),
       })
@@ -725,6 +731,10 @@ export default function QuadrantsWeeklyMeetingPage() {
             notes,
             rows: data?.rows || [],
             attendees,
+            additionalEmails: additionalEmailsText
+              .split(/[;,\n]+/)
+              .map((email) => email.trim().toLowerCase())
+              .filter(Boolean),
             updatedAt: currentSession?.updatedAt || '',
             createdByName: currentSession?.createdByName || '',
             finalizedAt: '',
@@ -920,7 +930,7 @@ export default function QuadrantsWeeklyMeetingPage() {
               {selectedHistoryId && selectedSession ? (
                 <div className="space-y-4"><div><div className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">Acta històrica · {selectedSession.status === 'finalized' ? 'Finalitzada' : 'Esborrany'}</div><div className="min-h-32 whitespace-pre-wrap rounded-xl border border-slate-200 p-3 text-sm">{selectedSession.notes}</div></div>{selectedSession.attendees?.length ? <MeetingAttendeesPanel attendees={selectedSession.attendees} disabled onChange={() => undefined} /> : null}</div>
               ) : (
-                <div className="space-y-4"><label className="block"><span className="mb-2 block text-sm font-semibold">Anotacions de la reunió</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void saveMinutes('save', { closeAfter: true }) } }} rows={currentSession?.status === 'finalized' ? 7 : 14} placeholder={'• Comentari general\n• Acord\n• Següent pas…'} className="w-full resize-y rounded-xl border border-slate-300 p-3 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /><span className="mt-2 block text-xs text-slate-400">Ctrl+Enter per desar i tornar al tauler.</span></label>{currentSession?.status === 'finalized' ? <MeetingAttendeesPanel attendees={attendees} onChange={setAttendees} /> : null}</div>
+                <div className="space-y-4"><label className="block"><span className="mb-2 block text-sm font-semibold">Anotacions de la reunió</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void saveMinutes('save', { closeAfter: true }) } }} rows={currentSession?.status === 'finalized' ? 7 : 14} placeholder={'• Comentari general\n• Acord\n• Següent pas…'} className="w-full resize-y rounded-xl border border-slate-300 p-3 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /><span className="mt-2 block text-xs text-slate-400">Ctrl+Enter per desar i tornar al tauler.</span></label>{currentSession?.status === 'finalized' ? <><MeetingAttendeesPanel attendees={attendees} onChange={setAttendees} /><label className="block rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="mb-1 block text-sm font-semibold text-slate-900">Correus addicionals</span><span className="mb-2 block text-xs text-slate-500">Adreces que també rebran l’acta, separades per comes.</span><input type="text" value={additionalEmailsText} onChange={(event) => setAdditionalEmailsText(event.target.value)} placeholder="nom@empresa.com, altre@empresa.com" className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label></> : null}</div>
               )}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
                 {selectedHistoryId || currentSession?.status === 'finalized' ? <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={printSession}><Printer className="mr-2 h-4 w-4" /> Vista prèvia / PDF</Button>{selectedHistoryId ? <Button type="button" variant="destructive" disabled={minutesBusy} onClick={() => void deleteSelectedMinutes()}><Trash2 className="mr-2 h-4 w-4" /> {minutesBusy ? 'Eliminant…' : 'Eliminar acta'}</Button> : null}</div> : <span />}

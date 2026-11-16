@@ -34,7 +34,7 @@ export function resolveQuadrantsMeetingAttendees(
         name: match.name,
         email: match.email,
         department: match.department || '',
-        attendance: null,
+        attendance: 'in_person',
         absenceReason: '',
         receiveEmail: true,
       }
@@ -45,7 +45,7 @@ export function resolveQuadrantsMeetingAttendees(
       name: hint,
       email: '',
       department: '',
-      attendance: null,
+      attendance: 'in_person',
       absenceReason: '',
       receiveEmail: true,
     }
@@ -56,5 +56,8 @@ export function mergeQuadrantsMeetingAttendees(
   saved: IncidentMeetingAttendee[],
   currentCore: IncidentMeetingAttendee[]
 ) {
-  return mergeMeetingAttendees(saved, currentCore)
+  return mergeMeetingAttendees(saved, currentCore).map((attendee) => ({
+    ...attendee,
+    attendance: attendee.attendance || 'in_person',
+  }))
 }
