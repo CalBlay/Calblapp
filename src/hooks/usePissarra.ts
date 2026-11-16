@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 export interface PissarraItem {
   id: string
+  sourceEventId?: string
   code: string
   LN?: string
   eventName?: string

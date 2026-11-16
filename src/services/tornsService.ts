@@ -110,6 +110,100 @@ function norm(s?: string | null): string {
     .trim()
 }
 
+function canonicalEventId(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+}
+
+function tornDeduplicationKey(torn: Torn): string {
+  const eventKey = canonicalEventId(torn.eventId)
+    ? `event:${norm(canonicalEventId(torn.eventId))}`
+    : torn.code
+      ? `code:${norm(torn.code)}`
+      : `doc:${torn.id}`
+  const phase = norm(torn.phaseLabel || torn.dayNote)
+  return [
+    eventKey,
+    norm(torn.department),
+    torn.date || torn.startDate,
+    phase,
+    torn.startTime,
+    torn.endTime,
+    norm(torn.meetingPoint),
+  ].join('|')
+}
+
+function workerDeduplicationKey(worker: NormalizedWorker): string {
+  if (worker.id) return `id:${norm(worker.id)}`
+  return `name:${norm(worker.name)}`
+}
+
+function mergeTornWorkers(
+  current: NormalizedWorker[] | undefined,
+  incoming: NormalizedWorker[] | undefined
+): NormalizedWorker[] {
+  const byWorker = new Map<string, NormalizedWorker>()
+  const rolePriority: Record<NormalizedWorker['role'], number> = {
+    responsable: 3,
+    conductor: 2,
+    treballador: 1,
+  }
+
+  for (const worker of [...(current || []), ...(incoming || [])]) {
+    const key = workerDeduplicationKey(worker)
+    if (key === 'name:') continue
+    const existing = byWorker.get(key)
+    if (!existing) {
+      byWorker.set(key, worker)
+      continue
+    }
+    const preferred =
+      rolePriority[worker.role] > rolePriority[existing.role] ? worker : existing
+    byWorker.set(key, {
+      ...existing,
+      ...preferred,
+      id: existing.id || worker.id,
+      plate: existing.plate || worker.plate,
+      startTime: existing.startTime || worker.startTime,
+      endTime: existing.endTime || worker.endTime,
+      meetingPoint: existing.meetingPoint || worker.meetingPoint,
+    })
+  }
+
+  return Array.from(byWorker.values())
+}
+
+/**
+ * Reobrir i tornar a confirmar un quadrant pot deixar documents germans
+ * equivalents. A Torns representen un únic servei i s'han de mostrar una sola
+ * vegada, tot conservant el conjunt de persones dels documents coincidents.
+ */
+export function dedupeTorns(torns: Torn[]): Torn[] {
+  const byShift = new Map<string, Torn>()
+
+  for (const torn of torns) {
+    const key = tornDeduplicationKey(torn)
+    const existing = byShift.get(key)
+    if (!existing) {
+      byShift.set(key, { ...torn, __rawWorkers: mergeTornWorkers([], torn.__rawWorkers) })
+      continue
+    }
+    byShift.set(key, {
+      ...existing,
+      code: existing.code || torn.code,
+      eventName: existing.eventName || torn.eventName,
+      location: existing.location || torn.location,
+      meetingPoint: existing.meetingPoint || torn.meetingPoint,
+      vestimentModel: existing.vestimentModel || torn.vestimentModel,
+      __rawWorkers: mergeTornWorkers(existing.__rawWorkers, torn.__rawWorkers),
+    })
+  }
+
+  return Array.from(byShift.values())
+}
+
 function pad2(n: number | string): string {
   return String(n).padStart(2, '0')
 }
@@ -537,7 +631,7 @@ export async function fetchAllTorns(
           fetchDeptCollectionRange(db, dep, startISO, endISO, out),
           fetchTransportAssignmentsRange(db, startISO, endISO, out, dep),
         ])
-        return out.filter((t) => {
+        return dedupeTorns(out).filter((t) => {
           if (!Array.isArray(t.__rawWorkers)) return false
           const matchWorker = t.__rawWorkers.find(
             (w) => norm(w.name) === norm(workerName)
@@ -563,7 +657,7 @@ export async function fetchAllTorns(
           fetchDeptCollectionRange(db, dep, startISO, endISO, out),
           fetchTransportAssignmentsRange(db, startISO, endISO, out, dep),
         ])
-        return out
+        return dedupeTorns(out)
       }
       return []
     }
@@ -582,7 +676,7 @@ export async function fetchAllTorns(
           )
         )
       }
-      return out
+      return dedupeTorns(out)
     }
 
     return []

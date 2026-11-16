@@ -5,6 +5,12 @@ import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
+import {
+  appendOperationalMontageItems,
+  type OperationalPhaseCandidate,
+  type ProductionPissarraItem,
+} from '@/lib/pissarraOperationalPhases'
+import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
 
 /** Dades Firestore llegides com a mapa genèric (evita `any`). */
 type FirestoreData = Record<string, unknown>
@@ -103,25 +109,31 @@ async function loadStageVerdDocsInRange(start: string, end: string) {
 }
 
 type QuadrantCandidate = {
+  id: string
+  eventId: string
+  code: string
+  eventName: string
   normalizedCandidate: string
   phaseLabel: string
   phaseDate?: string
+  startTime: string
+  location: string
+  pax: number
+  servei: string
+  comercial: string
+  ln: string
   responsableName?: string
 }
 
 async function loadQuadrantsIndex(start: string, end: string) {
   const col = db.collection('quadrantsServeis')
-  let snap
-  try {
-    snap = await col.where('startDate', '>=', start).where('startDate', '<=', end).get()
-  } catch {
-    snap = await col.get()
-  }
+  const { docs } = await queryQuadrantCollectionDocsInDateRange(col, start, end)
 
   const byEventId = new Map<string, QuadrantCandidate[]>()
   const byCode = new Map<string, QuadrantCandidate[]>()
+  const candidates: OperationalPhaseCandidate[] = []
 
-  snap.docs.forEach((doc: QueryDocumentSnapshot) => {
+  docs.forEach((doc: QueryDocumentSnapshot) => {
     const data = doc.data() as FirestoreData
     if (!isPhaseActive(strVal(data.status))) return
 
@@ -148,9 +160,19 @@ async function loadQuadrantsIndex(start: string, end: string) {
         : ''
 
     const info: QuadrantCandidate = {
+      id: doc.id,
+      eventId: fieldString(data, 'eventId'),
+      code: fieldString(data, 'code', 'eventCode'),
+      eventName: fieldString(data, 'eventName', 'name', 'summary'),
       normalizedCandidate,
       phaseLabel: String(candidate).trim(),
       phaseDate: normalizeDay(dateValue) || (dateValue ? String(dateValue) : undefined),
+      startTime: fieldString(data, 'startTime', 'hour', 'convocatoria'),
+      location: fieldString(data, 'location', 'finca'),
+      pax: Number(fieldString(data, 'numPax', 'NumPax', 'pax') || 0),
+      servei: fieldString(data, 'service', 'servei', 'Servei'),
+      comercial: fieldString(data, 'commercial', 'comercial', 'Comercial'),
+      ln: fieldString(data, 'LN', 'ln', 'lineaNegoci'),
       responsableName: fieldString(data, 'responsableName') || fromNested || undefined,
     }
 
@@ -159,9 +181,10 @@ async function loadQuadrantsIndex(start: string, end: string) {
 
     if (eventId) byEventId.set(eventId, [...(byEventId.get(eventId) || []), info])
     if (code) byCode.set(code, [...(byCode.get(code) || []), info])
+    candidates.push(info)
   })
 
-  return { byEventId, byCode }
+  return { byEventId, byCode, candidates }
 }
 
 export async function GET(req: NextRequest) {
@@ -182,22 +205,7 @@ export async function GET(req: NextRequest) {
       loadQuadrantsIndex(start, end),
     ])
 
-    type PissarraItem = {
-      id: string
-      code: string
-      LN: string
-      eventName: string
-      startDate: string
-      startTime: string
-      location: string
-      pax: number
-      servei: string
-      comercial: string
-      responsableName?: string
-      phaseLabel?: string
-      phaseDate?: string
-    }
-    const events: PissarraItem[] = []
+    const events: ProductionPissarraItem[] = []
 
     for (const doc of stageDocs) {
       const d = doc.data() as FirestoreData
@@ -222,9 +230,6 @@ export async function GET(req: NextRequest) {
       if (dayRange.length === 0) continue
 
       let responsableName: string | undefined
-      let phaseLabel: string | undefined
-      let phaseDate: string | undefined
-
       const code = fieldString(d, 'code')
       const candidates = [
         ...(quadrants.byEventId.get(doc.id) || []),
@@ -233,19 +238,13 @@ export async function GET(req: NextRequest) {
 
       if (candidates.length > 0) {
         const eventCandidate = candidates.find((info) => info.normalizedCandidate === 'event')
-        const isMuntatge = (value: string) => ['muntatge', 'montatge', 'montaje'].some((w) => value.includes(w))
-        const muntatgeCandidate = candidates.find((info) => isMuntatge(info.normalizedCandidate))
-
         if (eventCandidate?.responsableName) responsableName = eventCandidate.responsableName
-        if (muntatgeCandidate) {
-          phaseLabel = muntatgeCandidate.phaseLabel
-          phaseDate = muntatgeCandidate.phaseDate
-        }
       }
 
       dayRange.forEach((day) => {
         events.push({
           id: `${doc.id}__${day}`,
+          sourceEventId: doc.id,
           code,
           LN: fieldString(d, 'LN', 'ln', 'lineaNegoci'),
           eventName: fieldString(d, 'eventName', 'NomEvent', 'title'),
@@ -256,13 +255,12 @@ export async function GET(req: NextRequest) {
           servei: fieldString(d, 'servei', 'Servei'),
           comercial: fieldString(d, 'comercial', 'Comercial'),
           responsableName,
-          phaseLabel,
-          phaseDate,
         })
       })
     }
 
-    return NextResponse.json({ items: events }, { status: 200 })
+    const items = appendOperationalMontageItems(events, quadrants.candidates, start, end)
+    return NextResponse.json({ items }, { status: 200 })
   } catch (err) {
     console.error('[api/pissarra] GET error', err)
     return NextResponse.json({ error: 'Error intern del servidor' }, { status: 500 })

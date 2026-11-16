@@ -111,7 +111,10 @@ export default function PissarraList({
     params.set("department", quadrantsDepartment)
     params.set("start", weekStartISO)
     params.set("end", weekEndISO)
-    params.set("openEventId", String(item.id || "").trim().split("__")[0])
+    params.set(
+      "openEventId",
+      String(item.sourceEventId || item.id || "").trim().split("__")[0]
+    )
     return `/menu/quadrants?${params.toString()}`
   }
 
@@ -179,7 +182,7 @@ export default function PissarraList({
                     ) : (
                       <PissarraCard
                         item={ev}
-                        canEdit={canEdit}
+                        canEdit={canEdit && !ev.phaseLabel}
                         onUpdate={onUpdate}
                         canOpenQuadrants={canOpenQuadrants}
                         quadrantsHref={buildQuadrantsHref(ev)}
