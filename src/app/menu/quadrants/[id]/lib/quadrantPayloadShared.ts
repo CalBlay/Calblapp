@@ -9,6 +9,7 @@ import {
   evaluateRangeEligibility,
   type RangeEligibilityCtx,
 } from '@/services/eligibility'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 export type IdName = { id: string; name?: string }
 
@@ -82,6 +83,7 @@ export function roleLinePersonReservationKey(line: {
   personId?: string
   personName?: string
 }): string {
+  if (isReusableExternalExtra({ personName: line.personName })) return ''
   const id = normalizeRoleLinePersonKey(line.personId)
   if (id) return id
   const name = normalizeRoleLinePersonKey(line.personName)
@@ -89,6 +91,7 @@ export function roleLinePersonReservationKey(line: {
 }
 
 export function roleLineHasAssignedPerson(line: RoleLineReservation): boolean {
+  if (isReusableExternalExtra({ personName: line.personName })) return false
   return Boolean(roleLinePersonReservationKey(line))
 }
 
@@ -97,6 +100,18 @@ export function linesShareSamePerson(
   a: RoleLineReservation,
   b: RoleLineReservation
 ): boolean {
+  if (
+    isReusableExternalExtra({ personName: a.personName }) ||
+    isReusableExternalExtra({ personName: b.personName })
+  ) {
+    return false
+  }
+  if (
+    isReusableExternalExtra({ personName: a.personName }) ||
+    isReusableExternalExtra({ personName: b.personName })
+  ) {
+    return false
+  }
   const aId = normalizeRoleLinePersonKey(a.personId)
   const bId = normalizeRoleLinePersonKey(b.personId)
   const aName = normalizeRoleLinePersonKey(a.personName)
@@ -116,6 +131,8 @@ export function collectReservedPersonKeysFromLines(
   const reserved = new Set<string>()
   for (const line of lines) {
     if (excludeSlotId && line.slotId === excludeSlotId) continue
+    if (isReusableExternalExtra({ personName: line.personName })) continue
+    if (isReusableExternalExtra({ personName: line.personName })) continue
     const id = normalizeRoleLinePersonKey(line.personId)
     const name = normalizeRoleLinePersonKey(line.personName)
     if (id) reserved.add(id)

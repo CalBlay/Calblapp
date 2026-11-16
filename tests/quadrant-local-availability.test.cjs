@@ -105,3 +105,18 @@ test('the same vehicle is reusable in non-overlapping logistics phases', () => {
   assert.equal(reusable.has('vehicle-1'), false)
   assert.equal(overlapping.has('vehicle-1'), true)
 })
+
+test('generic external extra can be reused in overlapping role lines', () => {
+  const first = {
+    ...line('first', '2026-11-04', '10:00', '14:00'),
+    personName: 'Extra C.Extern',
+  }
+  const second = {
+    ...line('second', '2026-11-04', '11:00', '15:00'),
+    personName: 'Extra C.Extern',
+  }
+
+  assert.deepEqual(findDuplicateRoleLinePersonKeys([first, second], rules), [])
+  const reserved = buildReservedForRoleLine([first, second], second, undefined, undefined, rules)
+  assert.equal(reserved.has('name:extra c.extern'), false)
+})

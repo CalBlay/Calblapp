@@ -4,6 +4,7 @@ import {
 } from '@/utils/personnelRest'
 import { getQuadrantOverlapCacheGeneration } from '@/lib/quadrantOverlapCacheState'
 import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 const BUSY_DOCS_CACHE_TTL_MS = 90_000
 const busyDocsCache = new Map<
@@ -18,6 +19,8 @@ type AssignmentRef = {
   endDate?: string | null
   startTime?: string | null
   endTime?: string | null
+  isExternal?: boolean | null
+  externalType?: string | null
 }
 
 type BusySource = {
@@ -83,17 +86,21 @@ const extractBusyLines = (
   doc: QuadrantDoc & { eventId?: string; status?: string },
   source: BusySource
 ) => {
-  return collectQuadrantLinePersonnel(doc).map(
-    (person): BusyLine => ({
-      id: person.id || null,
-      name: person.name || null,
-      startDate: person.startDate,
-      endDate: person.endDate,
-      startTime: person.startTime,
-      endTime: person.endTime,
-      source,
-    })
-  )
+  return collectQuadrantLinePersonnel(doc)
+    .filter((person) => !isReusableExternalExtra(person))
+    .map(
+      (person): BusyLine => ({
+        id: person.id || null,
+        name: person.name || null,
+        startDate: person.startDate,
+        endDate: person.endDate,
+        startTime: person.startTime,
+        endTime: person.endTime,
+        isExternal: person.isExternal === true,
+        externalType: typeof person.externalType === 'string' ? person.externalType : null,
+        source,
+      })
+    )
 }
 
 export type OverlapBusySnapshot = Array<{
@@ -160,6 +167,7 @@ function findQuadrantOverlapConflictsFromBusyDocs(
   const conflicts: OverlapConflict[] = []
   const seen = new Set<string>()
   const assignments = params.assignments.filter((assignment) => {
+    if (isReusableExternalExtra(assignment)) return false
     const personKey = norm(assignment.id || assignment.name)
     if (!personKey) return false
     const range = parseRange(assignment)
@@ -227,6 +235,7 @@ export async function findQuadrantOverlapConflicts(params: {
   preloadedBusyDocs?: OverlapBusySnapshot
 }) {
   const assignments = params.assignments.filter((assignment) => {
+    if (isReusableExternalExtra(assignment)) return false
     const personKey = norm(assignment.id || assignment.name)
     if (!personKey) return false
     return Boolean(parseRange(assignment))

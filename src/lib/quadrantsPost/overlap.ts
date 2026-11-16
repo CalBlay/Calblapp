@@ -5,16 +5,19 @@ import {
 } from '@/lib/quadrantOverlapGuard'
 import type { QuadrantSave } from '@/lib/quadrantsPost/types'
 import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 export function extractOverlapAssignmentsFromQuadrantSave(doc: QuadrantSave) {
-  return collectQuadrantLinePersonnel(doc).map((person) => ({
-    id: person.id || null,
-    name: person.name || null,
-    startDate: person.startDate,
-    endDate: person.endDate,
-    startTime: person.startTime,
-    endTime: person.endTime,
-  }))
+  return collectQuadrantLinePersonnel(doc)
+    .filter((person) => !isReusableExternalExtra(person))
+    .map((person) => ({
+      id: person.id || null,
+      name: person.name || null,
+      startDate: person.startDate,
+      endDate: person.endDate,
+      startTime: person.startTime,
+      endTime: person.endTime,
+    }))
 }
 
 export function createOverlapGuard(

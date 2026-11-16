@@ -319,3 +319,63 @@ test('new overlap assignments take hours from the worker role line', () => {
     },
   ])
 })
+
+test('generic external extra never causes cross-quadrant overlap conflicts', async () => {
+  const busyDocs = [
+    {
+      collectionId: 'quadrants_serveis',
+      docId: 'busy-extra',
+      doc: {
+        eventId: 'other-event',
+        startDate: '2026-11-10',
+        endDate: '2026-11-10',
+        startTime: '10:00',
+        endTime: '18:00',
+        treballadors: [
+          {
+            name: 'Extra C.Extern',
+            isExternal: true,
+            externalType: 'centerExternalExtra',
+          },
+        ],
+      },
+    },
+  ]
+
+  const conflicts = await findQuadrantOverlapConflicts({
+    assignments: [
+      {
+        name: 'Extra extern',
+        externalType: 'centerExternalExtra',
+        startDate: '2026-11-10',
+        endDate: '2026-11-10',
+        startTime: '11:00',
+        endTime: '15:00',
+      },
+    ],
+    preloadedBusyDocs: busyDocs,
+  })
+
+  assert.deepEqual(conflicts, [])
+})
+
+test('quadrant save overlap extraction omits generic external extra slots', () => {
+  const assignments = extractOverlapAssignmentsFromQuadrantSave({
+    eventId: 'new-event',
+    startDate: '2026-11-10',
+    endDate: '2026-11-10',
+    startTime: '10:00',
+    endTime: '18:00',
+    treballadors: [
+      {
+        name: 'Extra C.Extern',
+        isExternal: true,
+        externalType: 'centerExternalExtra',
+      },
+      { id: 'w1', name: 'Anna' },
+    ],
+  })
+
+  assert.equal(assignments.length, 1)
+  assert.equal(assignments[0].name, 'Anna')
+})

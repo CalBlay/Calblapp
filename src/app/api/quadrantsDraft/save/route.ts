@@ -17,6 +17,7 @@ import {
   findQuadrantOverlapConflicts,
   preloadQuadrantOverlapBusyDocs,
 } from '@/lib/quadrantOverlapGuard'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 export const runtime = 'nodejs'
 
@@ -76,7 +77,12 @@ export async function POST(req: NextRequest) {
     const sourceDocId = String(eventId || '').trim()
     const canonicalEventId = normalizeEventId(eventId)
     const overlapAssignments = rows
-      .filter((row) => String(row?.name || '').trim() && String(row?.name || '').trim() !== 'Extra')
+      .filter(
+        (row) =>
+          String(row?.name || '').trim() &&
+          String(row?.name || '').trim() !== 'Extra' &&
+          !isReusableExternalExtra(row)
+      )
       .map((row) => ({
         id: row.id || null,
         name: row.name || null,

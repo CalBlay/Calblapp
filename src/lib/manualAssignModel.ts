@@ -73,6 +73,7 @@ export function getAssignedPeopleExcludingRow(
 
   rows.forEach((row, index) => {
     if (index === excludeIndex) return
+    if (row.isExternal) return
     const rowId = normalizeAssignPersonKey(row.id)
     const rowName = normalizeAssignPersonKey(row.name)
     if (rowId) ids.add(rowId)

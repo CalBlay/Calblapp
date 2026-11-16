@@ -14,7 +14,11 @@ export function getExternalWorkerTypeFromName(
   if (!normalized) return null
   if (
     normalized === 'extra c.extern' ||
-    normalized.startsWith('extra c.extern -')
+    normalized.startsWith('extra c.extern -') ||
+    normalized === 'extra c extern' ||
+    normalized.startsWith('extra c extern -') ||
+    normalized === 'extra extern' ||
+    normalized.startsWith('extra extern -')
   ) {
     return 'centerExternalExtra'
   }
@@ -22,6 +26,22 @@ export function getExternalWorkerTypeFromName(
     return 'ett'
   }
   return null
+}
+
+/**
+ * Una plaça d'Extra C.Extern és un recurs genèric, no una persona concreta.
+ * Per això mai no ha de reservar disponibilitat ni provocar solapaments.
+ */
+export function isReusableExternalExtra(value?: {
+  name?: string | null
+  personName?: string | null
+  externalType?: string | null
+  isCenterExternalExtra?: boolean | null
+} | null): boolean {
+  if (!value) return false
+  if (value.externalType === 'centerExternalExtra') return true
+  if (value.isCenterExternalExtra === true) return true
+  return getExternalWorkerTypeFromName(value.name || value.personName) === 'centerExternalExtra'
 }
 
 /** Detecta l'etiqueta ETT a qualsevol posició del nom (p. ex. "Joan ETT"). */

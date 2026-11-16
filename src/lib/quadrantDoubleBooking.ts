@@ -1,5 +1,6 @@
 // file: src/lib/quadrantDoubleBooking.ts
 import type { BusyAssignment } from '@/services/workloadLedger'
+import { isReusableExternalExtra } from '@/lib/quadrantExternalWorkers'
 
 const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 export const normName = (s?: string | null) => unaccent((s || '').toLowerCase().trim())
@@ -38,6 +39,7 @@ function requestTimeRange(startISO: string, endISO: string): { start: Date; end:
 function collectPersonKeys(q: BusyAssignment): Set<string> {
   const keys = new Set<string>()
   const add = (n?: string | null) => {
+    if (isReusableExternalExtra({ name: n })) return
     const k = normName(n)
     if (k) keys.add(k)
   }
@@ -81,7 +83,7 @@ export function findCrossQuadrantConflicts(params: {
   const byNorm = new Map<string, string>()
   for (const raw of params.assignedNames) {
     const n = String(raw || '').trim()
-    if (!n || n === 'Extra') continue
+    if (!n || n === 'Extra' || isReusableExternalExtra({ name: n })) continue
     const k = normName(n)
     if (!k) continue
     if (!byNorm.has(k)) byNorm.set(k, n)
