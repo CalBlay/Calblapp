@@ -49,6 +49,10 @@ export interface ZohoDeal {
   Hora?: string | null
   Observacions_2a_Part?: string | null
   Comensals_2a?: number | string | null
+  Tipus_Tast_de_Men?: string | null
+  Ubicaci_Tast_Sencer?: string | null
+  Data_Tast_Sencer?: string | null
+  Data_Tast_Sencer1?: string | null
   Fecha_de_petici_n?: string | null
   Precio_Total?: number | string | null
   Amount?: number | string | null
@@ -61,6 +65,7 @@ export interface ZohoDeal {
   Arxiu_PM?: unknown
   Arxiu_TM?: unknown
   Arxiu_TM2?: unknown
+  Arxiu_PM3?: unknown
 }
 
 export interface NormalizedDeal {
@@ -82,6 +87,7 @@ export interface NormalizedDeal {
   MenuTasting1Date?: string | null
   MenuTasting2Date?: string | null
   MenuTastingCompanyDate?: string | null
+  MenuTastingFullDate?: string | null
   Data_1_Prova_Men?: string | null
   Auto_data_1a_part?: string | boolean | null
   Data_enviament_Forms?: string | null
@@ -91,6 +97,10 @@ export interface NormalizedDeal {
   Hora?: string | null
   Observacions_2a_Part?: string | null
   Comensals_2a?: number | string | null
+  Tipus_Tast_de_Men?: string | null
+  Ubicaci_Tast_Sencer?: string | null
+  Data_Tast_Sencer?: string | null
+  Data_Tast_Sencer1?: string | null
   DataInici: string | null
   DataFi: string | null
   HoraInici?: string | null

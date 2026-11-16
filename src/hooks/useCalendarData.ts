@@ -26,6 +26,7 @@ export interface Deal {
   HoraFi?: string
   origen?: 'zoho' | 'manual' | 'firestore'
   NumPax?: number | string | null
+  PreuMenu?: number | string | null
   ObservacionsZoho?: string
   code?: string
   codeConfirmed?: boolean
@@ -44,11 +45,11 @@ export interface Deal {
     service: string
     pax: number | null
   }>
-  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_full' | 'menu_tasting_company'
   menuTastingStatus?: 'confirmed'
   sourceTastings?: Array<{
     id: string
-    occurrenceType: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+    occurrenceType: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_full' | 'menu_tasting_company'
     collection: 'stage_verd' | 'stage_taronja' | 'stage_groc'
   }>
   files?: {
@@ -195,6 +196,7 @@ export function useCalendarData(filters?: {
         const calendarOccurrenceType =
           ev.calendarOccurrenceType === 'menu_tasting_1' ||
           ev.calendarOccurrenceType === 'menu_tasting_2' ||
+          ev.calendarOccurrenceType === 'menu_tasting_full' ||
           ev.calendarOccurrenceType === 'menu_tasting_company'
             ? ev.calendarOccurrenceType
             : undefined
@@ -240,6 +242,8 @@ export function useCalendarData(filters?: {
             ev.pax ??
             ev.PAX ??
             null,
+          PreuMenu:
+            (ev.PreuMenu ?? ev.preuMenu ?? null) as number | string | null,
 
           // FIX: Observacions Zoho
           ObservacionsZoho:
@@ -291,6 +295,7 @@ export function useCalendarData(filters?: {
                     id: String(source.id || ''),
                     occurrenceType:
                       occurrenceType === 'menu_tasting_2' ||
+                      occurrenceType === 'menu_tasting_full' ||
                       occurrenceType === 'menu_tasting_company'
                         ? occurrenceType
                         : 'menu_tasting_1' as const,

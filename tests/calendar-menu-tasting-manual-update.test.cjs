@@ -27,6 +27,24 @@ test('maps the editable PM modal fields to the first wedding tasting fields', ()
   )
 })
 
+test('maps the editable PM modal fields to the full tasting fields', () => {
+  assert.deepEqual(
+    buildMenuTastingManualUpdate('menu_tasting_full', {
+      DataInici: '2027-02-17',
+      HoraInici: '12:00',
+      Ubicacio: 'Origens',
+      NumPax: 60,
+    }),
+    {
+      MenuTastingFullDate: '2027-02-17',
+      Data_Tast_Sencer1: '2027-02-17',
+      HoraInici: '12:00',
+      Ubicaci_Tast_Sencer: 'Origens',
+      NumPax: 60,
+    }
+  )
+})
+
 test('maps PM2 and Empresa edits to their dedicated Zoho fields', () => {
   assert.deepEqual(
     buildMenuTastingManualUpdate('menu_tasting_2', {

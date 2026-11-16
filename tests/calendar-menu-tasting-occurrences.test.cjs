@@ -243,7 +243,7 @@ test('builds an Empresa menu tasting from the dedicated Zoho fields when confirm
       confirmar_prova: true,
     },
     sourceEventId: 'zoho-company-1',
-    config: MENU_TASTING_CONFIGS[2],
+    config: MENU_TASTING_CONFIGS[3],
     rangeStart: '2026-09-01',
     rangeEnd: '2026-09-30',
   })
@@ -260,6 +260,57 @@ test('builds an Empresa menu tasting from the dedicated Zoho fields when confirm
   )
 })
 
+test('builds a full menu tasting from the Tast sencer fields and general event data', () => {
+  const occurrence = buildMenuTastingOccurrence({
+    sourceEvent: {
+      ...sourceEvent,
+      servei: 'MENU CASAMENT CB4',
+      PreuMenu: 192,
+      files: [
+        { key: 'z:1', url: 'https://example.test/pms.pdf', name: 'PMS tast.pdf', source: 'zoho-field-attachment-v8' },
+        { key: 'z:2', url: 'https://example.test/proposal.pdf', name: 'PROPOSAL_300.pdf', source: 'zoho-field-attachment-v8' },
+      ],
+    },
+    sourceData: {
+      Tipus_Tast_de_Men: 'Tast sencer',
+      Data_Tast_Sencer1: null,
+      Data_Tast_Sencer: '2026-11-26',
+      MenuTastingFullDate: '2026-11-26',
+      Ubicaci_Tast_Sencer: 'origens',
+      HoraInici: '12:00',
+      NumPax: 60,
+    },
+    sourceEventId: 'zoho-full-1',
+    config: MENU_TASTING_CONFIGS[2],
+    rangeStart: '2026-11-01',
+    rangeEnd: '2026-11-30',
+  })
+
+  assert.equal(occurrence.id, 'zoho-full-1::pms')
+  assert.equal(occurrence.start, '2026-11-26T12:00:00')
+  assert.equal(occurrence.location, 'origens')
+  assert.equal(occurrence.numPax, 60)
+  assert.equal(occurrence.PreuMenu, 192)
+  assert.equal(occurrence.calendarOccurrenceType, 'menu_tasting_full')
+  assert.deepEqual(occurrence.files.map((file) => file.name), ['PMS tast.pdf'])
+})
+
+test('does not build the full tasting unless Zoho marks it as Tast sencer', () => {
+  const occurrence = buildMenuTastingOccurrence({
+    sourceEvent,
+    sourceData: {
+      Tipus_Tast_de_Men: 'Mig tast',
+      MenuTastingFullDate: '2026-11-26',
+    },
+    sourceEventId: 'zoho-not-full',
+    config: MENU_TASTING_CONFIGS[2],
+    rangeStart: '2026-11-01',
+    rangeEnd: '2026-11-30',
+  })
+
+  assert.equal(occurrence, null)
+})
+
 test('builds tastings regardless of business line or company confirmation state', () => {
   const unconfirmedCompany = buildMenuTastingOccurrence({
     sourceEvent: { ...sourceEvent, lnLabel: 'Agenda' },
@@ -268,7 +319,7 @@ test('builds tastings regardless of business line or company confirmation state'
       confirmar_prova: false,
     },
     sourceEventId: 'zoho-company-1',
-    config: MENU_TASTING_CONFIGS[2],
+    config: MENU_TASTING_CONFIGS[3],
     rangeStart: '2026-09-01',
     rangeEnd: '2026-09-30',
   })
@@ -281,7 +332,7 @@ test('builds tastings regardless of business line or company confirmation state'
       confirmar_prova: null,
     },
     sourceEventId: 'zoho-company-without-confirmation',
-    config: MENU_TASTING_CONFIGS[2],
+    config: MENU_TASTING_CONFIGS[3],
     rangeStart: '2027-02-01',
     rangeEnd: '2027-02-28',
   })
@@ -292,7 +343,7 @@ test('builds tastings regardless of business line or company confirmation state'
       confirmar_prova: true,
     },
     sourceEventId: 'zoho-company-1',
-    config: MENU_TASTING_CONFIGS[2],
+    config: MENU_TASTING_CONFIGS[3],
     rangeStart: '2026-09-01',
     rangeEnd: '2026-09-30',
   })

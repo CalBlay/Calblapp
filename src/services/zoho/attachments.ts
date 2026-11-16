@@ -44,6 +44,7 @@ export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
   'Arxiu_PM',
   'Arxiu_TM',
   'Arxiu_TM2',
+  'Arxiu_PM3',
 ] as const
 
 const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = [
@@ -62,10 +63,18 @@ const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = [
 
 export function shouldImportZohoAttachment(
   fileName?: string | null,
-  _fieldApiName?: string | null
+  fieldApiName?: string | null
 ): boolean {
   const normalized = String(fileName || '').trim().toUpperCase()
   if (!normalized) return false
+
+  // El tercer arxiu de prova correspon exclusivament al tast sencer.
+  // Altres documents del deal (p. ex. PROPOSAL_...) no s'han d'importar.
+  if (String(fieldApiName || '').trim().toUpperCase() === 'ARXIU_PM3') {
+    const next = normalized.charAt(3)
+    return normalized.startsWith('PMS') &&
+      (!next || next === ' ' || next === '_' || next === '-' || /\d/.test(next))
+  }
 
   return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) => {
     if (!normalized.startsWith(prefix)) return false

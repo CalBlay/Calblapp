@@ -43,8 +43,9 @@ export interface EventData {
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
   servei?: string
+  preuMenu?: number
   isMenuTasting?: boolean
-  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_full' | 'menu_tasting_company'
   sourceEventId?: string
   sourceEventIds?: string[]
   sourceEvents?: Array<{ id: string; name?: string; code?: string }>
@@ -86,8 +87,9 @@ interface EventPayload {
   hasDocuments?: boolean
   hasInvalidZohoDocuments?: boolean
   servei?: string
+  preuMenu?: number
   isMenuTasting?: boolean
-  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_company'
+  calendarOccurrenceType?: 'menu_tasting_1' | 'menu_tasting_2' | 'menu_tasting_full' | 'menu_tasting_company'
   sourceEventId?: string
   sourceEventIds?: string[]
   sourceEvents?: Array<{ id: string; name?: string; code?: string }>

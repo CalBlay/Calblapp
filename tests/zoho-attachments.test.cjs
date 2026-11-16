@@ -40,6 +40,9 @@ test('shouldImportZohoAttachment applies the filename prefixes to every archive 
   assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_PM'), true)
   assert.equal(shouldImportZohoAttachment('TM tast.pdf', 'Arxiu_TM'), true)
   assert.equal(shouldImportZohoAttachment('TM2 tast.pdf', 'Arxiu_TM2'), true)
+  assert.equal(shouldImportZohoAttachment('PMS tast.pdf', 'Arxiu_PM3'), true)
+  assert.equal(shouldImportZohoAttachment('PROPOSAL_300.pdf', 'Arxiu_PM3'), false)
+  assert.equal(shouldImportZohoAttachment('PM proposta.pdf', 'Arxiu_PM3'), false)
 })
 
 test('extract and merge Zoho field attachments normalize ids and dedupe across fields', () => {
@@ -91,6 +94,7 @@ test('extract and merge Zoho field attachments normalize ids and dedupe across f
     'Arxiu_PM',
     'Arxiu_TM',
     'Arxiu_TM2',
+    'Arxiu_PM3',
   ])
 })
 
@@ -199,6 +203,7 @@ test('Zoho sync discovers attachments only from the configured file fields', () 
     'Arxiu_PM',
     'Arxiu_TM',
     'Arxiu_TM2',
+    'Arxiu_PM3',
   ])
   assert.equal(ZOHO_FIELD_ATTACHMENT_SOURCE_V8, 'zoho-field-attachment-v8')
   assert.match(
@@ -234,7 +239,7 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
   const baseFieldsMatch = syncSource.match(/const baseFields =\s*'([^']+)'/)
   assert.ok(baseFieldsMatch)
   const requestedFields = baseFieldsMatch[1].split(',')
-  assert.equal(requestedFields.length, 49)
+  assert.equal(requestedFields.length, 50)
   for (const removedField of [
     'confirmar_prova',
     'Otros',
@@ -271,14 +276,32 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     'Hora',
     'Observacions_2a_Part',
     'Comensals_2a',
+    'Tipus_Tast_de_Men',
     'Full_de_modificacions',
     'Full_modificacions',
     'Arxiu_PM',
     'Arxiu_TM',
     'Arxiu_TM2',
   ]) {
-    assert.match(syncSource, new RegExp(`baseFields[\\s\\S]*${field}`))
+    assert.equal(requestedFields.includes(field), true)
   }
+
+  const fullTastingFieldsMatch = syncSource.match(
+    /const fullTastingFields =\s*'([^']+)'/
+  )
+  assert.ok(fullTastingFieldsMatch)
+  assert.deepEqual(fullTastingFieldsMatch[1].split(','), [
+    'id',
+    'Ubicaci_Tast_Sencer',
+    'Data_Tast_Sencer',
+    'Data_Tast_Sencer1',
+    'Arxiu_PM3',
+  ])
+  assert.match(syncSource, /Tipus_Tast_de_Men[\s\S]*===\s*'tast sencer'/)
+  assert.match(
+    syncSource,
+    /\?fields=\$\{fullTastingFields\}/
+  )
 
   for (const field of [
     'Data_1_Prova_Men',
@@ -290,6 +313,10 @@ test('manual Zoho sync is incremental and uses bounded deal concurrency', () => 
     'Hora',
     'Observacions_2a_Part',
     'Comensals_2a',
+    'Tipus_Tast_de_Men',
+    'Ubicaci_Tast_Sencer',
+    'Data_Tast_Sencer',
+    'Data_Tast_Sencer1',
   ]) {
     assert.match(
       normalizationSource,

@@ -17,6 +17,7 @@ Module._load = function loadWithStubs(request, parent, isMain) {
 const {
   businessLineFromPipeline,
   classifyStage,
+  classifyZohoDealStage,
   isLostZohoStage,
   normalizeZohoDeals,
   resolveZohoEndTime,
@@ -182,6 +183,36 @@ test('classifyStage maps proposal/pending stages to groc and drops unknown', () 
   assert.equal(classifyStage('Seguiment 2'), 'groc')
   assert.equal(classifyStage('Qualificació'), null)
   assert.equal(classifyStage(''), null)
+})
+
+test('a dated Tast sencer remains eligible outside the standard commercial stages', () => {
+  assert.equal(
+    classifyZohoDealStage({
+      Stage: 'Full de dades',
+      Tipus_Tast_de_Men: 'Tast sencer',
+      Data_Tast_Sencer: '2026-11-26',
+      Data_Tast_Sencer1: null,
+    }),
+    'groc'
+  )
+  assert.equal(
+    classifyZohoDealStage({
+      Stage: 'Full de dades',
+      Tipus_Tast_de_Men: 'Tast sencer',
+      Data_Tast_Sencer: null,
+      Data_Tast_Sencer1: null,
+    }),
+    null
+  )
+  assert.equal(
+    classifyZohoDealStage({
+      Stage: 'Full de dades',
+      Tipus_Tast_de_Men: null,
+      Data_Tast_Sencer: '2026-11-26',
+      Data_Tast_Sencer1: null,
+    }),
+    null
+  )
 })
 
 test('isLostZohoStage recognizes Spanish and Catalan lost stages', () => {

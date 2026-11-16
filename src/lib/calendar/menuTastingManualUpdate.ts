@@ -4,18 +4,23 @@ export const MENU_TASTING_MANUAL_OVERRIDE_FIELDS = new Set([
   'MenuTasting1Date',
   'MenuTasting2Date',
   'MenuTastingCompanyDate',
+  'MenuTastingFullDate',
   'Data_1_Prova_Men',
   'Auto_data_1a_part',
   'Data_2a_Part_Tast',
   'Auto_Data_2a_Part',
   'Data_i_hora',
+  'Data_Tast_Sencer',
+  'Data_Tast_Sencer1',
   'Hora',
   'Ubicaci_1a_Part',
   'Ubicaci_2a_part',
   'Ubicaci',
+  'Ubicaci_Tast_Sencer',
   'Comensals',
   'Comensals_2a',
   'Pax',
+  'NumPax',
 ])
 
 type MenuTastingEditValues = {
@@ -67,6 +72,16 @@ export function buildMenuTastingManualUpdate(
     }
   }
 
+  if (occurrenceType === 'menu_tasting_full') {
+    return {
+      MenuTastingFullDate: day || null,
+      Data_Tast_Sencer1: day || null,
+      HoraInici: time || null,
+      Ubicaci_Tast_Sencer: location || null,
+      ...(includePax ? { NumPax: pax } : {}),
+    }
+  }
+
   return {
     MenuTastingCompanyDate: day || null,
     Data_i_hora: dateTime(day, time),
@@ -92,6 +107,15 @@ export function buildMenuTastingManualDelete(
       MenuTasting2Date: null,
       Data_2a_Part_Tast: null,
       Auto_Data_2a_Part: null,
+    }
+  }
+
+
+  if (occurrenceType === 'menu_tasting_full') {
+    return {
+      MenuTastingFullDate: null,
+      Data_Tast_Sencer: null,
+      Data_Tast_Sencer1: null,
     }
   }
 

@@ -18,7 +18,7 @@ import {
 } from '@/services/zoho/sync-finca-matching'
 import { syncFinquesFromDeals } from '@/services/zoho/sync-finques'
 import {
-  classifyStage,
+  classifyZohoDealStage,
   isLostZohoStage,
   normalizeZohoDeals,
 } from '@/services/zoho/sync-normalization'
@@ -722,7 +722,6 @@ async function syncStageCollections({
   manualReplacements,
   manuals,
   totals,
-  classifyStage,
   fullSync,
 }: {
   normalized: NormalizedDeal[]
@@ -732,7 +731,6 @@ async function syncStageCollections({
   manualReplacements: ManualReplacementMap
   manuals: ManualReserveDoc[]
   totals: AttachmentSyncTotals
-  classifyStage: (stage: string) => 'groc' | 'taronja' | 'verd' | null
   fullSync: boolean
 }) {
   const idsVerd = new Set<string>()
@@ -842,7 +840,7 @@ async function syncStageCollections({
   if (fullSync) {
     const eligibleZohoIds = new Set(
       Array.from(zohoById.entries())
-        .filter(([, zohoDeal]) => classifyStage(zohoDeal.Stage || '') !== null)
+        .filter(([, zohoDeal]) => classifyZohoDealStage(zohoDeal) !== null)
         .map(([id]) => id)
     )
     await cleanupGrocTaronjaStageDocs(
@@ -881,7 +879,7 @@ async function syncStageCollections({
         continue
       }
 
-      const group = classifyStage(zoho.Stage || '')
+      const group = classifyZohoDealStage(zoho)
       if (group !== 'verd') {
         if (isLostZohoStage(zoho.Stage || '')) {
           continue
@@ -999,7 +997,9 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     attachmentsDeletedFromStorage: 0,
   }
   const baseFields =
-    'id,Deal_Name,Modified_Time,Account_Name,Stage,Tipo_de_lead,Pipeline,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Hora_esdeveniment,Hora_Fi_Boda,Hora_Fi_Evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Data_i_hora,Ubicaci,Ubicaci_1a_Part,Ubicaci_2a_part,Pax,Data_1_Prova_Men,Auto_data_1a_part,Data_enviament_Forms,Comensals,Data_2a_Part_Tast,Auto_Data_2a_Part,Hora,Observacions_2a_Part,Comensals_2a,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast,Full_de_modificacions,Full_modificacions,Arxiu_PM,Arxiu_TM,Arxiu_TM2'
+    'id,Deal_Name,Modified_Time,Account_Name,Stage,Tipo_de_lead,Pipeline,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Hora_esdeveniment,Hora_Fi_Boda,Hora_Fi_Evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Data_i_hora,Ubicaci,Ubicaci_1a_Part,Ubicaci_2a_part,Pax,Data_1_Prova_Men,Auto_data_1a_part,Data_enviament_Forms,Comensals,Data_2a_Part_Tast,Auto_Data_2a_Part,Hora,Observacions_2a_Part,Comensals_2a,Tipus_Tast_de_Men,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast,Full_de_modificacions,Full_modificacions,Arxiu_PM,Arxiu_TM,Arxiu_TM2'
+  const fullTastingFields =
+    'id,Ubicaci_Tast_Sencer,Data_Tast_Sencer,Data_Tast_Sencer1,Arxiu_PM3'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -1074,8 +1074,32 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
       parseZohoDate(d.Fecha_y_hora_del_evento)
     return !!eventDate && eventDate >= today
   })
+
+  // Zoho v8 limita `fields` a 50. El llistat principal en demana exactament
+  // 50 i només completem els quatre camps exclusius del Tast sencer per a les
+  // oportunitats que realment els necessiten.
+  const fullTastingDeals = filteredDeals.filter((deal) =>
+    String(deal.Tipus_Tast_de_Men || '').trim().toLocaleLowerCase('ca') ===
+      'tast sencer'
+  )
+  for (
+    let offset = 0;
+    offset < fullTastingDeals.length;
+    offset += ZOHO_SYNC_CONCURRENCY
+  ) {
+    await Promise.all(
+      fullTastingDeals
+        .slice(offset, offset + ZOHO_SYNC_CONCURRENCY)
+        .map(async (deal) => {
+          const detail = await zohoFetchV8<{ data?: ZohoDeal[] }>(
+            `/${moduleName}/${encodeURIComponent(String(deal.id))}?fields=${fullTastingFields}`
+          )
+          Object.assign(deal, detail.data?.[0] || {})
+        })
+    )
+  }
   console.info(
-    `[zoho-sync] mode=${fullSync ? 'full' : 'incremental'} dealsCarregats=${allDeals.length} futurs=${filteredDeals.length} includeAttachments=${includeAttachments} cutoff=${incrementalCutoffMs ? new Date(incrementalCutoffMs).toISOString() : 'none'} stoppedByCutoff=${stoppedByIncrementalCutoff}`
+    `[zoho-sync] mode=${fullSync ? 'full' : 'incremental'} dealsCarregats=${allDeals.length} futurs=${filteredDeals.length} tastSencer=${fullTastingDeals.length} includeAttachments=${includeAttachments} cutoff=${incrementalCutoffMs ? new Date(incrementalCutoffMs).toISOString() : 'none'} stoppedByCutoff=${stoppedByIncrementalCutoff}`
   )
 
   // 3ï¸âƒ£ FunciÃ³ per determinar LN segons propietari (Owner)
@@ -1225,7 +1249,6 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     manualReplacements,
     manuals,
     totals: attachmentTotals,
-    classifyStage,
     fullSync,
   })
 

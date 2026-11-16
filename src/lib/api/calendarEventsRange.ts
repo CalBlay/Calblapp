@@ -239,6 +239,7 @@ export async function computeCalendarEventsInRange(
             d.ComercialIntern || d.comercialIntern || d.Comercial_Interna || '',
           Responsable: d.Responsable || d.responsable || '',
           servei: d.Servei || d.servei || '',
+          PreuMenu: d.PreuMenu ?? d.preuMenu ?? null,
           origen: d.origen || 'zoho',
           ObservacionsZoho:
             d.ObservacionsZoho ??

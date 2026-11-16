@@ -98,6 +98,30 @@ export function classifyStage(stage: string): StageCollection | null {
   return null
 }
 
+/**
+ * Les proves de menú amb data han de tenir document de calendari encara que
+ * l'oportunitat sigui en una etapa comercial anterior a groc/taronja/verd.
+ * Les desem al contenidor groc, però la cita virtual es presenta com confirmada.
+ */
+export function classifyZohoDealStage(
+  deal: Pick<
+    ZohoDeal,
+    'Stage' | 'Tipus_Tast_de_Men' | 'Data_Tast_Sencer' | 'Data_Tast_Sencer1'
+  >
+): StageCollection | null {
+  const standardStage = classifyStage(deal.Stage || '')
+  if (standardStage) return standardStage
+
+  const tastingType = String(deal.Tipus_Tast_de_Men || '')
+    .trim()
+    .toLocaleLowerCase('ca')
+  const tastingDate =
+    menuTastingIsoDay(deal.Data_Tast_Sencer1) ||
+    menuTastingIsoDay(deal.Data_Tast_Sencer)
+
+  return tastingType === 'tast sencer' && tastingDate ? 'groc' : null
+}
+
 export function isLostZohoStage(stage: string): boolean {
   const normalized = String(stage || '')
     .normalize('NFD')
@@ -151,7 +175,7 @@ export async function normalizeZohoDeals(
   const normalized: NormalizedDeal[] = []
 
   for (const deal of deals) {
-    const group = classifyStage(deal.Stage)
+    const group = classifyZohoDealStage(deal)
     if (!group) continue
 
     const dateISO =
@@ -241,6 +265,9 @@ export async function normalizeZohoDeals(
         menuTastingIsoDay(deal.Data_2a_Part_Tast) ||
         menuTastingIsoDay(deal.Auto_Data_2a_Part),
       MenuTastingCompanyDate: menuTastingIsoDay(deal.Data_i_hora),
+      MenuTastingFullDate:
+        menuTastingIsoDay(deal.Data_Tast_Sencer1) ||
+        menuTastingIsoDay(deal.Data_Tast_Sencer),
       Data_1_Prova_Men: deal.Data_1_Prova_Men || null,
       Auto_data_1a_part: deal.Auto_data_1a_part ?? null,
       Data_enviament_Forms: deal.Data_enviament_Forms ?? null,
@@ -250,6 +277,10 @@ export async function normalizeZohoDeals(
       Hora: deal.Hora || null,
       Observacions_2a_Part: deal.Observacions_2a_Part ?? null,
       Comensals_2a: deal.Comensals_2a ?? null,
+      Tipus_Tast_de_Men: deal.Tipus_Tast_de_Men ?? null,
+      Ubicaci_Tast_Sencer: deal.Ubicaci_Tast_Sencer ?? null,
+      Data_Tast_Sencer: deal.Data_Tast_Sencer ?? null,
+      Data_Tast_Sencer1: deal.Data_Tast_Sencer1 ?? null,
       DataInici: dateISO,
       DataFi: dataFiISO,
       ObservacionsZoho: deal.Description || deal.Observacions || null,

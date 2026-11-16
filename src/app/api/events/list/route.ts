@@ -462,6 +462,7 @@ const getEventsListCached = unstable_cache(
             lnLabel,
             code: String(d.code || d.C_digo || ''),
             servei: String(d.Servei || d.Servicio || ''),
+            preuMenu: d.PreuMenu ?? null,
             comercial: String(d.Comercial || ''),
             commercialInternal: String(
               d.ComercialIntern || d.comercialIntern || d.Comercial_Interna || ''
@@ -522,6 +523,7 @@ const getEventsListCached = unstable_cache(
           servei: String(
             occurrence.servei || occurrence.service || occurrence.Servei || 'Prova de menú'
           ),
+          preuMenu: Number(occurrence.preuMenu ?? occurrence.PreuMenu) || 0,
           hasDocuments: occurrence.hasDocuments === true,
           hasInvalidZohoDocuments: occurrence.hasInvalidZohoDocuments === true,
           calendarOccurrenceType: occurrence.calendarOccurrenceType,

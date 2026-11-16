@@ -1,43 +1,61 @@
 export type MenuTastingOccurrenceType =
   | 'menu_tasting_1'
   | 'menu_tasting_2'
+  | 'menu_tasting_full'
   | 'menu_tasting_company'
 
 type MenuTastingConfig = {
   dateFields: readonly MenuTastingDateField[]
   timeFields: readonly MenuTastingTimeField[]
-  paxField: 'Comensals' | 'Comensals_2a' | 'Pax'
-  idSuffix: 'pm1' | 'pm2' | 'pme'
-  titlePrefix: 'PM_' | 'PM2_'
+  paxFields: readonly MenuTastingPaxField[]
+  idSuffix: 'pm1' | 'pm2' | 'pms' | 'pme'
+  titlePrefix: 'PM_' | 'PM2_' | 'PMS_'
   occurrenceType: MenuTastingOccurrenceType
-  filePrefix: 'TM' | 'TM2' | 'PM'
+  filePrefix: 'TM' | 'TM2' | 'PMS' | 'PM'
   locationFields?: readonly MenuTastingLocationField[]
   confirmationField?: 'confirmar_prova'
   includeCodeInTitle?: boolean
+  requiredType?: string
 }
 
 export type MenuTastingDateField =
   | 'MenuTasting1Date'
   | 'MenuTasting2Date'
   | 'MenuTastingCompanyDate'
+  | 'MenuTastingFullDate'
   | 'Data_1_Prova_Men'
   | 'Auto_data_1a_part'
   | 'Data_2a_Part_Tast'
   | 'Auto_Data_2a_Part'
   | 'Data_i_hora'
+  | 'Data_Tast_Sencer'
+  | 'Data_Tast_Sencer1'
 
-type MenuTastingTimeField = 'Data_1_Prova_Men' | 'Hora' | 'Data_i_hora'
+type MenuTastingTimeField =
+  | 'Data_1_Prova_Men'
+  | 'Hora'
+  | 'Data_i_hora'
+  | 'HoraInici'
+  | 'Hora_esdeveniment'
+type MenuTastingPaxField =
+  | 'Comensals'
+  | 'Comensals_2a'
+  | 'Pax'
+  | 'N_mero_de_personas_del_evento'
+  | 'N_mero_de_invitados'
+  | 'NumPax'
 type MenuTastingLocationField =
   | 'Ubicaci_1a_Part'
   | 'Ubicaci_2a_part'
   | 'Ubicaci'
   | 'Ubiaci'
+  | 'Ubicaci_Tast_Sencer'
 
 export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
   {
     dateFields: ['MenuTasting1Date', 'Data_1_Prova_Men', 'Auto_data_1a_part'],
     timeFields: ['Data_1_Prova_Men'],
-    paxField: 'Comensals',
+    paxFields: ['Comensals'],
     idSuffix: 'pm1',
     titlePrefix: 'PM_',
     occurrenceType: 'menu_tasting_1',
@@ -47,7 +65,7 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
   {
     dateFields: ['MenuTasting2Date', 'Data_2a_Part_Tast', 'Auto_Data_2a_Part'],
     timeFields: ['Hora'],
-    paxField: 'Comensals_2a',
+    paxFields: ['Comensals_2a'],
     idSuffix: 'pm2',
     titlePrefix: 'PM2_',
     occurrenceType: 'menu_tasting_2',
@@ -55,9 +73,24 @@ export const MENU_TASTING_CONFIGS: readonly MenuTastingConfig[] = [
     locationFields: ['Ubicaci_2a_part'],
   },
   {
+    dateFields: [
+      'MenuTastingFullDate',
+      'Data_Tast_Sencer1',
+      'Data_Tast_Sencer',
+    ],
+    timeFields: ['HoraInici', 'Hora_esdeveniment'],
+    paxFields: ['NumPax', 'N_mero_de_personas_del_evento', 'N_mero_de_invitados'],
+    idSuffix: 'pms',
+    titlePrefix: 'PMS_',
+    occurrenceType: 'menu_tasting_full',
+    filePrefix: 'PMS',
+    locationFields: ['Ubicaci_Tast_Sencer'],
+    requiredType: 'Tast sencer',
+  },
+  {
     dateFields: ['MenuTastingCompanyDate', 'Data_i_hora'],
     timeFields: ['Data_i_hora'],
-    paxField: 'Pax',
+    paxFields: ['Pax'],
     idSuffix: 'pme',
     titlePrefix: 'PM_',
     occurrenceType: 'menu_tasting_company',
@@ -179,6 +212,17 @@ export function buildMenuTastingOccurrence({
   rangeStart: string
   rangeEnd: string
 }): Record<string, unknown> | null {
+  if (
+    config.requiredType &&
+    String(sourceData.Tipus_Tast_de_Men || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase() !== config.requiredType.toLowerCase()
+  ) {
+    return null
+  }
+
   const day = config.dateFields
     .map((field) => menuTastingIsoDay(sourceData[field]))
     .find((value): value is string => value !== null) ?? null
@@ -187,7 +231,9 @@ export function buildMenuTastingOccurrence({
   const time = config.timeFields
     .map((field) => tastingTime(sourceData[field]))
     .find((value): value is string => value !== null) ?? '12:00'
-  const pax = sourceData[config.paxField] ?? null
+  const pax = config.paxFields
+    .map((field) => sourceData[field])
+    .find((value) => value !== null && value !== undefined && String(value).trim() !== '') ?? null
   const configuredLocation = (config.locationFields || [])
     .map((field) => String(sourceData[field] ?? '').trim())
     .find(Boolean)
@@ -246,6 +292,7 @@ type TastingFile = {
 const weddingOccurrenceTypes = new Set<MenuTastingOccurrenceType>([
   'menu_tasting_1',
   'menu_tasting_2',
+  'menu_tasting_full',
 ])
 
 const tastingGroupKeyPart = (raw: unknown) =>
