@@ -60,6 +60,10 @@ export async function POST(
   }
 
   const source = sourceSnap.data() as Record<string, unknown>
+  const requestedMinStock =
+    typeof body.minStock === 'number' && Number.isFinite(body.minStock)
+      ? body.minStock
+      : undefined
   const sizeProfileId = str(body.sizeProfileId)
   if (sizeProfileId) {
     const profile = await db.collection(DOTACIO_COLLECTIONS.sizeProfiles).doc(sizeProfileId).get()
@@ -85,6 +89,7 @@ export async function POST(
       ...source,
       size,
       sizeProfileId: sizeProfileId || null,
+      minStock: requestedMinStock ?? source.minStock ?? null,
       quantityOnHand: 0,
       quantityReserved: 0,
       createdAt: FieldValue.serverTimestamp(),

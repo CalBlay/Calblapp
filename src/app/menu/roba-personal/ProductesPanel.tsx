@@ -27,7 +27,7 @@ import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/rob
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { ChevronDown, Pencil, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, Pencil, Ruler, Search, Tags, Trash2, X } from 'lucide-react'
 import {
   defaultRobaSizeOptions,
   robaSizesForFamily,
@@ -159,10 +159,11 @@ export function ProductesPanel() {
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
-  const [newProductOpen, setNewProductOpen] = useState(true)
-  const [activeProductsOpen, setActiveProductsOpen] = useState(true)
+  const [selectedMissingSizes, setSelectedMissingSizes] = useState<string[]>([])
+  const [newProductOpen, setNewProductOpen] = useState(false)
+  const [activeProductsOpen, setActiveProductsOpen] = useState(false)
   const [productSearch, setProductSearch] = useState('')
-  const [sizeSettingsOpen, setSizeSettingsOpen] = useState(true)
+  const [sizeSettingsOpen, setSizeSettingsOpen] = useState(false)
   const [sizeFamilyId, setSizeFamilyId] = useState('')
   const [familyDefaultProfileId, setFamilyDefaultProfileId] = useState('')
   const [newSizeFamilyGroup, setNewSizeFamilyGroup] = useState('Roba')
@@ -364,6 +365,41 @@ export function ProductesPanel() {
       ? [...configuredEditFamilySizes, current]
       : configuredEditFamilySizes
   }, [configuredEditFamilySizes, editForm.size])
+
+  const missingEditVariantSizes = useMemo(() => {
+    const source = rows.find((row) => row.id === editId)
+    if (!source) return []
+    const sourceCode = source.code.trim().toLocaleLowerCase('ca')
+    const sourceName = source.name.trim().toLocaleLowerCase('ca')
+    const existing = new Set(
+      rows
+        .filter(
+          (row) =>
+            row.id !== editId &&
+            row.code.trim().toLocaleLowerCase('ca') === sourceCode &&
+            row.name.trim().toLocaleLowerCase('ca') === sourceName
+        )
+        .map((row) => (row.size || '').trim().toLocaleUpperCase('ca'))
+        .filter(Boolean)
+    )
+    const currentSize = editForm.size.trim()
+    if (currentSize) existing.add(currentSize.toLocaleUpperCase('ca'))
+    return configuredEditFamilySizes.filter(
+      (size) => !existing.has(size.toLocaleUpperCase('ca'))
+    )
+  }, [rows, editId, editForm.size, configuredEditFamilySizes])
+
+  const missingEditVariantSizesKey = missingEditVariantSizes.join('\u001f')
+
+  useEffect(() => {
+    if (!editOpen) {
+      setSelectedMissingSizes([])
+      return
+    }
+    setSelectedMissingSizes(
+      missingEditVariantSizesKey ? missingEditVariantSizesKey.split('\u001f') : []
+    )
+  }, [editOpen, missingEditVariantSizesKey])
 
   const selectSizeFamily = (id: string) => {
     setSizeFamilyId(id)
@@ -762,14 +798,15 @@ export function ProductesPanel() {
         }),
       })
       let createdVariants = 0
-      if (configuredEditFamilySizes.length > 0) {
+      if (selectedMissingSizes.length > 0) {
         const variantResult = await api<{ createdCount: number }>(
           `/api/roba-personal/products/${editId}`,
           {
             method: 'POST',
             body: JSON.stringify({
-              sizes: configuredEditFamilySizes,
+              sizes: selectedMissingSizes,
               sizeProfileId: editForm.sizeProfileId || null,
+              minStock: editForm.minStock.trim() ? Number(editForm.minStock) : undefined,
             }),
           }
         )
@@ -794,15 +831,16 @@ export function ProductesPanel() {
   }
 
   const createMissingSizeVariants = async () => {
-    if (!editId || configuredEditFamilySizes.length === 0) return
+    if (!editId || selectedMissingSizes.length === 0) return
     try {
       const result = await api<{ createdCount: number }>(
         `/api/roba-personal/products/${editId}`,
         {
           method: 'POST',
           body: JSON.stringify({
-            sizes: configuredEditFamilySizes,
+            sizes: selectedMissingSizes,
             sizeProfileId: editForm.sizeProfileId || null,
+            minStock: editForm.minStock.trim() ? Number(editForm.minStock) : undefined,
           }),
         }
       )
@@ -993,203 +1031,235 @@ export function ProductesPanel() {
           />
         </button>
         {sizeSettingsOpen ? (
-          <div className="space-y-3">
-          <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs leading-relaxed text-blue-950 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-blue-100">
-            <strong>Perfil</strong> és l’escala de talles (p. ex. «Lletres proveïdor A»).
-            <strong className="ml-1">Família</strong> és el tipus de peça (p. ex. «Pantalons»).
-            Primer crea el perfil i després crea o selecciona la família per assignar-l’hi.
-          </div>
-          <div className="grid gap-3 rounded-lg border border-indigo-200/60 bg-indigo-50/40 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:grid-cols-[minmax(11rem,1fr)_minmax(11rem,1fr)_minmax(9rem,12rem)_minmax(14rem,2fr)_auto] sm:items-end">
-            <div className="space-y-1">
-              <Label htmlFor="size-profile" className="text-xs text-muted-foreground">
-                Perfil
-              </Label>
-              <select
-                id="size-profile"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={editingSizeProfileId}
-                onChange={(event) => selectSizeProfile(event.target.value)}
-              >
-                <option value="">+ Nou perfil</option>
-                {sizeProfiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/45 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">Perfil</strong> és l’escala de talles (p. ex. «Lletres proveïdor A»).
+              <strong className="ml-1 text-foreground">Família</strong> és el tipus de peça (p. ex. «Pantalons»).
+              Segueix els dos passos d’esquerra a dreta.
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="size-profile-name" className="text-xs text-muted-foreground">
-                Nom del perfil
-              </Label>
-              <Input
-                id="size-profile-name"
-                className="h-9 text-sm"
-                value={sizeProfileName}
-                onChange={(event) => setSizeProfileName(event.target.value)}
-                placeholder="Pantalons · Proveïdor A"
-              />
+
+            <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+              <section className="overflow-hidden rounded-xl border border-indigo-200/80 bg-background shadow-sm dark:border-indigo-900/60">
+                <div className="flex items-start gap-3 border-b border-indigo-100 bg-indigo-50/70 px-4 py-3.5 dark:border-indigo-900/50 dark:bg-indigo-950/25">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
+                    <Ruler className="h-4 w-4" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200">Pas 1</span>
+                      <h3 className="font-semibold text-foreground">Crear perfil de talles</h3>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Defineix una escala reutilitzable per proveïdor o model.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 p-3.5">
+                  <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-[minmax(9rem,1.05fr)_minmax(9rem,1fr)_7.5rem_minmax(11rem,1.35fr)_auto] 2xl:items-end">
+                    <div className="space-y-1">
+                      <Label htmlFor="size-profile" className="text-xs text-muted-foreground">Perfil existent</Label>
+                      <select
+                        id="size-profile"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={editingSizeProfileId}
+                        onChange={(event) => selectSizeProfile(event.target.value)}
+                      >
+                        <option value="">+ Nou perfil</option>
+                        {sizeProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>{profile.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="size-profile-name" className="text-xs text-muted-foreground">Nom del perfil</Label>
+                      <Input
+                        id="size-profile-name"
+                        className="h-10"
+                        value={sizeProfileName}
+                        onChange={(event) => setSizeProfileName(event.target.value)}
+                        placeholder="Pantalons · Proveïdor A"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="size-type" className="text-xs text-muted-foreground">Format</Label>
+                      <select
+                        id="size-type"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={sizeType}
+                        onChange={(event) => changeSizeType(event.target.value as RobaSizeType)}
+                      >
+                        <option value="none">Sense talla</option>
+                        <option value="letters">Lletres</option>
+                        <option value="numeric">Números</option>
+                        <option value="custom">Personalitzat</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="size-options" className="text-xs text-muted-foreground">Talles, separades per comes</Label>
+                      <Input
+                        id="size-options"
+                        className="h-10"
+                        value={sizeOptionsText}
+                        disabled={sizeType === 'none'}
+                        onChange={(event) => setSizeOptionsText(event.target.value)}
+                        placeholder="XS, S, M, L, XL"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="w-full sm:col-span-2 2xl:col-span-1 2xl:w-auto"
+                      disabled={!sizeProfileName.trim() || sizeSettingsBusy}
+                      onClick={() => void saveSizeProfile()}
+                    >
+                      {sizeSettingsBusy
+                        ? 'Desant…'
+                        : editingSizeProfileId
+                          ? 'Actualitzar perfil'
+                          : 'Crear perfil'}
+                    </Button>
+                  </div>
+
+                  <div className="border-t border-border pt-2.5">
+                    <p className="mb-2 text-xs font-medium text-foreground">Perfils disponibles ({sizeProfiles.length})</p>
+                    {sizeProfiles.length > 0 ? (
+                      <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
+                        {sizeProfiles.map((profile) => (
+                          <button
+                            key={profile.id}
+                            type="button"
+                            className={cn(
+                              'rounded-full border px-3 py-1 text-left text-xs transition-colors',
+                              editingSizeProfileId === profile.id
+                                ? 'border-indigo-400 bg-indigo-50 text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100'
+                                : 'border-border bg-muted/40 hover:bg-muted'
+                            )}
+                            onClick={() => selectSizeProfile(profile.id)}
+                            title={`Editar ${profile.name}`}
+                          >
+                            {profile.name} · {profile.sizeOptions.length > 0 ? profile.sizeOptions.join(', ') : 'sense talla'}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Encara no hi ha cap perfil desat.</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-xl border border-emerald-200/80 bg-background shadow-sm dark:border-emerald-900/60">
+                <div className="flex items-start gap-3 border-b border-emerald-100 bg-emerald-50/70 px-4 py-3.5 dark:border-emerald-900/50 dark:bg-emerald-950/25">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                    <Tags className="h-4 w-4" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200">Pas 2</span>
+                      <h3 className="font-semibold text-foreground">Assignar perfil a família</h3>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Tria una família existent o crea’n una de nova.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-5 p-4">
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium text-foreground">Família existent</h4>
+                      <p className="text-xs text-muted-foreground">Canvia o elimina el perfil predeterminat.</p>
+                    </div>
+                    <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_auto] 2xl:items-end">
+                      <div className="space-y-1">
+                        <Label htmlFor="size-family" className="text-xs text-muted-foreground">Família</Label>
+                        <select
+                          id="size-family"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          value={sizeFamilyId}
+                          onChange={(event) => selectSizeFamily(event.target.value)}
+                        >
+                          <option value="">— Trieu —</option>
+                          {familyTerms.map((family) => (
+                            <option key={family.id} value={family.id}>{family.parentKey} · {family.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="family-size-profile" className="text-xs text-muted-foreground">Perfil predeterminat</Label>
+                        <select
+                          id="family-size-profile"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          value={familyDefaultProfileId}
+                          disabled={!sizeFamilyId}
+                          onChange={(event) => setFamilyDefaultProfileId(event.target.value)}
+                        >
+                          <option value="">Sense perfil</option>
+                          {sizeProfiles.map((profile) => (
+                            <option key={profile.id} value={profile.id}>{profile.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <Button
+                        type="button"
+                        className="w-full sm:col-span-2 2xl:col-span-1 2xl:w-auto"
+                        disabled={!sizeFamilyId || sizeSettingsBusy}
+                        onClick={() => void saveFamilyDefaultProfile()}
+                      >
+                        Assignar perfil
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4">
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium text-foreground">Nova família</h4>
+                      <p className="text-xs text-muted-foreground">Crea-la i deixa el perfil assignat en un sol pas.</p>
+                    </div>
+                    <div className="grid gap-2.5 sm:grid-cols-[9rem_minmax(0,1fr)] 2xl:grid-cols-[7rem_minmax(9rem,1fr)_minmax(10rem,1fr)_auto] 2xl:items-end">
+                      <div className="space-y-1">
+                        <Label htmlFor="new-size-family-group" className="text-xs text-muted-foreground">Grup</Label>
+                        <Input
+                          id="new-size-family-group"
+                          className="h-10"
+                          value={newSizeFamilyGroup}
+                          onChange={(event) => setNewSizeFamilyGroup(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="new-size-family-name" className="text-xs text-muted-foreground">Nom de la família</Label>
+                        <Input
+                          id="new-size-family-name"
+                          className="h-10"
+                          value={newSizeFamilyName}
+                          onChange={(event) => setNewSizeFamilyName(event.target.value)}
+                          placeholder="Pantalons, Samarretes, Calçat…"
+                        />
+                      </div>
+                    <div className="space-y-1 sm:col-span-2 2xl:col-span-1">
+                      <Label htmlFor="new-size-family-profile" className="text-xs text-muted-foreground">Perfil predeterminat</Label>
+                      <select
+                        id="new-size-family-profile"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={newSizeFamilyProfileId}
+                        onChange={(event) => setNewSizeFamilyProfileId(event.target.value)}
+                      >
+                        <option value="">Sense perfil</option>
+                        {sizeProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>{profile.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:col-span-2 2xl:col-span-1 2xl:w-auto"
+                        disabled={!newSizeFamilyName.trim() || sizeSettingsBusy}
+                        onClick={() => void createSizeFamily()}
+                      >
+                        Crear família{newSizeFamilyProfileId ? ' i assignar perfil' : ''}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="size-type" className="text-xs text-muted-foreground">
-                Format
-              </Label>
-              <select
-                id="size-type"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={sizeType}
-                onChange={(event) => changeSizeType(event.target.value as RobaSizeType)}
-              >
-                <option value="none">Sense talla</option>
-                <option value="letters">Lletres</option>
-                <option value="numeric">Números</option>
-                <option value="custom">Personalitzat</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="size-options" className="text-xs text-muted-foreground">
-                Talles (separades per comes)
-              </Label>
-              <Input
-                id="size-options"
-                className="h-9 text-sm"
-                value={sizeOptionsText}
-                disabled={sizeType === 'none'}
-                onChange={(event) => setSizeOptionsText(event.target.value)}
-                placeholder="XS, S, M, L, XL"
-              />
-            </div>
-            <Button
-              type="button"
-              className="h-9"
-              disabled={!sizeProfileName.trim() || sizeSettingsBusy}
-              onClick={() => void saveSizeProfile()}
-            >
-              {sizeSettingsBusy
-                ? 'Desant…'
-                : editingSizeProfileId
-                  ? 'Actualitzar perfil'
-                  : 'Crear perfil'}
-            </Button>
-          </div>
-          <div className="rounded-lg border border-border bg-background p-3">
-            <p className="mb-2 text-xs font-medium text-foreground">
-              Perfils disponibles ({sizeProfiles.length})
-            </p>
-            {sizeProfiles.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {sizeProfiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs hover:bg-muted"
-                    onClick={() => selectSizeProfile(profile.id)}
-                    title={`Editar ${profile.name}`}
-                  >
-                    {profile.name} · {profile.sizeOptions.length > 0 ? profile.sizeOptions.join(', ') : 'sense talla'}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Encara no hi ha cap perfil desat.</p>
-            )}
-          </div>
-          <div className="grid gap-3 rounded-lg border border-slate-200 bg-muted/20 p-3 dark:border-slate-700 sm:grid-cols-[minmax(13rem,1fr)_minmax(13rem,1fr)_auto] sm:items-end">
-            <div className="space-y-1">
-              <Label htmlFor="size-family" className="text-xs text-muted-foreground">
-                Família
-              </Label>
-              <select
-                id="size-family"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={sizeFamilyId}
-                onChange={(event) => selectSizeFamily(event.target.value)}
-              >
-                <option value="">— Trieu —</option>
-                {familyTerms.map((family) => (
-                  <option key={family.id} value={family.id}>
-                    {family.parentKey} · {family.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="family-size-profile" className="text-xs text-muted-foreground">
-                Perfil predeterminat
-              </Label>
-              <select
-                id="family-size-profile"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={familyDefaultProfileId}
-                disabled={!sizeFamilyId}
-                onChange={(event) => setFamilyDefaultProfileId(event.target.value)}
-              >
-                <option value="">Sense perfil</option>
-                {sizeProfiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>{profile.name}</option>
-                ))}
-              </select>
-            </div>
-            <Button
-              type="button"
-              className="h-9"
-              disabled={!sizeFamilyId || sizeSettingsBusy}
-              onClick={() => void saveFamilyDefaultProfile()}
-            >
-              Assignar a la família
-            </Button>
-          </div>
-          <div className="grid gap-3 rounded-lg border border-emerald-200/70 bg-emerald-50/40 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20 sm:grid-cols-[minmax(9rem,12rem)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto] sm:items-end">
-            <div className="space-y-1">
-              <Label htmlFor="new-size-family-group" className="text-xs text-muted-foreground">
-                Grup de la nova família
-              </Label>
-              <Input
-                id="new-size-family-group"
-                className="h-9 text-sm"
-                value={newSizeFamilyGroup}
-                onChange={(event) => setNewSizeFamilyGroup(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="new-size-family-profile" className="text-xs text-muted-foreground">
-                Perfil predeterminat
-              </Label>
-              <select
-                id="new-size-family-profile"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={newSizeFamilyProfileId}
-                onChange={(event) => setNewSizeFamilyProfileId(event.target.value)}
-              >
-                <option value="">Sense perfil</option>
-                {sizeProfiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>{profile.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="new-size-family-name" className="text-xs text-muted-foreground">
-                Nova família
-              </Label>
-              <Input
-                id="new-size-family-name"
-                className="h-9 text-sm"
-                value={newSizeFamilyName}
-                onChange={(event) => setNewSizeFamilyName(event.target.value)}
-                placeholder="Pantalons, Samarretes, Calçat…"
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9"
-              disabled={!newSizeFamilyName.trim() || sizeSettingsBusy}
-              onClick={() => void createSizeFamily()}
-            >
-              Crear família
-              {newSizeFamilyProfileId ? ' i assignar perfil' : ''}
-            </Button>
-          </div>
           </div>
         ) : null}
       </div>
@@ -1601,6 +1671,7 @@ export function ProductesPanel() {
                 <TableHead className={cn(taulaThText, 'whitespace-nowrap')}>Codi proveïdor</TableHead>
                 <TableHead className={taulaThText}>Magatzem</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Estoc</TableHead>
+                <TableHead className={cn(taulaThText, 'text-right whitespace-nowrap')}>Estoc mín.</TableHead>
                 <TableHead className={cn(taulaThText, 'text-center w-[4.5rem]')}>Actiu</TableHead>
                 <TableHead className={cn(taulaThText, 'text-center w-[5rem]')}>Accions</TableHead>
               </TableRow>
@@ -1608,19 +1679,19 @@ export function ProductesPanel() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="text-muted-foreground">
+                  <TableCell colSpan={15} className="text-muted-foreground">
                     Carregant…
                   </TableCell>
                 </TableRow>
               ) : productesTaula.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="text-muted-foreground text-center py-8 text-sm">
+                  <TableCell colSpan={15} className="text-muted-foreground text-center py-8 text-sm">
                     Encara no hi ha cap article. Creeu-ne un amb el formulari de dalt.
                   </TableCell>
                 </TableRow>
               ) : filteredProductesTaula.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={15} className="py-10 text-center text-sm text-muted-foreground">
                     Cap producte coincideix amb «{productSearch.trim()}».
                   </TableCell>
                 </TableRow>
@@ -1666,6 +1737,9 @@ export function ProductesPanel() {
                         {r.magatzem?.trim() || DEFAULT_DOTACIO_MAGATZEM}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{r.quantityOnHand ?? 0}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r.minStock ?? '—'}
+                      </TableCell>
                       <TableCell
                         className="text-center"
                         onClick={(e) => e.stopPropagation()}
@@ -2019,18 +2093,86 @@ export function ProductesPanel() {
               </div>
             </div>
             {configuredEditFamilySizes.length > 0 ? (
-              <div className="flex flex-col gap-2 rounded-md border border-indigo-200 bg-indigo-50/50 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Variants de la família: {configuredEditFamilySizes.join(', ')}.
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void createMissingSizeVariants()}
-                >
-                  Crear variants que falten
-                </Button>
+              <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50/50 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Variants de talla que falten</p>
+                    <p className="text-xs text-muted-foreground">
+                      Selecciona només les talles que vulguis crear amb estoc inicial zero.
+                    </p>
+                  </div>
+                  {missingEditVariantSizes.length > 0 ? (
+                    <div className="flex gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setSelectedMissingSizes(missingEditVariantSizes)}
+                      >
+                        Marcar totes
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setSelectedMissingSizes([])}
+                      >
+                        Cap
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {missingEditVariantSizes.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {missingEditVariantSizes.map((size) => {
+                      const checked = selectedMissingSizes.includes(size)
+                      return (
+                        <label
+                          key={size}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
+                            checked
+                              ? 'border-indigo-400 bg-indigo-100/70 text-indigo-950 dark:bg-indigo-950/50 dark:text-indigo-100'
+                              : 'border-border bg-background text-muted-foreground hover:bg-muted/60'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setSelectedMissingSizes((current) =>
+                                checked
+                                  ? current.filter((item) => item !== size)
+                                  : [...current, size]
+                              )
+                            }
+                          />
+                          {size}
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-md bg-background px-3 py-2 text-xs text-muted-foreground">
+                    Ja existeixen totes les talles d’aquest perfil.
+                  </p>
+                )}
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedMissingSizes.length === 0}
+                    onClick={() => void createMissingSizeVariants()}
+                  >
+                    Crear {selectedMissingSizes.length || ''}{' '}
+                    {selectedMissingSizes.length === 1 ? 'variant' : 'variants'}
+                  </Button>
+                </div>
               </div>
             ) : null}
           </div>

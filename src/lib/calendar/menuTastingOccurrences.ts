@@ -212,13 +212,24 @@ export function buildMenuTastingOccurrence({
   rangeStart: string
   rangeEnd: string
 }): Record<string, unknown> | null {
+  const tastingType = String(sourceData.Tipus_Tast_de_Men || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+
+  // Un Tast sencer substitueix les antigues PM/PM2; els camps d'aquests blocs
+  // poden conservar dates residuals a Zoho, però no són cites independents.
+  if (
+    tastingType === 'tast sencer' &&
+    config.occurrenceType !== 'menu_tasting_full'
+  ) {
+    return null
+  }
+
   if (
     config.requiredType &&
-    String(sourceData.Tipus_Tast_de_Men || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toLowerCase() !== config.requiredType.toLowerCase()
+    tastingType !== config.requiredType.toLowerCase()
   ) {
     return null
   }

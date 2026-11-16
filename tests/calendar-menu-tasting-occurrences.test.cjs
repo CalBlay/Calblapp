@@ -311,6 +311,30 @@ test('does not build the full tasting unless Zoho marks it as Tast sencer', () =
   assert.equal(occurrence, null)
 })
 
+test('Tast sencer suppresses residual PM, PM2 and Empresa occurrences', () => {
+  const sourceData = {
+    Tipus_Tast_de_Men: 'Tast sencer',
+    Data_1_Prova_Men: '2026-11-26T12:00:00',
+    Data_2a_Part_Tast: '2026-11-26',
+    Hora: '12:00',
+    Data_i_hora: '2026-11-26T12:00:00',
+  }
+
+  for (const configIndex of [0, 1, 3]) {
+    assert.equal(
+      buildMenuTastingOccurrence({
+        sourceEvent,
+        sourceData,
+        sourceEventId: 'zoho-full-with-legacy-dates',
+        config: MENU_TASTING_CONFIGS[configIndex],
+        rangeStart: '2026-11-01',
+        rangeEnd: '2026-11-30',
+      }),
+      null
+    )
+  }
+})
+
 test('builds tastings regardless of business line or company confirmation state', () => {
   const unconfirmedCompany = buildMenuTastingOccurrence({
     sourceEvent: { ...sourceEvent, lnLabel: 'Agenda' },
