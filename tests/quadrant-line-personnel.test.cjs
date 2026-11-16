@@ -84,6 +84,25 @@ test('legacy quadrants still fall back to person and header hours', () => {
   assert.equal(person.endTime, '16:00')
 })
 
+test('real arrival time overrides the effective start but preserves the planned call time', () => {
+  const [person] = collectQuadrantLinePersonnel({
+    startDate: '2026-11-16',
+    treballadors: [
+      {
+        name: 'Anna',
+        startTime: '09:00',
+        startTimeReal: '09:27',
+        lateArrival: true,
+      },
+    ],
+  })
+
+  assert.equal(person.startTime, '09:27')
+  assert.equal(person.plannedStartTime, '09:00')
+  assert.equal(person.startTimeReal, '09:27')
+  assert.equal(person.lateArrival, true)
+})
+
 test('legacy top-level responsible belongs to only the first service group', () => {
   const rows = collectQuadrantLinePersonnel({
     startDate: '2026-11-17',

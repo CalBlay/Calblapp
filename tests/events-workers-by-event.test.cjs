@@ -12,8 +12,10 @@ const base = {
   isResponsible: false,
   plannedEndTime: '23:00',
   plannedHours: 7,
+  actualStartTime: '',
   actualHours: 8,
   noShow: false,
+  lateArrival: false,
   leftEarly: false,
   isEtt: false,
   notes: '',
@@ -109,6 +111,25 @@ test('merges multiple roles for the same worker into one row', () => {
   assert.equal(rows[0].plannedStartTime, '15:00')
   assert.equal(rows[0].realEndTime, '23:30')
   assert.equal(rows[0].actualHours, 8.5)
+})
+
+test('uses a late real arrival as the effective report start and recalculates worked hours', () => {
+  const groups = groupEventsWorkersByEvent([
+    {
+      ...base,
+      department: 'Serveis',
+      workerName: 'Anna',
+      plannedStartTime: '16:00',
+      actualStartTime: '16:30',
+      realEndTime: '00:00',
+      lateArrival: true,
+    },
+  ])
+
+  const row = groups[0].departments[0].rows[0]
+  assert.equal(row.actualStartTime, '16:30')
+  assert.equal(row.actualHours, 7.5)
+  assert.equal(row.lateArrival, true)
 })
 
 test('sorts events chronologically from the first day to the last day', () => {

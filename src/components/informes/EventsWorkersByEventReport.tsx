@@ -108,7 +108,7 @@ export function EventsWorkersByEventReport({ entries }: { entries: EventsWorkers
                               {row.workerName}
                             </TableCell>
                             <TableCell className="bg-blue-50/40 py-4 text-lg font-bold tabular-nums text-blue-950">
-                              {row.plannedStartTime || '—'}
+                              {row.actualStartTime || row.plannedStartTime || '—'}
                             </TableCell>
                             <TableCell
                               className={`bg-indigo-50/40 py-4 text-lg font-bold tabular-nums ${
@@ -140,7 +140,11 @@ export function EventsWorkersByEventReport({ entries }: { entries: EventsWorkers
                                     : 'bg-amber-50 text-amber-800'
                                 }`}
                               >
-                                {closed ? 'Tancat' : 'Pendent de tancament'}
+                                {row.lateArrival
+                                  ? 'Arribada tardana'
+                                  : closed
+                                    ? 'Tancat'
+                                    : 'Pendent de tancament'}
                               </span>
                             </TableCell>
                           </TableRow>

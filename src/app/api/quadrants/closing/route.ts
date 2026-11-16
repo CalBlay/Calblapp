@@ -87,6 +87,17 @@ export async function PUT(req: NextRequest) {
     if (!eventId || !department || !Array.isArray(updates)) {
       return NextResponse.json({ error: 'Falten camps requerits' }, { status: 400 })
     }
+    const invalidLateArrival = updates.find(
+      (update) =>
+        update.lateArrival === true &&
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(update.startTimeReal || ''))
+    )
+    if (invalidLateArrival) {
+      return NextResponse.json(
+        { error: `Falta una hora real d'arribada vàlida per a ${invalidLateArrival.name || 'una persona'}` },
+        { status: 400 }
+      )
+    }
 
     const roleRaw = jwtString(token, ['role', 'userRole'])
     const deptToken = norm(

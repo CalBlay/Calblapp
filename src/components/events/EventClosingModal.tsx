@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CheckCircle2, TriangleAlert, X, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ClockAlert, TriangleAlert, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useEventPersonnel, type Person } from '@/hooks/useEventPersonnel'
@@ -19,8 +19,10 @@ type Props = {
 
 type Row = Person & {
   endTimeReal?: string
+  startTimeReal?: string
   notes?: string
   noShow?: boolean
+  lateArrival?: boolean
   leftEarly?: boolean
 }
 
@@ -103,12 +105,18 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
     setSaving(true)
     setSaveError('')
     try {
+      const missingArrival = rows.find((row) => row.lateArrival && !row.startTimeReal)
+      if (missingArrival) {
+        throw new Error(`Indica l'hora real d'arribada de ${missingArrival.name || 'la persona'}`)
+      }
       const updates = rows.map((row) => ({
         name: row.name || '',
         role: row.role,
+        startTimeReal: row.lateArrival ? row.startTimeReal || '' : '',
         endTimeReal: row.endTimeReal || '',
         notes: row.notes || '',
         noShow: Boolean(row.noShow),
+        lateArrival: Boolean(row.lateArrival),
         leftEarly: Boolean(row.leftEarly),
       }))
 
@@ -227,14 +235,16 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                 </div>
               ) : (
                 rows.map((row, index) => {
-                  const showNote = Boolean(row.noShow || row.leftEarly)
+                  const showNote = Boolean(row.noShow || row.lateArrival || row.leftEarly)
                   const inputId = `closing-hour-${index}`
                   return (
                     <article key={`${row.id || row.name}-${index}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="min-w-0">
                         <p className="break-words text-base font-semibold text-slate-950">{row.name || 'Sense nom'}</p>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                          {row.time ? <span>Inici: {row.time}</span> : null}
+                          {row.plannedStartTime || row.time ? (
+                            <span>Convocatòria: {row.plannedStartTime || row.time}</span>
+                          ) : null}
                           {row.endTime ? <span>Final previst: {row.endTime}</span> : null}
                           <span className="capitalize">{row.role || row.department || 'Personal'}</span>
                         </div>
@@ -254,7 +264,7 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                         />
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                         <button
                           type="button"
                           aria-pressed={Boolean(row.noShow)}
@@ -263,6 +273,8 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                             patchRow(index, {
                               noShow: !row.noShow,
                               endTimeReal: !row.noShow ? '' : row.endTimeReal,
+                              lateArrival: !row.noShow ? false : row.lateArrival,
+                              startTimeReal: !row.noShow ? '' : row.startTimeReal,
                               notes: !row.noShow ? row.notes : '',
                             })
                           }
@@ -275,6 +287,27 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                         >
                           <XCircle className="h-5 w-5 shrink-0" />
                           No ha vingut
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={Boolean(row.lateArrival)}
+                          disabled={!canEdit || row.noShow}
+                          onClick={() =>
+                            patchRow(index, {
+                              lateArrival: !row.lateArrival,
+                              startTimeReal: row.lateArrival ? '' : row.startTimeReal,
+                              notes: !row.lateArrival ? row.notes : '',
+                            })
+                          }
+                          className={[
+                            'flex min-h-12 touch-manipulation items-center justify-center gap-2 rounded-xl border px-2 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50',
+                            row.lateArrival
+                              ? 'border-orange-300 bg-orange-50 text-orange-700'
+                              : 'border-slate-200 bg-white text-slate-700',
+                          ].join(' ')}
+                        >
+                          <ClockAlert className="h-5 w-5 shrink-0" />
+                          Ha arribat tard
                         </button>
                         <button
                           type="button"
@@ -297,6 +330,26 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                           Ha marxat abans
                         </button>
                       </div>
+
+                      {row.lateArrival ? (
+                        <div className="mt-3">
+                          <label htmlFor={`closing-arrival-${index}`} className="mb-1.5 block text-sm font-medium text-slate-700">
+                            Hora real d'arribada
+                          </label>
+                          <Input
+                            id={`closing-arrival-${index}`}
+                            type="time"
+                            required
+                            disabled={!canEdit || row.noShow}
+                            value={row.startTimeReal || ''}
+                            onChange={(event) => patchRow(index, { startTimeReal: event.target.value })}
+                            className="h-12 rounded-xl border-orange-300 bg-orange-50 text-center text-lg font-semibold text-slate-950"
+                          />
+                          <p className="mt-1.5 text-xs text-slate-500">
+                            Aquesta hora substituirà la convocatòria en el còmput horari i els informes.
+                          </p>
+                        </div>
+                      ) : null}
 
                       {showNote ? (
                         <div className="mt-3">

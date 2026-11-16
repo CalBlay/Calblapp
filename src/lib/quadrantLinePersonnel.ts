@@ -7,6 +7,10 @@ export type QuadrantScheduledPerson = Record<string, unknown> & {
   startDate: string
   endDate: string
   startTime: string
+  /** Convocatòria original, abans d'una possible arribada tardana. */
+  plannedStartTime: string
+  /** Hora real d'arribada informada al tancament operatiu. */
+  startTimeReal: string
   endTime: string
   meetingPoint: string
   groupId?: string
@@ -153,6 +157,15 @@ function scheduledPerson(params: {
     (hasLineDate ? startDate : text(doc.endDate)) ||
     startDate
 
+  const plannedStartTime =
+    text(line.startTime || line.time || line.hour) ||
+    text(group.startTime) ||
+    text(base.startTime || base.time || base.hour) ||
+    text(doc.startTime || doc.hour || doc.convocatoria)
+  const startTimeReal =
+    text(line.startTimeReal) ||
+    text(base.startTimeReal)
+
   return {
     ...base,
     ...line,
@@ -161,11 +174,11 @@ function scheduledPerson(params: {
     role: roleOf(line.role, base.role || fallbackRole),
     startDate,
     endDate,
-    startTime:
-      text(line.startTime || line.time || line.hour) ||
-      text(group.startTime) ||
-      text(base.startTime || base.time || base.hour) ||
-      text(doc.startTime || doc.hour || doc.convocatoria),
+    // L'hora real passa a ser l'inici efectiu per a tots els consumidors
+    // (informes, càrrega horària, costos i torns), sense perdre la convocatòria.
+    startTime: startTimeReal || plannedStartTime,
+    plannedStartTime,
+    startTimeReal,
     endTime:
       text(line.endTime) ||
       text(group.endTime) ||

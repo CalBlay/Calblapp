@@ -54,6 +54,10 @@ function workedHours(startTime: string, endTime: string) {
   return ((end >= start ? end : end + 24 * 60) - start) / 60
 }
 
+function effectiveStartTime(row: Pick<EventsWorkersEntryRow, 'actualStartTime' | 'plannedStartTime'>) {
+  return row.actualStartTime || row.plannedStartTime
+}
+
 function mergeDepartmentRows(rows: EventsWorkersEntryRow[]): EventsWorkersEventPersonRow[] {
   const byWorker = new Map<string, EventsWorkersEventPersonRow>()
 
@@ -61,18 +65,23 @@ function mergeDepartmentRows(rows: EventsWorkersEntryRow[]): EventsWorkersEventP
     const key = normalize(row.workerName)
     const current = byWorker.get(key)
     if (!current) {
-      byWorker.set(key, { ...row, roles: [row.role], periodActualHours: 0 })
+      const next = { ...row, roles: [row.role], periodActualHours: 0 }
+      if (effectiveStartTime(next) && next.realEndTime) {
+        next.actualHours = workedHours(effectiveStartTime(next), next.realEndTime)
+      }
+      byWorker.set(key, next)
       return
     }
 
     if (!current.roles.includes(row.role)) current.roles.push(row.role)
-    const currentStart = clockMinutes(current.plannedStartTime)
-    const nextStart = clockMinutes(row.plannedStartTime)
+    const currentStart = clockMinutes(effectiveStartTime(current))
+    const nextStart = clockMinutes(effectiveStartTime(row))
     if (
-      row.plannedStartTime &&
+      effectiveStartTime(row) &&
       (currentStart == null || (nextStart != null && nextStart < currentStart))
     ) {
       current.plannedStartTime = row.plannedStartTime
+      current.actualStartTime = row.actualStartTime
     }
     if (!current.realEndTime && row.realEndTime) current.realEndTime = row.realEndTime
     if (row.actualHours > current.actualHours) {
@@ -81,15 +90,16 @@ function mergeDepartmentRows(rows: EventsWorkersEntryRow[]): EventsWorkersEventP
     }
     current.isResponsible = current.isResponsible || row.isResponsible
     current.leftEarly = current.leftEarly || row.leftEarly
+    current.lateArrival = current.lateArrival || row.lateArrival
     current.roles.sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b))
-    if (current.plannedStartTime && current.realEndTime) {
-      current.actualHours = workedHours(current.plannedStartTime, current.realEndTime)
+    if (effectiveStartTime(current) && current.realEndTime) {
+      current.actualHours = workedHours(effectiveStartTime(current), current.realEndTime)
     }
   })
 
   return Array.from(byWorker.values()).sort((a, b) => {
-    if (a.plannedStartTime !== b.plannedStartTime) {
-      return a.plannedStartTime.localeCompare(b.plannedStartTime)
+    if (effectiveStartTime(a) !== effectiveStartTime(b)) {
+      return effectiveStartTime(a).localeCompare(effectiveStartTime(b))
     }
     return a.workerName.localeCompare(b.workerName, 'ca')
   })

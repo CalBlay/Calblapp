@@ -73,11 +73,13 @@ export type EventsWorkersEntryRow = {
   role: string
   isResponsible: boolean
   plannedStartTime: string
+  actualStartTime: string
   plannedEndTime: string
   realEndTime: string
   plannedHours: number
   actualHours: number
   noShow: boolean
+  lateArrival: boolean
   leftEarly: boolean
   isEtt: boolean
   notes: string

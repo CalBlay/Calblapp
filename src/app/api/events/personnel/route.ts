@@ -50,9 +50,11 @@ type QRow = {
     time?: string
     hour?: string
     endTime?: string
+    startTimeReal?: string
     endTimeReal?: string
     sortidaNotes?: string
     noShow?: boolean
+    lateArrival?: boolean
     leftEarly?: boolean
     plate?: string
     matricula?: string
@@ -65,9 +67,11 @@ type QRow = {
     time?: string
     hour?: string
     endTime?: string
+    startTimeReal?: string
     endTimeReal?: string
     sortidaNotes?: string
     noShow?: boolean
+    lateArrival?: boolean
     leftEarly?: boolean
   }>
   workers?: Array<{
@@ -77,9 +81,11 @@ type QRow = {
     time?: string
     hour?: string
     endTime?: string
+    startTimeReal?: string
     endTimeReal?: string
     sortidaNotes?: string
     noShow?: boolean
+    lateArrival?: boolean
     leftEarly?: boolean
   }>
   groups?: Array<Record<string, unknown>>
@@ -100,10 +106,13 @@ type PersonnelListEntry = {
   department?: string
   meetingPoint?: string
   time?: string
+  plannedStartTime?: string
+  startTimeReal?: string
   endTime?: string
   endTimeReal?: string
   notes?: string
   noShow?: boolean
+  lateArrival?: boolean
   leftEarly?: boolean
   plate?: string
   sourceUpdatedAt: number
@@ -296,10 +305,13 @@ export async function GET(req: NextRequest) {
           department: dept,
           meetingPoint: person.meetingPoint,
           time: person.startTime,
+          plannedStartTime: person.plannedStartTime,
+          startTimeReal: person.startTimeReal,
           endTime: person.endTime,
           endTimeReal: String(person.endTimeReal || ''),
           notes: String(person.sortidaNotes || ''),
           noShow: person.noShow === true,
+          lateArrival: person.lateArrival === true,
           leftEarly: person.leftEarly === true,
           sourceUpdatedAt,
           ...(plate ? { plate } : {}),

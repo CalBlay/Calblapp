@@ -102,6 +102,30 @@ test('applyClosingUpdatesToQuadrantData also updates the matching role line', ()
   assert.equal(payload.groups[0].roleLines[0].sortidaNotes, 'ok')
 })
 
+test('late arrival stores the real start and makes it available as the effective start', () => {
+  const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
+    data: {
+      treballadors: [{ name: 'Anna', startTime: '10:00', endTime: '18:00' }],
+    },
+    updates: [
+      {
+        name: 'Anna',
+        startTimeReal: '10:35',
+        endTimeReal: '18:00',
+        lateArrival: true,
+      },
+    ],
+    department: 'serveis',
+    nowIso: '2026-11-16T12:00:00.000Z',
+    userId: 'user-1',
+  })
+
+  assert.equal(matchedPeople, 1)
+  assert.equal(payload.treballadors[0].startTime, '10:00')
+  assert.equal(payload.treballadors[0].startTimeReal, '10:35')
+  assert.equal(payload.treballadors[0].lateArrival, true)
+})
+
 test('closing would miss phase docs if it only looked up collection.doc(eventId)', () => {
   const eventId = 'deal-999'
   const phaseOnly = selectClosingQuadrantDocs({

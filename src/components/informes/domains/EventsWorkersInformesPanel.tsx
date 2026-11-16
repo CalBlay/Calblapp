@@ -64,7 +64,7 @@ type EventsWorkersExportRow = {
   Departament: string
   Treballador: string
   Rols: string
-  Convocatòria: string
+  'Hora inici efectiva': string
   'Hora final oficial': string
   'Hores oficials': number | string
   'Total hores treballador': number
@@ -87,7 +87,7 @@ function buildEventsWorkersExportRows(entries: EventsWorkersOverview['entries'])
         Departament: department.department,
         Treballador: row.workerName,
         Rols: row.roles.map(roleExportLabel).join(', '),
-        Convocatòria: row.plannedStartTime,
+        'Hora inici efectiva': row.actualStartTime || row.plannedStartTime,
         'Hora final oficial': row.realEndTime || 'Pendent',
         'Hores oficials': row.realEndTime ? Number(row.actualHours.toFixed(2)) : '',
         'Total hores treballador': Number(row.periodActualHours.toFixed(2)),
@@ -982,6 +982,7 @@ export function EventsWorkersInformesPanel() {
                     <TableHead>Fi Real</TableHead>
                     <TableHead>Hores Reals</TableHead>
                     <TableHead>No Show</TableHead>
+                    <TableHead>Arribada tard</TableHead>
                     <TableHead>Marxa Abans</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1006,11 +1007,12 @@ export function EventsWorkersInformesPanel() {
                         </span>
                       </TableCell>
                       <TableCell>{row.department || '—'}</TableCell>
-                      <TableCell>{row.plannedStartTime || '—'}</TableCell>
+                      <TableCell>{row.actualStartTime || row.plannedStartTime || '—'}</TableCell>
                       <TableCell>{row.plannedEndTime || '—'}</TableCell>
                       <TableCell>{row.realEndTime || '—'}</TableCell>
                       <TableCell>{formatHours(row.actualHours)}</TableCell>
                       <TableCell>{row.noShow ? 'Sí' : 'No'}</TableCell>
+                      <TableCell>{row.lateArrival ? 'Sí' : 'No'}</TableCell>
                       <TableCell>{row.leftEarly ? 'Sí' : 'No'}</TableCell>
                     </TableRow>
                   ))}

@@ -12,11 +12,14 @@ export interface Person {
   department?: string
   meetingPoint?: string
   time?: string
+  plannedStartTime?: string
+  startTimeReal?: string
   plate?: string
   endTime?: string
   endTimeReal?: string
   notes?: string
   noShow?: boolean
+  lateArrival?: boolean
   leftEarly?: boolean
 }
 

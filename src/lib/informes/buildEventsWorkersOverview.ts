@@ -44,10 +44,12 @@ type QuadrantPersonLine = {
   time?: string
   hour?: string
   startTime?: string
+  startTimeReal?: string
   endTime?: string
   endTimeReal?: string
   sortidaNotes?: string
   noShow?: boolean
+  lateArrival?: boolean
   leftEarly?: boolean
   isExternal?: boolean
   externalType?: 'ett' | 'centerExternalExtra' | null
@@ -222,9 +224,11 @@ function collectPersonLines(doc: QuadrantDoc) {
     isResponsible: boolean
     department: string
     plannedStartTime: string
+    actualStartTime: string
     plannedEndTime: string
     realEndTime: string
     noShow: boolean
+    lateArrival: boolean
     leftEarly: boolean
     isEtt: boolean
     notes: string
@@ -239,10 +243,12 @@ function collectPersonLines(doc: QuadrantDoc) {
       role: person.role,
       isResponsible: person.role === 'responsable',
       department,
-      plannedStartTime: person.startTime,
+      plannedStartTime: person.plannedStartTime || person.startTime,
+      actualStartTime: String(person.startTimeReal || '').trim(),
       plannedEndTime: person.endTime,
       realEndTime: String(person.endTimeReal || '').trim(),
       noShow: person.noShow === true,
+      lateArrival: person.lateArrival === true,
       leftEarly: person.leftEarly === true,
       isEtt:
         externalType === 'ett' ||
@@ -314,7 +320,10 @@ export async function buildEventsWorkersOverview({
       const plannedHours = diffHours(line.plannedStartTime, line.plannedEndTime)
       const actualHours = line.noShow
         ? 0
-        : diffHours(line.plannedStartTime, line.realEndTime || line.plannedEndTime)
+        : diffHours(
+            line.actualStartTime || line.plannedStartTime,
+            line.realEndTime || line.plannedEndTime
+          )
 
       const entry: EventsWorkersEntryRow = {
         eventId,
@@ -327,11 +336,13 @@ export async function buildEventsWorkersOverview({
         role: line.role,
         isResponsible: line.isResponsible,
         plannedStartTime: line.plannedStartTime,
+        actualStartTime: line.actualStartTime,
         plannedEndTime: line.plannedEndTime,
         realEndTime: line.realEndTime,
         plannedHours,
         actualHours,
         noShow: line.noShow,
+        lateArrival: line.lateArrival,
         leftEarly: line.leftEarly,
         isEtt: line.isEtt,
         notes: line.notes,

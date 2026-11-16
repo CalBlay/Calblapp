@@ -1,9 +1,11 @@
 export type ClosingPersonUpdate = {
   name: string
   role?: string
+  startTimeReal?: string
   endTimeReal?: string
   notes?: string
   noShow?: boolean
+  lateArrival?: boolean
   leftEarly?: boolean
 }
 
@@ -113,9 +115,13 @@ export function applyClosingUpdatesToQuadrantData(params: {
   const { data, updates, department, closeDept, nowIso, userId } = params
 
   const setter = (item: ClosingRow, upd: ClosingPersonUpdate) => {
+    const noShow = !!upd.noShow
+    const lateArrival = !noShow && !!upd.lateArrival
+    item.startTimeReal = lateArrival ? upd.startTimeReal || null : null
     item.endTimeReal = upd.endTimeReal || null
     item.sortidaNotes = upd.notes || ''
-    item.noShow = !!upd.noShow
+    item.noShow = noShow
+    item.lateArrival = lateArrival
     item.leftEarly = !!upd.leftEarly
     item.sortidaSetBy = { userId, ts: nowIso }
   }
