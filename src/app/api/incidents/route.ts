@@ -559,6 +559,7 @@ export async function POST(req: Request) {
     if (categoryPrefix === '9') {
       await notifyMarketingManagersFor9xxIncident({
         baseUrl,
+        senderUserId: user.id,
         payload: {
           type: 'incident_marketing_9xx_new',
           title: 'Nova incidencia 9XX',
