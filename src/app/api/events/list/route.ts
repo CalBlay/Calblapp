@@ -18,6 +18,10 @@ import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 import { eventRecordHasAttachedDocuments } from '@/lib/events/eventDocumentPresence'
 import { documentHasInvalidZohoAttachments } from '@/services/zoho/attachments'
 import { EVENTS_LIST_CACHE_TAG } from '@/lib/eventsListCache'
+import {
+  eventLocationMatchesScope,
+  resolveEventLocationScope,
+} from '@/lib/events/eventLocationScope'
 
 const EVENTS_LIST_REVALIDATE_SEC = 90
 
@@ -244,7 +248,8 @@ const getEventsListCached = unstable_cache(
     userNameNorm: string,
     qsDept: string,
     sessDept: string,
-    hasFullEventsAccess: boolean
+    hasFullEventsAccess: boolean,
+    locationScope: string
   ): Promise<EventsListCachedPayload> => {
     let deptsToUse: string[] = []
     const isProductionOperationalWorker = role === 'treballador' && sessDept === 'produccio'
@@ -642,7 +647,11 @@ const getEventsListCached = unstable_cache(
     }
 
     let finalEvents = enriched
-    if (role === 'treballador' && !isProductionOperationalWorker && !hasFullEventsAccess) {
+    if (locationScope) {
+      finalEvents = enriched
+        .filter((ev) => eventLocationMatchesScope(ev.location, locationScope))
+        .map((ev) => ({ ...ev, isResponsible: false }))
+    } else if (role === 'treballador' && !isProductionOperationalWorker && !hasFullEventsAccess) {
       finalEvents = enriched
         .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id as string))
         .map((ev) => {
@@ -667,7 +676,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v7-hide-cancelled'],
+  ['api-events-list-v10-location-scoped-users'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC, tags: [EVENTS_LIST_CACHE_TAG] }
 )
 
@@ -733,6 +742,11 @@ export async function GET(req: NextRequest) {
       user: permissionUser,
       path: '/menu/events',
     })
+    const locationScope = resolveEventLocationScope({
+      userName,
+      role,
+      department: sessDept,
+    }) || ''
 
     console.log('[events/list] ð¢ Token info:', {
       role,
@@ -741,6 +755,7 @@ export async function GET(req: NextRequest) {
       scope,
       userName,
       hasFullEventsAccess,
+      locationScope,
     })
 
     if (role === 'cap' && !sessDept) {
@@ -758,7 +773,8 @@ export async function GET(req: NextRequest) {
       userNameNorm,
       qsDept,
       sessDept,
-      hasFullEventsAccess
+      hasFullEventsAccess,
+      locationScope
     )
     const { _log, ...payload } = cached
 
