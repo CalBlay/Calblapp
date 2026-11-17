@@ -94,12 +94,19 @@ function extractNotificationLabel(notification: IncidentNotification) {
   const categoryLabel = normalizeNotificationText(notification.categoryLabel)
   const department = normalizeNotificationText(notification.department)
 
-  if (notification.type === 'incident_action_assigned') {
+  if (
+    notification.type === 'incident_action_assigned' ||
+    notification.type === 'incident_action_completed'
+  ) {
     const primary = actionTitle || body || title || 'Accio assignada'
     const secondary = [incidentNumber ? `Incidencia ${incidentNumber}` : '', department]
       .filter(Boolean)
       .join(' \u00B7 ')
-    return { prefix: 'Accio', primary, secondary }
+    return {
+      prefix: notification.type === 'incident_action_completed' ? 'Accio feta' : 'Accio',
+      primary,
+      secondary,
+    }
   }
 
   const primary = incidentNumber || categoryLabel || body || title || 'Nova incidencia'
@@ -122,7 +129,10 @@ function IncidentNotificationItems({
 
     const incidentId = String(notification.incidentId || '').trim()
     let href = INCIDENTS_UI_PATH
-    if (notification.type === 'incident_action_assigned') {
+    if (
+      notification.type === 'incident_action_assigned' ||
+      notification.type === 'incident_action_completed'
+    ) {
       href = incidentActionNotificationHref(notification.actionId)
     } else if (incidentId) {
       href = incidentNotificationHref(incidentId)

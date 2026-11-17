@@ -18,6 +18,7 @@ import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
 import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
+import { summarizeIncidentActionProgress } from '@/lib/incidentActionsMine'
 
 interface Props {
   inc: Incident
@@ -103,6 +104,7 @@ export default function IncidentsMobileCard({
       ? 'Tancat'
       : 'Obert'
   const hasMeetingComment = Boolean(initialMeetingComment?.trim())
+  const actionProgress = summarizeIncidentActionProgress(initialActions)
   const toggleLabel = opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'
 
   return (
@@ -150,8 +152,12 @@ export default function IncidentsMobileCard({
             ) : null}
           </div>
           {inc.actionsCount ? (
-            <span className={cn(typography('bodyXs'), 'rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700')}>
-              {inc.actionsCount} acc.
+            <span
+              className={cn(typography('bodyXs'), 'rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700')}
+              title={actionProgress.assignees.length ? `Assignades a: ${actionProgress.assignees.join(', ')}` : undefined}
+            >
+              {actionProgress.done}/{actionProgress.total || inc.actionsCount} fetes
+              {actionProgress.assignees.length ? ` · ${actionProgress.assignees.join(', ')}` : ''}
             </span>
           ) : null}
           {inc.hasImages ? (

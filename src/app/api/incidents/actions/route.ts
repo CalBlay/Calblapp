@@ -106,6 +106,8 @@ export async function POST(req: Request) {
       status: 'open',
       assignedToId,
       assignedToName,
+      assignedById: assignedToId || assignedToName ? user.id : '',
+      assignedByName: assignedToId || assignedToName ? createdByName : '',
       department: String(body.department || '').trim(),
       dueAt,
       createdAt: now,

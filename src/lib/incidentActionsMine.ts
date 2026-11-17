@@ -52,6 +52,20 @@ export function isPendingIncidentActionStatus(status: IncidentActionStatus) {
   return status === 'open' || status === 'in_progress'
 }
 
+export function summarizeIncidentActionProgress(
+  actions: ReadonlyArray<{ status?: string | null; assignedToName?: string | null }> | undefined
+) {
+  const rows = actions || []
+  const assignees = [...new Set(
+    rows.map((action) => String(action.assignedToName || '').trim()).filter(Boolean)
+  )]
+  return {
+    total: rows.length,
+    done: rows.filter((action) => normalizeIncidentActionStatus(action.status || '') === 'done').length,
+    assignees,
+  }
+}
+
 export function isOverdueIncidentAction(row: Pick<IncidentActionMineRow, 'dueAt' | 'status'>) {
   const st = normalizeIncidentActionStatus(row.status)
   if (!isPendingIncidentActionStatus(st)) return false

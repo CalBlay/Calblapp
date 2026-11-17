@@ -15,6 +15,7 @@ import { Camera, ChevronDown, ChevronUp, MessageSquareText, Trash2 } from 'lucid
 import IncidentOperationsPanel from './IncidentOperationsPanel'
 import type { IncidentMeetingComment, IncidentMeetingSessionStatus } from '@/lib/incidentMeetingSession'
 import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
+import { summarizeIncidentActionProgress } from '@/lib/incidentActionsMine'
 
 declare global {
   interface Window {
@@ -116,6 +117,7 @@ function IncidentsRow({
 
   const colCount = 13
   const hasMeetingComment = Boolean(initialMeetingComment?.trim())
+  const actionProgress = summarizeIncidentActionProgress(initialActions)
   const toggleLabel = opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'
 
   return (
@@ -325,9 +327,16 @@ function IncidentsRow({
 
       <td className={cell} onClick={(e) => e.stopPropagation()}>
         {inc.actionsCount ? (
-          <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
-            {inc.actionsCount}
-          </span>
+          <div className="space-y-1">
+            <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
+              {actionProgress.done}/{actionProgress.total || inc.actionsCount}
+            </span>
+            {actionProgress.assignees.length > 0 ? (
+              <p className="max-w-[120px] truncate text-[11px] text-slate-600" title={actionProgress.assignees.join(', ')}>
+                {actionProgress.assignees.join(', ')}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <span className={cn(typography('bodyXs'), 'text-slate-300')}>—</span>
         )}

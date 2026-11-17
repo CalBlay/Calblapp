@@ -74,6 +74,7 @@ export function defaultPushUrlForNotificationType(
     case 'incident_marketing_9xx_new':
       return incidentNotificationHref(extras?.incidentId)
     case 'incident_action_assigned':
+    case 'incident_action_completed':
       return incidentActionNotificationHref(extras?.actionId)
     case 'event_extras_registered':
       return '/menu/events'

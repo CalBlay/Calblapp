@@ -16,7 +16,7 @@ type UserLookup = {
 }
 
 type IncidentActionNotificationPayload = {
-  type: 'incident_action_assigned'
+  type: 'incident_action_assigned' | 'incident_action_completed'
   title: string
   body: string
   incidentId: string
@@ -85,7 +85,7 @@ function isoToBarcelonaCalendarDate(iso: string | null | undefined): string {
   return `${read('year')}-${read('month')}-${read('day')}`
 }
 
-async function notifyIncidentActionAssigned(params: {
+async function notifyIncidentActionUser(params: {
   userId: string
   payload: IncidentActionNotificationPayload
 }) {
@@ -198,7 +198,7 @@ export async function handleIncidentActionAssigneeSideEffects(
       dueAt: params.dueAtIso || null,
     }
     try {
-      await notifyIncidentActionAssigned({ userId: assignee.id, payload })
+      await notifyIncidentActionUser({ userId: assignee.id, payload })
     } catch (err) {
       console.error('[incidentActionNotifications] notify error', err)
     }
@@ -207,5 +207,48 @@ export async function handleIncidentActionAssigneeSideEffects(
   return {
     outlookEventId: outlookEventId || undefined,
     outlookEmail: outlookEmail || undefined,
+  }
+}
+
+export async function notifyIncidentActionCompleted(params: {
+  actionId: string
+  incidentId: string
+  incidentNumber?: string | null
+  actionTitle: string
+  createdById?: string | null
+  completedById?: string | null
+  completedByName?: string | null
+  department?: string | null
+}) {
+  const recipientId = String(params.createdById || '').trim()
+  if (!recipientId || recipientId === String(params.completedById || '').trim()) return
+
+  const creator = await findUserById(recipientId)
+  if (!creator?.id) return
+
+  const incidentLabel = String(params.incidentNumber || params.incidentId || '').trim()
+  const completedBy = String(params.completedByName || '').trim()
+  const payload: IncidentActionNotificationPayload = {
+    type: 'incident_action_completed',
+    title: "Acci\u00f3 d'incid\u00e8ncia completada",
+    body: [
+      params.actionTitle || 'Acci\u00f3',
+      incidentLabel ? `Incid\u00e8ncia ${incidentLabel}` : '',
+      completedBy ? `Completada per ${completedBy}` : '',
+    ]
+      .filter(Boolean)
+      .join(' \u00b7 '),
+    incidentId: params.incidentId,
+    incidentNumber: params.incidentNumber || null,
+    actionId: params.actionId,
+    actionTitle: params.actionTitle,
+    department: params.department || null,
+    dueAt: null,
+  }
+
+  try {
+    await notifyIncidentActionUser({ userId: creator.id, payload })
+  } catch (err) {
+    console.error('[incidentActionNotifications] completion notify error', err)
   }
 }

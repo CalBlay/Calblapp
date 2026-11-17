@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   isIncidentActionAssignedToUser,
   isIncidentActionNotificationVisible,
+  summarizeIncidentActionProgress,
 } = require('../src/lib/incidentActionsMine')
 
 test('incident action assignment uses id as the authoritative identity', () => {
@@ -47,5 +48,23 @@ test('action notifications are visible only while the action is assigned to the 
   assert.equal(
     isIncidentActionNotificationVisible({ type: 'incident_marketing_9xx_new' }, assignedIds),
     true
+  )
+  assert.equal(
+    isIncidentActionNotificationVisible(
+      { type: 'incident_action_completed', actionId: 'action-2' },
+      assignedIds
+    ),
+    true
+  )
+})
+
+test('incident action progress counts completed actions and unique assignees', () => {
+  assert.deepEqual(
+    summarizeIncidentActionProgress([
+      { status: 'done', assignedToName: 'Anna' },
+      { status: 'open', assignedToName: 'Anna' },
+      { status: 'in_progress', assignedToName: 'Bernat' },
+    ]),
+    { total: 3, done: 1, assignees: ['Anna', 'Bernat'] }
   )
 })

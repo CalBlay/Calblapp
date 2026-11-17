@@ -35,4 +35,5 @@ export const DECO_NOTIFICATION_TYPES = [
 export const INCIDENT_NOTIFICATION_TYPES = [
   'incident_marketing_9xx_new',
   'incident_action_assigned',
+  'incident_action_completed',
 ] as const

@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   MessageSquareText,
   Pencil,
@@ -314,6 +316,8 @@ export default function IncidentOperationsPanel({
   const [newDept, setNewDept] = useState('')
   const [newDue, setNewDue] = useState('')
   const [creating, setCreating] = useState(false)
+  const [newActionOpen, setNewActionOpen] = useState(false)
+  const [meetingCommentOpen, setMeetingCommentOpen] = useState(false)
   const [editingActionId, setEditingActionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [editingDescription, setEditingDescription] = useState('')
@@ -460,6 +464,7 @@ export default function IncidentOperationsPanel({
       setNewAssignee('')
       setNewDept((incident.department || '').trim() || INCIDENT_ORIGIN_DEPARTMENTS[0])
       setNewDue('')
+      setNewActionOpen(false)
       if (createdAction) {
         const nextActions = [...actions, createdAction].sort((a, b) =>
           (a.createdAt || '').localeCompare(b.createdAt || '')
@@ -600,6 +605,9 @@ export default function IncidentOperationsPanel({
   const canChangeActionStatus = useCallback(
     (action: IncidentActionRow) => {
       if (canEditIncidentsModule) return true
+      const assignedId = String(action.assignedToId || '').trim()
+      const currentUserId = String(sessionUser?.id || '').trim()
+      if (assignedId) return Boolean(currentUserId && assignedId === currentUserId)
       const assignedNorm = normalizeComparableText(action.assignedToName)
       if (!assignedNorm) return false
       const userCandidates = [
@@ -608,7 +616,7 @@ export default function IncidentOperationsPanel({
       ].filter(Boolean)
       return userCandidates.includes(assignedNorm)
     },
-    [canEditIncidentsModule, sessionUser?.email, sessionUser?.name]
+    [canEditIncidentsModule, sessionUser?.email, sessionUser?.id, sessionUser?.name]
   )
 
   return (
@@ -663,16 +671,26 @@ export default function IncidentOperationsPanel({
 
       {meetingSessionId ? (
         <section className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 sm:p-4">
-          <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <MessageSquareText className="h-4 w-4 text-sky-700" aria-hidden />
-                Comentari de la reunió
-              </h4>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Aquest text queda vinculat a l’acta; la descripció original no es modifica.
-              </p>
-            </div>
+          <div className={cn('flex flex-wrap items-start justify-between gap-2', meetingCommentOpen && 'mb-2')}>
+            <button
+              type="button"
+              className="flex min-w-0 items-start gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              aria-expanded={meetingCommentOpen}
+              onClick={() => setMeetingCommentOpen((open) => !open)}
+            >
+              <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                <MessageSquareText className="h-4 w-4" aria-hidden />
+              </span>
+              <span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                  Comentari de la reunió
+                  {meetingCommentOpen ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  {meetingComment.trim() ? 'Hi ha un comentari desat' : 'Sense comentari'}
+                </span>
+              </span>
+            </button>
             <span className="flex min-h-5 items-center gap-1 text-xs text-slate-500" aria-live="polite">
               {meetingSessionStatus === 'finalized' ? 'Acta finalitzada' : null}
               {meetingSessionStatus === 'draft' && meetingCommentSaveState === 'saving' ? (
@@ -686,7 +704,7 @@ export default function IncidentOperationsPanel({
               ) : null}
             </span>
           </div>
-          <Textarea
+          {meetingCommentOpen ? <Textarea
             value={meetingComment}
             onChange={(event) => {
               const value = event.target.value
@@ -701,7 +719,7 @@ export default function IncidentOperationsPanel({
             placeholder="Escriu aquí el que es comenta i s’acorda durant la reunió…"
             aria-label="Comentari de la reunió per a aquesta incidència"
             className="min-h-32 resize-y border-sky-200 bg-white text-sm leading-6 shadow-sm focus-visible:ring-sky-400/40 read-only:bg-slate-50"
-          />
+          /> : null}
         </section>
       ) : null}
 
@@ -710,7 +728,7 @@ export default function IncidentOperationsPanel({
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">Accions creades</h4>
             <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
-              {actions.length} total
+              {actions.filter((action) => action.status === 'done').length}/{actions.length} completades
             </span>
           </div>
 
@@ -725,7 +743,16 @@ export default function IncidentOperationsPanel({
           {!loadingActions && actions.length > 0 ? (
             <ul className="space-y-2">
               {actions.map((a) => (
-                <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <li
+                  key={a.id}
+                  id={`incident-action-${a.id}`}
+                  className={cn(
+                    'rounded-xl border p-3 shadow-sm',
+                    a.status === 'done'
+                      ? 'border-emerald-200 bg-emerald-50/70'
+                      : 'border-slate-200 bg-white'
+                  )}
+                >
                   {editingActionId === a.id ? (
                     <div className="space-y-3">
                       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_180px_130px_minmax(260px,340px)] xl:items-end">
@@ -792,7 +819,9 @@ export default function IncidentOperationsPanel({
                   ) : (
                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_150px_130px_minmax(260px,340px)_auto] xl:items-end">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">{a.title}</p>
+                        <p className={cn('text-sm font-semibold text-slate-900', a.status === 'done' && 'line-through decoration-emerald-500')}>
+                          {a.title}
+                        </p>
                         {a.description ? (
                           <p className="mt-1 truncate text-xs leading-relaxed text-slate-500" title={a.description}>
                             {a.description}
@@ -845,17 +874,25 @@ export default function IncidentOperationsPanel({
         </section>
 
         <section className="mt-3 rounded-[24px] border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
-          <div className="mb-4 border-b border-amber-100 pb-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-base font-semibold text-amber-900">Nova accio</div>
-              <div className="text-sm font-medium text-slate-500">
+          <div className={cn('border-amber-100', newActionOpen && 'mb-4 border-b pb-4')}>
+            <button
+              type="button"
+              className="flex w-full flex-wrap items-center justify-between gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+              aria-expanded={newActionOpen}
+              onClick={() => setNewActionOpen((open) => !open)}
+            >
+              <span className="flex flex-wrap items-center gap-3">
+                <span className="text-base font-semibold text-amber-900">Nova accio</span>
+                <span className="text-sm font-medium text-slate-500">
                 {actions.length} {actions.length === 1 ? 'accio creada' : 'accions creades'}
                 {openActionsCount > 0 ? ` · ${openActionsCount} pendent${openActionsCount === 1 ? '' : 's'}` : ''}
-              </div>
-            </div>
+                </span>
+              </span>
+              {newActionOpen ? <ChevronUp className="h-5 w-5 text-amber-700" aria-hidden /> : <ChevronDown className="h-5 w-5 text-amber-700" aria-hidden />}
+            </button>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_320px]">
+          {newActionOpen ? <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_320px]">
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_180px_180px_170px]">
                 <div className="space-y-2">
@@ -940,7 +977,7 @@ export default function IncidentOperationsPanel({
                 </Button>
               </div>
             </div>
-          </div>
+          </div> : null}
         </section>
       </div>
     </div>

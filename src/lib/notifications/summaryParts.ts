@@ -40,7 +40,7 @@ export async function loadNotificationSummaryParts(params: {
       deco: 0,
       incidents: 0,
       events: 0,
-      version: 3,
+      version: 4,
       syncedAt: Date.now(),
     }, () => getUserUnreadBuckets(userId)),
     safe('messaging', 0, () => countMessagingUnread(userId)),

@@ -3,7 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { countUnreadNotificationsByTypes } from '@/lib/notifications/firestoreCounts'
 import { userDocRefByAuthId } from '@/lib/notifications/userNotificationsRef'
 
-export const UNREAD_COUNTS_VERSION = 3
+export const UNREAD_COUNTS_VERSION = 4
 
 export type NotificationUnreadBuckets = {
   user_request: number
@@ -50,7 +50,7 @@ const NOTIFICATION_TYPES_BY_BUCKET: Record<BucketKey, readonly string[]> = {
     'deco_ticket_validated',
     'deco_ticket_reopened',
   ],
-  incidents: ['incident_marketing_9xx_new', 'incident_action_assigned'],
+  incidents: ['incident_marketing_9xx_new', 'incident_action_assigned', 'incident_action_completed'],
   events: ['event_comanda_warehouse', 'event_comanda_batch_sent'],
 }
 
@@ -113,7 +113,11 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   ) {
     return 'deco'
   }
-  if (normalized === 'incident_marketing_9xx_new' || normalized === 'incident_action_assigned') {
+  if (
+    normalized === 'incident_marketing_9xx_new' ||
+    normalized === 'incident_action_assigned' ||
+    normalized === 'incident_action_completed'
+  ) {
     return 'incidents'
   }
   return null

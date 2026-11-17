@@ -72,7 +72,11 @@ export function useIncidentNotificationCount() {
 
     const incidentNotifications = unreadNotifications.filter((notification: IncidentNotification) => {
       const type = String(notification.type || '').trim()
-      if (type !== 'incident_marketing_9xx_new' && type !== 'incident_action_assigned') return false
+      if (
+        type !== 'incident_marketing_9xx_new' &&
+        type !== 'incident_action_assigned' &&
+        type !== 'incident_action_completed'
+      ) return false
       return isIncidentActionNotificationVisible(notification, assignedActionIds)
     })
 

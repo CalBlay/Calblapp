@@ -8,7 +8,10 @@ import {
   canEditIncidentsModule,
   requireIncidentsModuleView,
 } from '@/lib/server/incidentsApiAuth'
-import { handleIncidentActionAssigneeSideEffects } from '@/lib/incidentActionNotifications'
+import {
+  handleIncidentActionAssigneeSideEffects,
+  notifyIncidentActionCompleted,
+} from '@/lib/incidentActionNotifications'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -57,6 +60,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     const patch: Record<string, unknown> = { updatedAt: now }
     const storedAssignedToName = String(snap.get('assignedToName') || '').trim()
     const storedAssignedToId = String(snap.get('assignedToId') || '').trim()
+    const storedAssignedById = String(snap.get('assignedById') || '').trim()
     const storedOutlookEventId = String(snap.get('outlookEventId') || '').trim()
     const storedOutlookEmail = String(snap.get('outlookAssigneeEmail') || '').trim()
     const incidentId = String(snap.get('incidentId') || '').trim()
@@ -67,6 +71,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
 
     let assigneeChanged = false
     let dueChanged = false
+    let actionCompleted = false
 
     if (typeof body.title === 'string') {
       const t = body.title.trim()
@@ -84,6 +89,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
       if (nextName !== storedAssignedToName) assigneeChanged = true
       patch.assignedToName = nextName
     }
+    if (assigneeChanged) {
+      patch.assignedById = String(user.id || '').trim()
+      patch.assignedByName = (user.name || user.email || '').trim()
+    }
     if (typeof body.department === 'string') patch.department = body.department.trim()
 
     if (body.dueAt !== undefined) {
@@ -100,12 +109,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
 
     if (typeof body.status === 'string') {
       const canEditModule = await canEditIncidentsModule(auth.user)
+      const userId = String(user.id || '').trim()
       const assignedNorm = normalizeComparableText(storedAssignedToName)
       const userCandidates = [
         normalizeComparableText(user.name),
         normalizeComparableText(user.email),
       ].filter(Boolean)
-      const isAssignedUser = assignedNorm.length > 0 && userCandidates.includes(assignedNorm)
+      const isAssignedUser = storedAssignedToId
+        ? Boolean(userId && userId === storedAssignedToId)
+        : assignedNorm.length > 0 && userCandidates.includes(assignedNorm)
 
       if (!canEditModule && !isAssignedUser) {
         return NextResponse.json({ error: 'Sense permisos per canviar l estat' }, { status: 403 })
@@ -114,6 +126,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
       const next = normalizeIncidentActionStatus(body.status)
       patch.status = next
       const prevStatus = normalizeIncidentActionStatus(String(snap.get('status') || 'open'))
+      actionCompleted = next === 'done' && prevStatus !== 'done'
       if ((next === 'done' || next === 'cancelled') && (prevStatus === 'open' || prevStatus === 'in_progress')) {
         patch.closedAt = now
         patch.closedByName = (user.name || user.email || '').trim() || 'Usuari'
@@ -125,6 +138,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     }
 
     await ref.set(patch, { merge: true })
+
+    if (actionCompleted) {
+      try {
+        let incidentNumber: string | null = null
+        if (incidentId) {
+          const incSnap = await firestoreAdmin.collection('incidents').doc(incidentId).get()
+          if (incSnap.exists) {
+            incidentNumber = String(incSnap.get('incidentNumber') || '').trim() || null
+          }
+        }
+        await notifyIncidentActionCompleted({
+          actionId: id,
+          incidentId,
+          incidentNumber,
+          actionTitle: String(patch.title || actionTitle).trim(),
+          createdById: storedAssignedById || createdById,
+          completedById: user.id,
+          completedByName: (user.name || user.email || '').trim(),
+          department: String(patch.department || storedDepartment).trim(),
+        })
+      } catch (err) {
+        console.error('[incidents/actions PATCH] completion notification error', err)
+      }
+    }
 
     if (assigneeChanged || dueChanged) {
       const updatedSnap = await ref.get()

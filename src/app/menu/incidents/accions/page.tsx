@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
-import { AlertTriangle, ExternalLink, ListChecks, Search } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Circle, ExternalLink, ListChecks, Loader2, Search } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Input } from '@/components/ui/input'
 import {
@@ -36,7 +36,7 @@ import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
-import { incidentOperationsHref } from '@/lib/incidentNotificationLinks'
+import { incidentActionNotificationHref } from '@/lib/incidentNotificationLinks'
 
 type StatusFilter = 'pending' | 'all' | 'open' | 'in_progress' | 'done' | 'cancelled'
 
@@ -113,6 +113,7 @@ export default function IncidentActionsMinePage() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [savingActionIds, setSavingActionIds] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     if (!deepLinkActionId) return
@@ -157,6 +158,42 @@ export default function IncidentActionsMinePage() {
       setLoading(false)
     }
   }, [statusFilter, search, overdueOnly])
+
+  const toggleActionDone = useCallback(async (row: IncidentActionMineRow) => {
+    const nextStatus = row.status === 'done' ? 'open' : 'done'
+    setSavingActionIds((current) => new Set(current).add(row.id))
+    setActions((current) =>
+      current.map((action) =>
+        action.id === row.id ? { ...action, status: nextStatus } : action
+      )
+    )
+    setError(null)
+    try {
+      const response = await fetch(`/api/incidents/actions/${encodeURIComponent(row.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "No s'ha pogut actualitzar l'acci\u00f3"))
+      }
+      await load()
+    } catch (cause) {
+      setActions((current) =>
+        current.map((action) =>
+          action.id === row.id ? { ...action, status: row.status } : action
+        )
+      )
+      setError(cause instanceof Error ? cause.message : "Error actualitzant l'acci\u00f3")
+    } finally {
+      setSavingActionIds((current) => {
+        const next = new Set(current)
+        next.delete(row.id)
+        return next
+      })
+    }
+  }, [load])
 
   useEffect(() => {
     if (status === 'loading' || !session || !uiPermsReady || !canSeeAccions) return
@@ -389,6 +426,7 @@ export default function IncidentActionsMinePage() {
               <table className={cn('w-full min-w-[920px]', typography('bodySm'))}>
                 <thead className="border-b border-slate-200 bg-slate-100">
                   <tr>
+                    <th className="p-2 text-left font-semibold">Feta</th>
                     <th className="p-2 text-left font-semibold">Accio</th>
                     <th className="p-2 text-left font-semibold">Incidencia</th>
                     <th className="p-2 text-left font-semibold">Estat</th>
@@ -406,11 +444,37 @@ export default function IncidentActionsMinePage() {
                       id={`incident-action-${row.id}`}
                       className={cn(
                         'border-t border-slate-100 hover:bg-slate-50/80',
+                        row.status === 'done' && 'bg-emerald-50/70 text-slate-600',
                         row.id === deepLinkActionId && 'bg-violet-50 ring-2 ring-inset ring-violet-400'
                       )}
                     >
+                      <td className="p-2 align-top">
+                        <button
+                          type="button"
+                          className={cn(
+                            'inline-flex h-8 w-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400',
+                            row.status === 'done'
+                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                              : 'text-slate-400 hover:bg-violet-50 hover:text-violet-700'
+                          )}
+                          aria-label={row.status === 'done' ? 'Marcar acci\u00f3 com a pendent' : 'Marcar acci\u00f3 com a feta'}
+                          aria-pressed={row.status === 'done'}
+                          disabled={savingActionIds.has(row.id) || row.status === 'cancelled'}
+                          onClick={() => void toggleActionDone(row)}
+                        >
+                          {savingActionIds.has(row.id) ? (
+                            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                          ) : row.status === 'done' ? (
+                            <CheckCircle2 className="h-5 w-5" aria-hidden />
+                          ) : (
+                            <Circle className="h-5 w-5" aria-hidden />
+                          )}
+                        </button>
+                      </td>
                       <td className="max-w-[280px] p-2 align-top">
-                        <span className="font-medium text-slate-900">{row.title || '-'}</span>
+                        <span className={cn('font-medium text-slate-900', row.status === 'done' && 'line-through decoration-emerald-500')}>
+                          {row.title || '-'}
+                        </span>
                       </td>
                       <td className="max-w-[240px] p-2 align-top text-slate-800">{row.incidentLabel}</td>
                       <td className="whitespace-nowrap p-2 align-top">
@@ -441,13 +505,13 @@ export default function IncidentActionsMinePage() {
                       <td className="p-2 align-top">{row.assignedToName || '-'}</td>
                       <td className="p-2 align-top">
                         <Link
-                          href={incidentOperationsHref(row.incidentId)}
+                          href={incidentActionNotificationHref(row.id)}
                           className={cn(
                             typography('bodySm'),
                             'inline-flex items-center gap-1 font-medium text-violet-700 hover:underline'
                           )}
                         >
-                          Veure incidència
+                          Obrir acció
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                         </Link>
                       </td>
