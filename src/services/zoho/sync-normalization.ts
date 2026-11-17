@@ -99,6 +99,38 @@ export function classifyStage(stage: string): StageCollection | null {
 }
 
 /**
+ * Excepcions d'etapa que depenen de la línia de negoci.
+ *
+ * A Casaments, Zoho tracta la Prereserva com una etapa de seguiment groga.
+ * La resta de línies conserva la classificació general (taronja).
+ */
+export function classifyStageForBusinessLine(
+  stage: string,
+  businessLine: string
+): StageCollection | null {
+  const standardStage = classifyStage(stage)
+  const normalizedBusinessLine = String(businessLine || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+  const compactStage = String(stage || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+
+  if (
+    normalizedBusinessLine === 'casaments' &&
+    compactStage.includes('prereserva')
+  ) {
+    return 'groc'
+  }
+
+  return standardStage
+}
+
+/**
  * Les proves de menú amb data han de tenir document de calendari encara que
  * l'oportunitat sigui en una etapa comercial anterior a groc/taronja/verd.
  * Les desem al contenidor groc, però la cita virtual es presenta com confirmada.
@@ -175,7 +207,7 @@ export async function normalizeZohoDeals(
   const normalized: NormalizedDeal[] = []
 
   for (const deal of deals) {
-    const group = classifyZohoDealStage(deal)
+    let group = classifyZohoDealStage(deal)
     if (!group) continue
 
     const dateISO =
@@ -233,6 +265,10 @@ export async function normalizeZohoDeals(
 
     const comercial = ownerCommercial
     ln = deps.lnForMartaGranatoCommercial(ln, comercial)
+
+    // L'excepció de Prereserva s'aplica després de resoldre definitivament la
+    // línia de negoci, incloses les regles de centres restaurant i comercials.
+    group = classifyStageForBusinessLine(deal.Stage || '', ln) || group
 
     const fincaMatch = deps.findFincaForUbicacio(ubicacions, ln)
     const comercialIntern = deps.extractZohoDisplayName(deal.Comercial_Interna) || ''

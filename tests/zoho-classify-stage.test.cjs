@@ -17,6 +17,7 @@ Module._load = function loadWithStubs(request, parent, isMain) {
 const {
   businessLineFromPipeline,
   classifyStage,
+  classifyStageForBusinessLine,
   classifyZohoDealStage,
   isLostZohoStage,
   normalizeZohoDeals,
@@ -183,6 +184,54 @@ test('classifyStage maps proposal/pending stages to groc and drops unknown', () 
   assert.equal(classifyStage('Seguiment 2'), 'groc')
   assert.equal(classifyStage('Qualificació'), null)
   assert.equal(classifyStage(''), null)
+})
+
+test('Casaments routes Prereserva to groc without changing Empresa', () => {
+  assert.equal(classifyStageForBusinessLine('Prereserva', 'Casaments'), 'groc')
+  assert.equal(classifyStageForBusinessLine('Pre-reserva', 'Casaments'), 'groc')
+  assert.equal(classifyStageForBusinessLine('Prereserva', 'Empresa'), 'taronja')
+  assert.equal(classifyStageForBusinessLine('2na proposta', 'Casaments'), 'groc')
+  assert.equal(classifyStageForBusinessLine('2na proposta', 'Empresa'), 'groc')
+})
+
+test('normalizeZohoDeals applies the Prereserva exception from Pipeline', async () => {
+  const dependencies = {
+    parseZohoDate: (value) => value || null,
+    parseZohoTime: () => null,
+    getLN: async () => 'Agenda',
+    lnForMartaGranatoCommercial: (ln) => ln,
+    stripCode: (value) => String(value).trim(),
+    normalizeIncomingZohoCode: (value) => value || null,
+    extractCodeFromName: () => null,
+    isBadCode: () => false,
+    hasRestaurantKeyword: () => false,
+    findFincaForUbicacio: () => null,
+    extractZohoDisplayName: () => null,
+    operativeResponsableFromZohoDeal: () => '',
+    fincaLnForDeal: (ln) => ln,
+  }
+  const base = {
+    Deal_Name: 'Prereserva',
+    Stage: 'Prereserva',
+    Fecha_del_evento: '2027-06-21',
+    Owner: { id: 'owner', name: 'Comercial' },
+  }
+
+  const normalized = await normalizeZohoDeals(
+    [
+      { ...base, id: 'casaments', Pipeline: 'Bodas' },
+      { ...base, id: 'empresa', Pipeline: 'Corporativo' },
+    ],
+    dependencies
+  )
+
+  assert.deepEqual(
+    normalized.map(({ LN, collection }) => ({ LN, collection })),
+    [
+      { LN: 'Casaments', collection: 'groc' },
+      { LN: 'Empresa', collection: 'taronja' },
+    ]
+  )
 })
 
 test('a dated Tast sencer remains eligible outside the standard commercial stages', () => {
