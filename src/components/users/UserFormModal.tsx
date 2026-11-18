@@ -35,6 +35,7 @@ import {
 
 export interface User {
   id?: string
+  duplicateSourceId?: string
   personId?: string
   name?: string
   role?: string
@@ -163,6 +164,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [templateLoading, setTemplateLoading] = React.useState(false)
 
   const isPendingApproval = Boolean(user?.personId)
+  const isDuplicate = Boolean(user?.duplicateSourceId)
   const isNewUser = !user?.id && !isPendingApproval
   const canUseConfigTemplate = isSessionAdmin && (isNewUser || isPendingApproval)
   const showPermissionsStep = isSessionAdmin && (isNewUser || isPendingApproval) && !isAdmin
@@ -342,7 +344,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       }
     }
 
-    if (!user?.id) return
+    if (!user?.id && !user?.duplicateSourceId) return
 
     setName(user.name ?? '')
     setRole(user.role ?? 'Treballador')
@@ -367,11 +369,12 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setIsDepartmentRobaLead(Boolean(user.isDepartmentRobaLead))
     setIsTransportLead(Boolean(user.isTransportLead))
     setPassword('')
-    if (user.role?.toLowerCase() === 'treballador') {
-      setAvailable(user.available ?? true)
-      setIsDriver(user.driver?.isDriver ?? false)
-      setWorkerRank(user.workerRank ?? 'equip')
+    if (user.duplicateSourceId) {
+      setTemplateUserId(user.duplicateSourceId)
     }
+    setAvailable(user.available ?? true)
+    setIsDriver(user.driver?.isDriver ?? false)
+    setWorkerRank(user.workerRank ?? 'equip')
   }, [user])
 
   React.useEffect(() => {
@@ -535,6 +538,10 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
 
   const dialogTitle = user?.id
     ? 'Editar Usuari'
+    : isDuplicate
+      ? step === 2
+        ? 'Duplicar Usuari · Permisos'
+        : 'Duplicar Usuari'
     : isPendingApproval
       ? step === 2
         ? 'Aprovar sol·licitud · Permisos'
@@ -543,7 +550,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         ? 'Nou Usuari · Permisos'
         : 'Nou Usuari'
 
-  const createSubmitLabel = isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'
+  const createSubmitLabel = isPendingApproval
+    ? 'Aprovar i crear usuari'
+    : isDuplicate
+      ? 'Crear duplicat'
+      : 'Crear Usuari'
 
   function renderConfigTemplatePicker(options?: {
     showApplyButton?: boolean
@@ -611,6 +622,12 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       >
         <DialogHeader>
           <DialogTitle>{dialogTitle}</DialogTitle>
+          {isDuplicate && step === 1 ? (
+            <p className="text-sm text-muted-foreground">
+              Es mantindran el perfil, les opcions operatives i els permisos. Introdueix un nom,
+              un correu i una contrasenya nous.
+            </p>
+          ) : null}
           {showPermissionsStep ? (
             <p className="text-sm text-muted-foreground">
               Pas {step} de 2 · {step === 1 ? 'Dades bàsiques' : 'Permisos d’accés'}
@@ -953,7 +970,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                         : 'bg-indigo-400 hover:bg-indigo-500'
                   )}
                 >
-                  {user?.id ? 'Desar Canvis' : isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'}
+                  {user?.id ? 'Desar Canvis' : createSubmitLabel}
                 </Button>
               )}
             </div>

@@ -29,11 +29,13 @@ import { matchesUserSearch } from '@/lib/userSearch'
 // 🔥 Model unificat amb UserFormModal (id opcional)
 export interface AppUser {
   id?: string
+  duplicateSourceId?: string
   personId?: string
   name: string
   role: string
   isAdmin?: boolean
   department: string
+  additionalWorkDepartments?: string[]
   commercialName?: string
   phone?: string
   email?: string
@@ -314,6 +316,18 @@ function UsersPage() {
             const original = users.find((item) => item.id === u.id) || u
             setModalUser(original as AppUser)
           }}
+          onDuplicate={(u) => {
+            const original = users.find((item) => item.id === u.id) || u
+            setModalUser({
+              ...original,
+              id: undefined,
+              duplicateSourceId: original.id,
+              name: '',
+              email: '',
+              phone: '',
+              commercialName: '',
+            } as AppUser)
+          }}
           onDelete={deleteUser}
         />
       )}
@@ -323,11 +337,13 @@ function UsersPage() {
         <UserFormModal
           user={{
             id: modalUser.id,
+            duplicateSourceId: modalUser.duplicateSourceId,
             personId: modalUser.personId,
             name: modalUser.name,
             role: modalUser.role,
             isAdmin: modalUser.isAdmin ?? false,
             department: modalUser.department,
+            additionalWorkDepartments: modalUser.additionalWorkDepartments ?? [],
             commercialName: modalUser.commercialName ?? '',
             phone: modalUser.phone ?? '',
             email: modalUser.email ?? '',
