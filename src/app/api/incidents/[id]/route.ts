@@ -14,6 +14,8 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { entersMaintenanceIncidentCategory } from '@/lib/incidentTypology'
+import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
+import { shouldNotifyMarketingCategoryChange } from '@/lib/incidentMarketingCategory'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -285,6 +287,46 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     } else {
       await docRef.set(cleaned, { merge: true })
+    }
+
+    const previousCategoryId = String(
+      (currentData.category as { id?: unknown } | undefined)?.id || ''
+    ).trim()
+    const nextCategoryId = String(nextCategory?.id || '').trim()
+    if (shouldNotifyMarketingCategoryChange(previousCategoryId, nextCategoryId)) {
+      const incidentNumber = String(currentData.incidentNumber || '').trim() || null
+      const eventTitle = String(currentData.eventTitle || '').trim()
+      const eventLocation = String(currentData.eventLocation || '').trim()
+      const eventCode = String(currentData.eventCode || '').trim()
+      const categoryLabel = String(nextCategory?.label || '').trim()
+
+      try {
+        await notifyMarketingManagersFor9xxIncident({
+          baseUrl: new URL(req.url).origin,
+          senderUserId: String(auth.user.id || '').trim(),
+          payload: {
+            type: 'incident_marketing_9xx_new',
+            title: 'Incidència reclassificada a Màrqueting',
+            body: [
+              incidentNumber,
+              eventTitle || eventLocation || eventCode,
+              categoryLabel,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            incidentId,
+            incidentNumber,
+            eventId: String(currentData.eventId || '').trim() || null,
+            eventCode: eventCode || null,
+            categoryId: nextCategoryId,
+            categoryLabel: categoryLabel || null,
+            emailIntro:
+              "S'ha classificat una incidència existent com a Màrqueting (9XX).",
+          },
+        })
+      } catch (notificationError) {
+        console.error('[incidents PATCH] marketing notification error', notificationError)
+      }
     }
 
     if (createdTicket) {

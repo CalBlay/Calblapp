@@ -14,6 +14,7 @@ type IncidentNotificationPayload = {
   eventCode?: string | null
   categoryId?: string | null
   categoryLabel?: string | null
+  emailIntro?: string | null
 }
 
 const MARKETING_DEPARTMENTS = new Set(['marqueting', 'marketing'])
@@ -113,7 +114,7 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
       toRecipients: emailRecipients,
       subject: `${payload.title}${payload.incidentNumber ? ` - ${payload.incidentNumber}` : ''}`,
       bodyText: [
-        'S\'ha registrat una nova incid\u00e8ncia de M\u00e0rqueting (9XX).',
+        payload.emailIntro || 'S\'ha registrat una nova incid\u00e8ncia de M\u00e0rqueting (9XX).',
         '',
         payload.body,
         '',
