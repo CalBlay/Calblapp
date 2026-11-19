@@ -40,6 +40,7 @@ import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
+import { normalizeRole } from '@/lib/roles'
 import { resolveAuditDepartmentForEvent } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
@@ -85,6 +86,7 @@ interface EventMenuModalProps {
     sourceEventId?: string
     sourceEventIds?: string[]
     sourceEvents?: Array<{ id: string; name?: string; code?: string }>
+    quadrantId?: string
   }
   user: {
     id?: string | number
@@ -288,6 +290,7 @@ const treballadorsPersons =
   }, [showPersonnel, event?.sourceEventId, event?.id, refreshPersonnel])
 
   const roleN = norm(user?.role)
+  const accessRole = normalizeRole(user?.role)
   const deptN = norm(user?.department)
   const lnKey: LnKey = event?.lnKey ?? deduceLnKeyFromSummary(event?.summary ?? '')
   const isMenuTasting = event?.isMenuTasting === true
@@ -297,7 +300,7 @@ const treballadorsPersons =
   const isProduccio = deptN === 'produccio'
   const isCuina = deptN === 'cuina'
   const canWriteAvisos = isAdmin || isDireccio || isProduccio
-  const isWorkerResponsible = roleN === 'treballador' && !!event?.isResponsible
+  const isWorkerResponsible = accessRole === 'treballador' && !!event?.isResponsible
   const baseCanAttachVisitVideo = baseCanAttachEventVisitVideo(user)
 
   const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
@@ -391,7 +394,10 @@ const treballadorsPersons =
     role: user?.role,
     hasClosingPermission: canUiCloseEvent,
   })
-  const canOpenOperationalClosing = canCreateIncident || canCloseEventPerm
+  const canOpenOperationalClosing =
+    accessRole === 'treballador'
+      ? isWorkerResponsible
+      : canCreateIncident || canCloseEventPerm
 
   const openDocuments = useCallback(() => {
     const sourceIds = Array.from(

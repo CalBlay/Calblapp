@@ -14,6 +14,8 @@ type Props = {
   onSaved?: () => void
   eventId: string
   eventName?: string
+  quadrantId?: string
+  phaseType?: string
   user?: { role?: string; department?: string; id?: string }
 }
 
@@ -31,8 +33,8 @@ const norm = (value?: string | null) =>
 
 const normDepartment = (value?: string | null) => normalizeDept(value)
 
-export default function EventClosingHoursPanel({ onBack, onClose, onSaved, eventId, eventName, user }: Props) {
-  const { data, loading, error } = useEventPersonnel(eventId)
+export default function EventClosingHoursPanel({ onBack, onClose, onSaved, eventId, eventName, quadrantId, phaseType, user }: Props) {
+  const { data, loading, error } = useEventPersonnel(eventId, true, { quadrantId, phaseType })
   const [selectedDept, setSelectedDept] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [saving, setSaving] = useState(false)
@@ -123,7 +125,13 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
       const response = await fetch('/api/quadrants/closing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, department: selectedDept, updates }),
+        body: JSON.stringify({
+          eventId,
+          department: selectedDept,
+          updates,
+          quadrantId: quadrantId || undefined,
+          phaseType: quadrantId ? undefined : phaseType,
+        }),
       })
 
       if (!response.ok) {

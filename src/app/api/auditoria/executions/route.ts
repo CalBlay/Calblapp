@@ -8,6 +8,7 @@ import { normalizeRole } from '@/lib/roles'
 import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 import { pickVisibleAuditTemplate } from '@/lib/auditVisibleTemplate'
+import { isUserOperationalResponsibleForEvent } from '@/lib/server/eventOperationalResponsibility'
 import {
   ExtraOutcome,
   buildEventExtrasDocId,
@@ -254,6 +255,19 @@ export async function POST(req: Request) {
       if (!auth.department || auth.department !== department) {
         return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
       }
+    }
+    if (
+      auth.role === 'treballador' &&
+      !(await isUserOperationalResponsibleForEvent({
+        eventId,
+        userId: auth.user.id,
+        userName: auth.user.name,
+      }))
+    ) {
+      return NextResponse.json(
+        { error: 'Només el responsable assignat a l’esdeveniment pot fer l’auditoria' },
+        { status: 403 }
+      )
     }
 
     const eventContext = await getEventStageContext(eventId)

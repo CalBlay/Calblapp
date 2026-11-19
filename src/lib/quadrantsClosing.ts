@@ -88,6 +88,8 @@ export function selectClosingQuadrantDocs(params: {
   eventId: string
   queriedDocs: ClosingQuadrantDoc[]
   directDoc?: ClosingQuadrantDoc | null
+  quadrantId?: string | null
+  phaseType?: string | null
 }): ClosingQuadrantDoc[] {
   const eventId = normalizeClosingEventId(params.eventId)
   if (!eventId) return []
@@ -99,9 +101,28 @@ export function selectClosingQuadrantDocs(params: {
     return fieldId === eventId || doc.id === eventId || doc.id.startsWith(`${eventId}__`)
   })
 
-  if (fromQuery.length > 0) return fromQuery
-  if (params.directDoc?.id) return [params.directDoc]
-  return []
+  const quadrantId = String(params.quadrantId || '').trim()
+  if (quadrantId) {
+    const exact = fromQuery.find((doc) => doc.id === quadrantId)
+    if (exact) return [exact]
+    return params.directDoc?.id === quadrantId ? [params.directDoc] : []
+  }
+
+  const candidates = fromQuery.length > 0
+    ? fromQuery
+    : params.directDoc?.id
+      ? [params.directDoc]
+      : []
+
+  const phaseType = normalizeClosingName(params.phaseType)
+  if (!phaseType) return candidates
+  const explicit = candidates.filter((doc) =>
+    normalizeClosingName(String(doc.data.phaseType || doc.data.phaseLabel || '')) === phaseType
+  )
+  if (explicit.length > 0) return explicit
+  return candidates.filter(
+    (doc) => !normalizeClosingName(String(doc.data.phaseType || doc.data.phaseLabel || ''))
+  )
 }
 
 export function applyClosingUpdatesToQuadrantData(params: {

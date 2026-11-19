@@ -56,6 +56,36 @@ test('selectClosingQuadrantDocs falls back to legacy doc(eventId) when field que
   assert.equal(selected[0].id, eventId)
 })
 
+test('service hour closing excludes montage and dismantling phase documents', () => {
+  const eventId = 'deal-123'
+  const selected = selectClosingQuadrantDocs({
+    eventId,
+    queriedDocs: [
+      { id: `${eventId}__muntatge`, data: { eventId, phaseType: 'muntatge' } },
+      { id: `${eventId}__event`, data: { eventId, phaseType: 'event' } },
+      { id: `${eventId}__desmuntatge`, data: { eventId, phaseType: 'desmuntatge' } },
+    ],
+    phaseType: 'event',
+  })
+
+  assert.deepEqual(selected.map((doc) => doc.id), [`${eventId}__event`])
+})
+
+test('an explicit quadrant closes only its own operational phase', () => {
+  const eventId = 'deal-123'
+  const montageId = `${eventId}__muntatge`
+  const selected = selectClosingQuadrantDocs({
+    eventId,
+    queriedDocs: [
+      { id: montageId, data: { eventId, phaseType: 'muntatge' } },
+      { id: `${eventId}__event`, data: { eventId, phaseType: 'event' } },
+    ],
+    quadrantId: montageId,
+  })
+
+  assert.deepEqual(selected.map((doc) => doc.id), [montageId])
+})
+
 test('applyClosingUpdatesToQuadrantData writes endTimeReal onto phase-doc workers', () => {
   const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
     data: {

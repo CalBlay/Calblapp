@@ -50,6 +50,7 @@ type ApiTorn = {
   eventName: string
   date: string
   dayNote?: string
+  phaseLabel?: string
   time?: string
   location?: string
   meetingPoint?: string
@@ -120,6 +121,7 @@ export default function TornsPage() {
     pax?: number
     importAmount?: number
     location?: string
+    quadrantId?: string
   } | null>(null)
   const [auditEvent, setAuditEvent] = useState<NonNullable<typeof eventMenuData> | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
@@ -316,6 +318,7 @@ export default function TornsPage() {
       fincaId: t.fincaId ?? null,
       fincaCode: t.fincaCode ?? null,
       location: t.location || '',
+      quadrantId: String(t.id || '').split(':')[0] || undefined,
     })
     setEventMenuOpen(true)
   }
@@ -452,6 +455,7 @@ export default function TornsPage() {
             start: auditEvent.start,
             eventCode: auditEvent.eventCode || auditEvent.code || undefined,
             location: auditEvent.location,
+            quadrantId: auditEvent.quadrantId,
           }}
           user={{
             department: userForEventMenu.department,

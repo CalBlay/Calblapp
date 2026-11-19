@@ -45,13 +45,22 @@ export function canonicalEventId(value?: string | number | null) {
     .trim()
 }
 
-export function useEventPersonnel(eventId?: string | number, enabled = true) {
+export function useEventPersonnel(
+  eventId?: string | number,
+  enabled = true,
+  scope?: { quadrantId?: string; phaseType?: string }
+) {
   const canonicalId = useMemo(() => canonicalEventId(eventId), [eventId])
+  const quadrantId = String(scope?.quadrantId || '').trim()
+  const phaseType = String(scope?.phaseType || '').trim()
 
   const url = useMemo(() => {
     if (!canonicalId || !enabled) return null
-    return `/api/events/personnel?eventId=${encodeURIComponent(canonicalId)}`
-  }, [canonicalId, enabled])
+    const params = new URLSearchParams({ eventId: canonicalId })
+    if (quadrantId) params.set('quadrantId', quadrantId)
+    else if (phaseType) params.set('phaseType', phaseType)
+    return `/api/events/personnel?${params.toString()}`
+  }, [canonicalId, enabled, phaseType, quadrantId])
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<EventPersonnel>(url, fetcher, {
     revalidateOnFocus: false,

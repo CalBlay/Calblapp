@@ -8,7 +8,9 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
 import { processUploadedImageFile } from '@/lib/media/uploadImagePipeline'
 import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
-type SessionUser = { id?: string }
+import { normalizeRole } from '@/lib/roles'
+import { isUserOperationalResponsibleForEvent } from '@/lib/server/eventOperationalResponsibility'
+type SessionUser = { id?: string; name?: string | null; role?: string | null }
 
 const clean = (s: string) =>
   s
@@ -33,6 +35,20 @@ export async function POST(req: Request) {
 
     if (!file || !eventId || !department || !itemId || !userId) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })
+    }
+
+    if (
+      normalizeRole(user?.role) === 'treballador' &&
+      !(await isUserOperationalResponsibleForEvent({
+        eventId,
+        userId,
+        userName: user?.name,
+      }))
+    ) {
+      return NextResponse.json(
+        { error: 'Només el responsable assignat a l’esdeveniment pot adjuntar fotos a l’auditoria' },
+        { status: 403 }
+      )
     }
 
     if (!isLikelyImageFile(file)) {

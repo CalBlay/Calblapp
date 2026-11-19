@@ -102,6 +102,15 @@ export function splitWorkersByEffectiveDate(
   }))
 }
 
+export function workersForServiceGroup(
+  workers: NormalizedWorker[],
+  groupId: string
+): NormalizedWorker[] {
+  return workers.filter(
+    (worker) => !worker.groupId || worker.groupId === groupId
+  )
+}
+
 function norm(s?: string | null): string {
   return String(s ?? '')
     .normalize('NFD')
@@ -476,19 +485,15 @@ async function fetchDeptCollectionRange(
         seen.add(key)
 
         if (!rangesOverlap(gDate, gDate, startISO, endISO)) continue
-        const workersForGroup = Array.isArray(t.__rawWorkers)
-          ? t.__rawWorkers.filter(
-              (worker) => !worker.groupId || worker.groupId === String(g?.id || '')
-            )
-          : []
-        const groupWorkers = workersForGroup.length
-          ? workersForGroup.map((w) => ({
-              ...w,
-              startTime: w.startTime || gStart,
-              endTime: w.endTime || gEnd,
-              meetingPoint: w.meetingPoint || gMeeting,
-            }))
-          : t.__rawWorkers
+        const groupWorkers = workersForServiceGroup(
+          Array.isArray(t.__rawWorkers) ? t.__rawWorkers : [],
+          String(g?.id || '')
+        ).map((w) => ({
+          ...w,
+          startTime: w.startTime || gStart,
+          endTime: w.endTime || gEnd,
+          meetingPoint: w.meetingPoint || gMeeting,
+        }))
 
         const effectiveSchedules = splitWorkersByEffectiveDate(groupWorkers || [], gDate)
         for (const schedule of effectiveSchedules) {

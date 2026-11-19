@@ -25,6 +25,7 @@ import {
   selectClosingQuadrantDocs,
   type ClosingPersonUpdate,
 } from '@/lib/quadrantsClosing'
+import { isUserOperationalResponsibleInQuadrants } from '@/lib/server/eventOperationalResponsibility'
 
 type Dept =
   | 'serveis'
@@ -77,11 +78,13 @@ export async function PUT(req: NextRequest) {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { eventId, department, updates, closeDept } = (await req.json()) as {
+    const { eventId, department, updates, closeDept, quadrantId, phaseType } = (await req.json()) as {
       eventId?: string
       department?: Dept
       updates?: ClosingPersonUpdate[]
       closeDept?: boolean
+      quadrantId?: string
+      phaseType?: string
     }
 
     if (!eventId || !department || !Array.isArray(updates)) {
@@ -117,15 +120,25 @@ export async function PUT(req: NextRequest) {
     const colName = await resolveCollection(department)
     const collection = db.collection(colName)
     const canonicalEventId = normalizeClosingEventId(eventId)
+    const requestedQuadrantId = String(quadrantId || '').trim()
+    if (requestedQuadrantId.includes('/')) {
+      return NextResponse.json({ error: 'quadrantId no vàlid' }, { status: 400 })
+    }
 
-    const byEventIdSnap = await collection.where('eventId', '==', canonicalEventId).get()
+    const [byEventIdSnap, exactSnap] = await Promise.all([
+      collection.where('eventId', '==', canonicalEventId).get(),
+      requestedQuadrantId ? collection.doc(requestedQuadrantId).get() : Promise.resolve(null),
+    ])
     const queriedDocs = byEventIdSnap.docs.map((doc) => ({
       id: doc.id,
       data: (doc.data() || {}) as Record<string, unknown>,
     }))
 
-    let directDoc: { id: string; data: Record<string, unknown> } | null = null
-    if (queriedDocs.length === 0) {
+    let directDoc: { id: string; data: Record<string, unknown> } | null =
+      exactSnap?.exists
+        ? { id: exactSnap.id, data: (exactSnap.data() || {}) as Record<string, unknown> }
+        : null
+    if (!directDoc && queriedDocs.length === 0) {
       const directSnap = await collection.doc(canonicalEventId).get()
       if (directSnap.exists) {
         directDoc = {
@@ -139,10 +152,26 @@ export async function PUT(req: NextRequest) {
       eventId: canonicalEventId,
       queriedDocs,
       directDoc,
+      quadrantId: requestedQuadrantId || null,
+      phaseType: requestedQuadrantId ? null : phaseType || null,
     })
 
     if (targetDocs.length === 0) {
       return NextResponse.json({ error: 'Quadrant no trobat' }, { status: 404 })
+    }
+
+    if (
+      auth.role === 'treballador' &&
+      !isUserOperationalResponsibleInQuadrants({
+        docs: targetDocs.map((target) => target.data),
+        userId: auth.user.id,
+        userName: auth.user.name,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Només el responsable assignat a l’esdeveniment pot fer el tancament operatiu' },
+        { status: 403 }
+      )
     }
 
     const now = new Date().toISOString()

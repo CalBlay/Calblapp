@@ -49,6 +49,7 @@ interface Props {
     eventCode?: string
     location?: string
     lnKey?: EventLnKey
+    quadrantId?: string
   }
   user: {
     department?: string
@@ -641,6 +642,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           <EventClosingHoursPanel
             eventId={eventId}
             eventName={eventTitle}
+            quadrantId={event.quadrantId}
+            phaseType={event.quadrantId ? undefined : 'event'}
             user={{ role: user.role, department: user.department }}
             onBack={() => setShowRealHours(false)}
             onClose={onClose}

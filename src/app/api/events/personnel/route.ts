@@ -29,6 +29,8 @@ const chunk = <T>(arr: T[], size = 10) => {
 
 // Tipus
 type QRow = {
+  phaseType?: string
+  phaseLabel?: string
   department?: string
   code?: string
   eventId?: string
@@ -180,6 +182,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Falta eventId' }, { status: 400 })
     }
     const eventId = normalizeEventId(rawEventId)
+    const quadrantId = String(url.searchParams.get('quadrantId') || '').trim()
+    const requestedPhaseType = norm(url.searchParams.get('phaseType'))
+    if (quadrantId.includes('/')) {
+      return NextResponse.json({ error: 'quadrantId no vàlid' }, { status: 400 })
+    }
 
     /* ────────────────────────────────────────────────
        1) BUSCAR L'ESDEVENIMENT A FIRESTORE (paral·lel)
@@ -238,6 +245,21 @@ export async function GET(req: NextRequest) {
       const ref = firestoreAdmin.collection(coll)
       const acc: QRow[] = []
 
+      if (quadrantId) {
+        const exact = await ref.doc(quadrantId).get().catch(() => null)
+        if (exact?.exists) {
+          const data = exact.data() as QRow
+          acc.push({
+            ...data,
+            status: String(data?.status || ''),
+            updatedAt: data?.updatedAt,
+            confirmedAt: data?.confirmedAt,
+            createdAt: data?.createdAt,
+          })
+        }
+        return acc
+      }
+
       // 1ª passada: query mes selectiva (eventId).
       const byIdSnap = await ref
         .where('eventId', '==', eventId)
@@ -284,12 +306,22 @@ export async function GET(req: NextRequest) {
         return bTs - aTs
       })
 
+    const scopedRows = requestedPhaseType
+      ? (() => {
+          const explicit = filtered.filter(
+            (row) => norm(row.phaseType || row.phaseLabel) === requestedPhaseType
+          )
+          if (explicit.length > 0) return explicit
+          return filtered.filter((row) => !norm(row.phaseType || row.phaseLabel))
+        })()
+      : filtered
+
     /* ────────────────────────────────────────────────
        4) GENERAR PERSONES (responsables / conductors / treballadors)
     ──────────────────────────────────────────────── */
     const people: PersonnelListEntry[] = []
 
-    for (const q of filtered) {
+    for (const q of scopedRows) {
       const dept = q.department
       const sourceUpdatedAt =
         toMillis(q.updatedAt) || toMillis(q.confirmedAt) || toMillis(q.createdAt)
