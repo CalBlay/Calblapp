@@ -101,7 +101,12 @@ export function useLogisticsData(
       hadDataRef.current = visibleEvents.length > 0 || nextWarehouseTasks.length > 0
     } catch (err) {
       if (requestId !== requestIdRef.current) return
-      const isAbort = err instanceof DOMException && err.name === 'AbortError'
+      const isAbort =
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError')
+      if (isAbort) return
+
       console.error('Error carregant dades logistiques:', err)
       if (!hadDataRef.current) {
         setEvents([])

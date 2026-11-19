@@ -9,6 +9,7 @@ export const REPORTS_DOMAIN_ACTION = {
   transports: 'tab:transports',
   maintenance: 'tab:maintenance',
   incidents: 'tab:incidents',
+  preparations: 'tab:preparations',
   events: 'tab:events',
 } as const
 
@@ -20,6 +21,7 @@ export const REPORTS_DOMAIN_PERMISSIONS: Record<ReportsPermissionDomain, string>
   transports: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.transports),
   maintenance: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.maintenance),
   incidents: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.incidents),
+  preparations: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.preparations),
   events: PERM.action(REPORTS_UI_PATH, REPORTS_DOMAIN_ACTION.events),
 }
 

@@ -11,6 +11,7 @@ export type InformesDomainId =
   | 'transports'
   | 'maintenance'
   | 'incidents'
+  | 'preparations'
   | 'finances'
   | 'compres'
   | 'events'

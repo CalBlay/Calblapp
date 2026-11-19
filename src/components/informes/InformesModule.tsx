@@ -56,6 +56,13 @@ const IncidentsInformesPanel = dynamic(
     })),
   { loading: panelLoadingFallback }
 )
+const PreparationsInformesPanel = dynamic(
+  () =>
+    import('./domains/PreparationsInformesPanel').then((mod) => ({
+      default: mod.PreparationsInformesPanel,
+    })),
+  { loading: panelLoadingFallback }
+)
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
@@ -149,6 +156,7 @@ export function InformesModule() {
         {permissionsReady && active === 'transports' && enabledDomains.some((d) => d.id === 'transports') ? <TransportsInformesPanel /> : null}
         {permissionsReady && active === 'maintenance' && enabledDomains.some((d) => d.id === 'maintenance') ? <MaintenanceInformesPanel /> : null}
         {permissionsReady && active === 'incidents' && enabledDomains.some((d) => d.id === 'incidents') ? <IncidentsInformesPanel /> : null}
+        {permissionsReady && active === 'preparations' && enabledDomains.some((d) => d.id === 'preparations') ? <PreparationsInformesPanel /> : null}
         {permissionsReady && active === 'events' && enabledDomains.some((d) => d.id === 'events') ? <EventsWorkersInformesPanel /> : null}
         {permissionsReady && active === 'finances' ? <ComingSoonPanel label="Finances" /> : null}
         {permissionsReady && active === 'compres' ? <ComingSoonPanel label="Compres" /> : null}
