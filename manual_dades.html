@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8">
+  <title>Manual d’usuari de Dades de Manteniment i Cuina central</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; font: 10.5pt/1.48 Arial, sans-serif; }
+    h1 { margin: 0 0 8px; color: #0f766e; font-size: 24pt; line-height: 1.12; }
+    h2 { margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #cbd5e1; color: #0f172a; font-size: 16pt; }
+    h3 { margin: 16px 0 6px; color: #334155; font-size: 12.5pt; }
+    p { margin: 5px 0 9px; }
+    ol, ul { margin: 6px 0 10px 22px; padding: 0; }
+    li { margin: 3px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5pt; }
+    th, td { padding: 7px; border: 1px solid #cbd5e1; text-align: left; vertical-align: top; }
+    th { background: #e2e8f0; }
+    .subtitle { margin-bottom: 18px; color: #475569; font-size: 12pt; }
+    .callout { margin: 14px 0; padding: 10px 12px; border-left: 4px solid #f59e0b; background: #fffbeb; }
+    .steps { page-break-inside: avoid; }
+    .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8.5pt; }
+    .screen { position:relative; margin:14px 0; border:1px solid #94a3b8; border-radius:9px; overflow:hidden; background:#f8fafc; box-shadow:0 2px 7px #cbd5e1; page-break-inside:avoid; }
+    .screenbar { padding:7px 10px; background:#123a67; color:white; font-weight:700; display:flex; justify-content:space-between; }
+    .screenbody { padding:10px; position:relative; min-height:190px; }
+    .tabs { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:8px; }
+    .tab { padding:8px 3px; text-align:center; border:1px solid #cbd5e1; border-radius:5px; background:white; font-size:8.5pt; font-weight:700; }
+    .tab.on { border:2px solid #1474b8; color:#145d95; background:#eff8ff; }
+    .mockgrid { display:grid; grid-template-columns:37% 63%; }
+    .mocklist,.mockform { padding:9px; background:white; border:1px solid #dbe2ea; min-height:126px; }
+    .mockrow { padding:7px; border-bottom:1px solid #e2e8f0; }
+    .mockrow.on { background:#edf6ff; border-left:4px solid #1474b8; }
+    .fields { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:7px; }
+    .field { border:1px solid #cbd5e1; border-radius:4px; padding:6px; min-height:34px; color:#334155; }
+    .field small { display:block; color:#64748b; font-size:7pt; text-transform:uppercase; font-weight:700; }
+    .wide { grid-column:1/-1; }
+    .mockbutton { display:inline-block; float:right; padding:7px 10px; border-radius:5px; background:#123a67; color:white; font-weight:700; }
+    .plus { position:absolute; right:14px; bottom:12px; width:36px; height:36px; border-radius:50%; background:#123a67; color:white; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; box-shadow:0 2px 6px #64748b; }
+    .badge { position:absolute; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#df2935; color:#fff; border:2px solid white; font-weight:800; box-shadow:0 1px 4px #475569; }
+    .guide { display:grid; grid-template-columns:1fr 1fr; gap:6px 15px; margin:8px 0 15px; page-break-inside:avoid; }
+    .guide div { display:flex; gap:7px; align-items:flex-start; }
+    .n { flex:0 0 23px; width:23px; height:23px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#df2935; color:white; font-weight:800; }
+    .permission { width:100%; border-collapse:collapse; background:white; }
+    .permission td,.permission th { padding:7px; }
+    .tick { color:#1474b8; text-align:center; font-size:15pt; font-weight:800; }
+    .searchbox { padding:7px 9px; margin-bottom:7px; border:1px solid #cbd5e1; border-radius:5px; color:#64748b; background:white; }
+    .mini-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+    .mini-card { padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:white; min-height:62px; }
+    .pagebreak { page-break-before:always; }
+  </style>
+</head>
+<body>
+  <h1>Manual d’usuari de Dades</h1>
+  <div class="subtitle">Manteniment i Cuina central · Guia pas a pas per a l’usuari final</div>
+  <p>Aquest manual explica com consultar i mantenir les dades mestres compartides dels mòduls <strong>Manteniment</strong> i <strong>Cuina central</strong>. Les dues rutes mostren la mateixa pantalla i treballen amb els mateixos registres.</p>
+  <div class="callout"><strong>Important:</strong> qualsevol canvi desat des d’un dels dos mòduls apareix també a l’altre. Revisa sempre les dades abans de desar o eliminar.</div>
+
+  <h2>1. Com entrar a Dades</h2>
+  <p>Des del menú principal, entra a <strong>Manteniment → Dades</strong> o a <strong>Cuina central → Dades</strong>. Les dues opcions obren la mateixa pantalla i treballen amb els mateixos registres.</p>
+  <div class="callout"><strong>Si no veus l’opció Dades:</strong> contacta amb la persona administradora de l’aplicació. L’usuari final no ha de configurar permisos.</div>
+
+  <h2>2. Estructura de la pantalla</h2>
+  <div class="screen">
+    <div class="screenbar"><span>Manteniment</span><span>Dades</span></div>
+    <div class="screenbody">
+      <div class="searchbox">🔎 Cercar a la pestanya activa...</div>
+      <div class="tabs"><div class="tab on">Maquinària</div><div class="tab">Preventius</div><div class="tab">Proveïdors</div><div class="tab">Centres</div><div class="tab">Resolucions</div></div>
+      <div class="mockgrid"><div class="mocklist"><strong>Maquinària</strong><div class="mockrow on">Forn principal<br><small>MQ-001 · Cuina central</small></div><div class="mockrow">Rentavaixelles<br><small>MQ-002 · Rentat</small></div></div><div class="mockform"><strong>Editar màquina</strong><div class="fields"><div class="field"><small>Codi</small>MQ-001</div><div class="field"><small>Nom</small>Forn principal</div><div class="field"><small>Centre</small>Cuina central</div><div class="field"><small>Ubicació</small>Producció</div></div></div></div>
+      <div class="plus">+</div>
+      <span class="badge" style="top:17px;left:48%">1</span><span class="badge" style="top:58px;left:12px">2</span><span class="badge" style="top:112px;left:30%">3</span><span class="badge" style="top:112px;left:69%">4</span><span class="badge" style="right:8px;bottom:8px">5</span>
+    </div>
+  </div>
+  <div class="guide"><div><span class="n">1</span><span>Cercador de la pestanya actual.</span></div><div><span class="n">2</span><span>Pestanyes de dades.</span></div><div><span class="n">3</span><span>Llista: clica un registre per obrir-lo.</span></div><div><span class="n">4</span><span>Fitxa: consulta o modifica els camps.</span></div><div><span class="n">5</span><span>Botó <strong>+</strong>: crea un registre nou.</span></div></div>
+  <ol>
+    <li><strong>Maquinària:</strong> fitxes d’actius, ubicació, proveïdor i historial de tiquets.</li>
+    <li><strong>Preventius:</strong> plantilles, plans i llistes de comprovació.</li>
+    <li><strong>Proveïdors:</strong> contactes externs de manteniment.</li>
+    <li><strong>Centres:</strong> centres, desplaçaments, ubicacions i zones.</li>
+    <li><strong>Resolucions:</strong> categories de tancament dels tiquets.</li>
+  </ol>
+  <p>El botó flotant <strong>+</strong>, situat a la part inferior dreta, crea un registre a la subpestanya activa. Els cercadors només filtren la llista.</p>
+
+  <h2 class="pagebreak">3. Maquinària</h2>
+  <div class="screen">
+    <div class="screenbar"><span>Dades · Maquinària</span><span>Nova màquina</span></div>
+    <div class="screenbody">
+      <div class="tabs"><div class="tab on">Maquinària</div><div class="tab">Preventius</div><div class="tab">Proveïdors</div><div class="tab">Centres</div><div class="tab">Resolucions</div></div>
+      <div class="mockgrid"><div class="mocklist"><strong>Maquinària</strong><div class="mockrow">Forn principal<br><small>MQ-001</small></div><div class="mockrow">Cambra freda<br><small>MQ-002</small></div></div><div class="mockform"><strong>Nova màquina</strong><div class="fields"><div class="field"><small>Codi</small>MQ-003</div><div class="field"><small>Nom</small>Marmita 200 L</div><div class="field"><small>Centre</small>Cuina central</div><div class="field"><small>Ubicació</small>Producció</div><div class="field"><small>Zona</small>Zona calenta</div><div class="field"><small>Proveïdor</small>Servei tècnic</div><div class="wide"><span class="mockbutton">Crear màquina</span></div></div></div></div>
+      <div class="plus">+</div><span class="badge" style="right:8px;bottom:8px">1</span><span class="badge" style="top:70px;left:61%">2</span><span class="badge" style="top:115px;left:61%">3</span><span class="badge" style="right:24px;bottom:30px">4</span>
+    </div>
+  </div>
+  <div class="guide"><div><span class="n">1</span><span>Clica <strong>+</strong> per obrir la fitxa nova.</span></div><div><span class="n">2</span><span>Omple Codi i Nom.</span></div><div><span class="n">3</span><span>Assigna Centre, Ubicació i Zona.</span></div><div><span class="n">4</span><span>Prem <strong>Crear màquina</strong>.</span></div></div>
+  <h3>Consultar una màquina</h3>
+  <ol class="steps">
+    <li>Obre <strong>Maquinària</strong>.</li>
+    <li>Cerca per codi, nom, centre, ubicació, zona, marca, model o proveïdor.</li>
+    <li>Clica una targeta per desplegar-la.</li>
+    <li>Revisa els tiquets, l’estat obert, les hores reals i l’última actuació.</li>
+    <li>Clica <strong>Fitxa completa</strong> per consultar Resum, Tickets, Cronologia i Dades.</li>
+  </ol>
+  <h3>Crear una màquina</h3>
+  <ol class="steps">
+    <li>Clica <strong>+</strong>.</li>
+    <li>Informa el codi i el nom. Com a mínim un dels dos ha d’identificar la màquina.</li>
+    <li>Selecciona el centre i una ubicació vàlida.</li>
+    <li>Selecciona una zona si la ubicació en té.</li>
+    <li>Completa marca, model, número de sèrie i proveïdor, si escau.</li>
+    <li>Deixa marcada l’opció <strong>Activa</strong> si està en servei.</li>
+    <li>Clica <strong>Crear màquina</strong>.</li>
+  </ol>
+  <p>Per editar, desplega la targeta, modifica els camps i clica <strong>Guardar canvis</strong>. Si ja no s’utilitza, és preferible desmarcar <strong>Activa</strong> per conservar l’historial.</p>
+
+  <h2 class="pagebreak">4. Preventius</h2>
+  <div class="screen"><div class="screenbar"><span>Dades</span><span>Plantilles de preventiu</span></div><div class="screenbody"><div class="tabs"><div class="tab">Maquinària</div><div class="tab on">Preventius</div><div class="tab">Proveïdors</div><div class="tab">Centres</div><div class="tab">Resolucions</div></div><div class="searchbox">🔎 Cercar plantilla... <span class="mockbutton">Nova plantilla</span></div><div class="mini-cards"><div class="mini-card"><strong>Revisió setmanal forn</strong><br><small>Setmanal · Activa</small></div><div class="mini-card"><strong>Neteja de filtres</strong><br><small>Mensual · Activa</small></div><div class="mini-card"><strong>Revisió instal·lació</strong><br><small>Anual · Activa</small></div></div><span class="badge" style="top:17px;left:28%">1</span><span class="badge" style="top:59px;right:18px">2</span><span class="badge" style="top:117px;left:21%">3</span></div></div>
+  <div class="guide"><div><span class="n">1</span><span>Entra a <strong>Preventius</strong>.</span></div><div><span class="n">2</span><span>Clica <strong>Nova plantilla</strong> o <strong>+</strong>.</span></div><div><span class="n">3</span><span>Clica una targeta per consultar-la o editar-la.</span></div></div>
+  <h3>Consultar plantilles</h3>
+  <ol>
+    <li>Obre <strong>Preventius</strong>.</li>
+    <li>Utilitza el cercador i els filtres de temporalitat, centre, ubicació i zona.</li>
+    <li>Selecciona una plantilla per veure periodicitat, última revisió, observacions, operaris, seccions i tasques.</li>
+    <li>Clica el nom per obrir la fitxa completa o <strong>Historial</strong> per veure les revisions.</li>
+  </ol>
+  <h3>Crear una plantilla</h3>
+  <ol>
+    <li>Clica <strong>+</strong> i escriu un nom clar.</li>
+    <li>Selecciona la periodicitat.</li>
+    <li>Assigna centre, ubicació, zona i operaris.</li>
+    <li>Afegeix les seccions i les tasques de comprovació.</li>
+    <li>Revisa l’estat actiu i desa.</li>
+  </ol>
+  <h3>Importar plantilles</h3>
+  <ol>
+    <li>Clica <strong>Seleccionar fitxer</strong> i tria un Excel o CSV.</li>
+    <li>Revisa la previsualització, el model detectat i els avisos.</li>
+    <li>En el model B, tria plantilla fusionada, una per temporalitat o temporalitats concretes.</li>
+    <li>Clica <strong>Importar</strong> només quan la previsualització sigui correcta.</li>
+  </ol>
+  <p>Les plantilles es poden editar, exportar a PDF o Excel i eliminar. No eliminis una plantilla si encara cal conservar-ne l’ús operatiu o l’historial.</p>
+
+  <h2 class="pagebreak">5. Proveïdors</h2>
+  <div class="screen"><div class="screenbar"><span>Dades</span><span>Proveïdors</span></div><div class="screenbody"><div class="tabs"><div class="tab">Maquinària</div><div class="tab">Preventius</div><div class="tab on">Proveïdors</div><div class="tab">Centres</div><div class="tab">Resolucions</div></div><div class="mockgrid"><div class="mocklist"><div class="searchbox">🔎 Cercar proveïdor...</div><div class="mockrow on"><strong>Servei Tècnic Cuina</strong><br><small>Reparació maquinària</small></div><div class="mockrow">Instal·lacions Fred</div></div><div class="mockform"><strong>Nou proveïdor</strong><div class="fields"><div class="field wide"><small>Nom</small>Servei Tècnic Cuina</div><div class="field"><small>Email</small>servei@exemple.cat</div><div class="field"><small>Telèfon</small>900 000 000</div><div class="field wide"><small>Especialitat</small>Reparació maquinària</div><div class="wide"><span class="mockbutton">Crear proveïdor</span></div></div></div></div><div class="plus">+</div><span class="badge" style="right:8px;bottom:8px">1</span><span class="badge" style="top:74px;left:62%">2</span><span class="badge" style="top:121px;left:62%">3</span><span class="badge" style="right:22px;bottom:29px">4</span></div></div>
+  <div class="guide"><div><span class="n">1</span><span>Clica <strong>+</strong>.</span></div><div><span class="n">2</span><span>Escriu nom i contacte.</span></div><div><span class="n">3</span><span>Indica especialitat i notes.</span></div><div><span class="n">4</span><span>Prem <strong>Crear proveïdor</strong>.</span></div></div>
+  <h3>Crear un proveïdor</h3>
+  <ol>
+    <li>Obre <strong>Proveïdors</strong> i clica <strong>+</strong>.</li>
+    <li>Escriu el nom, que és obligatori.</li>
+    <li>Completa correu electrònic, telèfon, especialitat i notes.</li>
+    <li>Mantén <strong>Actiu</strong> marcat si es pot seleccionar en noves fitxes.</li>
+    <li>Clica <strong>Crear proveïdor</strong>.</li>
+  </ol>
+  <p>Per editar, selecciona el proveïdor, modifica les dades i clica <strong>Guardar canvis</strong>. Si ja no s’utilitza, desactiva’l per conservar les referències existents.</p>
+
+  <h2 class="pagebreak">6. Centres</h2>
+  <div class="screen"><div class="screenbar"><span>Dades</span><span>Centres</span></div><div class="screenbody"><div class="tabs"><div class="tab">Maquinària</div><div class="tab">Preventius</div><div class="tab">Proveïdors</div><div class="tab on">Centres</div><div class="tab">Resolucions</div></div><div class="searchbox">🔎 Cerca nom o codi... <span class="mockbutton">Nou centre</span></div><div class="mockgrid"><div class="mocklist"><div class="mockrow on"><strong>Cuina central</strong><br><small>CC · Propi</small></div><div class="mockrow">Restaurant exemple</div></div><div class="mockform"><strong>Editar centre</strong><div class="fields"><div class="field"><small>Nom</small>Cuina central</div><div class="field"><small>Codi</small>CC</div><div class="field wide"><small>Ubicació</small>Producció <b style="float:right">+ Afegir ubicació</b></div><div class="field wide"><small>Zona</small>Zona calenta <b style="float:right">+ Afegir zona</b></div><div class="wide"><span class="mockbutton">Desar</span></div></div></div></div><span class="badge" style="top:58px;right:19px">1</span><span class="badge" style="top:107px;left:61%">2</span><span class="badge" style="top:151px;right:22px">3</span><span class="badge" style="right:21px;bottom:18px">4</span></div></div>
+  <div class="guide"><div><span class="n">1</span><span>Clica <strong>Nou centre</strong>.</span></div><div><span class="n">2</span><span>Omple Nom, Codi i Tipus.</span></div><div><span class="n">3</span><span>Afegeix primer ubicacions i després zones.</span></div><div><span class="n">4</span><span>Prem <strong>Desar</strong>.</span></div></div>
+  <p>La jerarquia és <strong>Centre → Ubicació → Zona</strong>. Cal definir-la abans de crear màquines o plantilles preventives.</p>
+  <h3>Crear un centre</h3>
+  <ol>
+    <li>Obre <strong>Centres</strong> i clica <strong>Nou centre</strong>.</li>
+    <li>Informa el nom i el codi.</li>
+    <li>Selecciona <strong>Propi</strong> o <strong>Extern</strong>.</li>
+    <li>Indica les hores i els minuts de desplaçament.</li>
+    <li>Clica <strong>Crear centre</strong>.</li>
+  </ol>
+  <h3>Afegir ubicacions i zones</h3>
+  <ol>
+    <li>Obre la targeta del centre.</li>
+    <li>Clica <strong>Afegir ubicació</strong> i escriu-ne el nom.</li>
+    <li>Selecciona la ubicació i clica <strong>Afegir zona</strong> per cada zona.</li>
+    <li>Evita noms duplicats i clica <strong>Desar</strong>.</li>
+  </ol>
+  <p>Abans d’eliminar un centre, ubicació o zona, comprova que no estigui utilitzat per màquines o preventius.</p>
+
+  <h2 class="pagebreak">7. Resolucions</h2>
+  <div class="screen"><div class="screenbar"><span>Dades</span><span>Resolucions</span></div><div class="screenbody"><div class="tabs"><div class="tab">Maquinària</div><div class="tab">Preventius</div><div class="tab">Proveïdors</div><div class="tab">Centres</div><div class="tab on">Resolucions</div></div><div class="mockgrid"><div class="mocklist"><div class="searchbox">🔎 Cercar categoria...</div><div class="mockrow on">Reparació completada</div><div class="mockrow">Consulta tancada</div></div><div class="mockform"><strong>Nova categoria</strong><div class="fields"><div class="field wide"><small>Nom</small>Reparació completada</div><div class="field wide"><small>Estat</small>☑ Categoria activa</div><div class="wide"><span class="mockbutton">Crear categoria</span></div></div></div></div><div class="plus">+</div><span class="badge" style="right:8px;bottom:8px">1</span><span class="badge" style="top:82px;left:63%">2</span><span class="badge" style="right:20px;bottom:31px">3</span></div></div>
+  <div class="guide"><div><span class="n">1</span><span>Clica <strong>+</strong>.</span></div><div><span class="n">2</span><span>Escriu un nom curt i inequívoc.</span></div><div><span class="n">3</span><span>Prem <strong>Crear categoria</strong>.</span></div></div>
+  <ol>
+    <li>Obre <strong>Resolucions</strong> i clica <strong>+</strong>.</li>
+    <li>Escriu un nom breu i inequívoc.</li>
+    <li>Mantén <strong>Activa</strong> marcada.</li>
+    <li>Clica <strong>Crear categoria</strong>.</li>
+  </ol>
+  <p>Per editar, selecciona la categoria i clica <strong>Guardar canvis</strong>. És preferible desactivar-la abans que eliminar-la. Si cal eliminar-la, confirma l’avís.</p>
+
+  <h2>8. Ordre recomanat de configuració</h2>
+  <ol>
+    <li>Centres, ubicacions i zones.</li>
+    <li>Proveïdors.</li>
+    <li>Maquinària.</li>
+    <li>Preventius.</li>
+    <li>Resolucions.</li>
+  </ol>
+
+  <h2>9. Bones pràctiques</h2>
+  <ul>
+    <li>Utilitza codis únics i noms consistents.</li>
+    <li>Cerca abans d’afegir per evitar duplicats.</li>
+    <li>No canviïs la ubicació d’una màquina sense verificar-la físicament.</li>
+    <li>Prefereix desactivar abans que eliminar.</li>
+    <li>Revisa la previsualització abans d’importar preventius.</li>
+    <li>Després de desar, comprova el registre a la llista.</li>
+  </ul>
+
+  <h2>10. Problemes habituals</h2>
+  <table>
+    <thead><tr><th>Problema</th><th>Com actuar</th></tr></thead>
+    <tbody>
+      <tr><td>No apareix Dades</td><td>Contacta amb la persona administradora de l’aplicació.</td></tr>
+      <tr><td>Es pot consultar però no desar</td><td>Contacta amb la persona administradora i indica quina acció intentaves fer.</td></tr>
+      <tr><td>No es pot crear una màquina</td><td>Comprova centre, ubicació i codi o nom.</td></tr>
+      <tr><td>No apareix una ubicació o zona</td><td>Crea-la o corregeix-la a <strong>Centres</strong> i torna a obrir el formulari.</td></tr>
+      <tr><td>No apareix un proveïdor</td><td>Comprova que estigui actiu.</td></tr>
+      <tr><td>La cerca no retorna resultats</td><td>Neteja el text i revisa els filtres actius.</td></tr>
+      <tr><td>Un accés s’acaba d’actualitzar</td><td>Actualitza la pàgina; si cal, tanca la sessió i torna a entrar.</td></tr>
+    </tbody>
+  </table>
+  <div class="footer">Manual d’usuari final · Dades de Manteniment i Cuina central · Cal Blay</div>
+</body>
+</html>
