@@ -19,6 +19,7 @@ export type CalendarLN =
   | 'empresa'
   | 'casaments'
   | 'grups restaurants'
+  | 'green vita'
   | 'foodlovers'
   | 'agenda'
   | 'altres'
@@ -49,6 +50,7 @@ const LN_OPTIONS: { label: string; value: CalendarLN }[] = [
   { label: 'Empresa', value: 'empresa' },
   { label: 'Casaments', value: 'casaments' },
   { label: 'Grups Restaurants', value: 'grups restaurants' },
+  { label: 'Green Vita', value: 'green vita' },
   { label: 'Foodlovers', value: 'foodlovers' },
   { label: 'Agenda', value: 'agenda' },
   { label: 'Altres', value: 'altres' },

@@ -7,6 +7,7 @@ const LN_LABELS: Record<string, string> = {
   empresa: 'Empresa',
   casaments: 'Casaments',
   'grups restaurants': 'Grups Restaurants',
+  'green vita': 'Green Vita',
   foodlovers: 'Foodlovers',
   agenda: 'Agenda',
   altres: 'Altres',

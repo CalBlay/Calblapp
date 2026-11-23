@@ -9,6 +9,10 @@ export type UiPermissionsResponse = {
   map: Record<string, boolean>
   edit?: Record<string, boolean>
   actions?: Record<string, boolean>
+  calendarLnScopes?: {
+    create: string[] | null
+    update: string[] | null
+  }
   profile?: {
     isDepartmentRobaLead?: boolean
     department?: string

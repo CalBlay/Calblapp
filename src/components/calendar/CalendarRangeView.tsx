@@ -27,6 +27,7 @@ const LN_ORDER: { key: string; label: string }[] = [
   { key: 'empresa', label: 'Empresa' },
   { key: 'casaments', label: 'Casaments' },
   { key: 'grups restaurants', label: 'Grups Restaurants' },
+  { key: 'green vita', label: 'Green Vita' },
   { key: 'foodlovers', label: 'Foodlovers' },
   { key: 'agenda', label: 'Agenda' },
   { key: 'altres', label: 'Altres' },

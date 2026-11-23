@@ -10,6 +10,7 @@ import {
   assertCalendarEventCodeAvailable,
   CalendarCodeConflictError,
 } from '@/lib/calendar/eventCodeConflicts.server'
+import { isCalendarLnMutationAllowed } from '@/lib/calendar/calendarLnPermissions.server'
 
 export const runtime = 'nodejs'
 
@@ -37,6 +38,18 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as Record<string, unknown>
+
+    const lnAllowed = await isCalendarLnMutationAllowed({
+      userId: auth.user.id,
+      mutation: 'create',
+      ln: body.LN || 'Altres',
+    })
+    if (!lnAllowed) {
+      return NextResponse.json(
+        { error: 'No tens permisos per crear esdeveniments en aquesta línia de negoci.' },
+        { status: 403 }
+      )
+    }
 
     if (!body.NomEvent || !body.DataInici) {
       return NextResponse.json(

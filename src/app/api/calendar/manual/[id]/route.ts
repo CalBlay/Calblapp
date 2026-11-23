@@ -24,6 +24,8 @@ import {
 } from '@/lib/calendar/eventCodeConflicts.server'
 import { revalidateEventsListCache } from '@/lib/eventsListCache'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { allowedCalendarLnsForUser } from '@/lib/calendar/calendarLnPermissions.server'
+import { isCalendarLnAllowed } from '@/lib/calendar/calendarLn'
 
 function accessUserFromSession(user: {
   id: string
@@ -81,6 +83,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
     }
 
+    const allowedLns = await allowedCalendarLnsForUser(auth.user.id, 'update')
+    if (allowedLns !== null) {
+      const eventSnap = await db.collection(collection).doc(id).get()
+      if (!eventSnap.exists || !isCalendarLnAllowed(eventSnap.data()?.LN, allowedLns)) {
+        return NextResponse.json(
+          { error: 'No tens permisos per editar esdeveniments en aquesta línia de negoci.' },
+          { status: 403 }
+        )
+      }
+    }
+
     const attachField = String(field || '').trim()
     if (!isAllowedCalendarManualAttachField(attachField)) {
       return NextResponse.json({ error: 'Camp de fitxer invàlid' }, { status: 400 })
@@ -134,6 +147,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
 
     const safeData = pickCalendarManualPutFields(data, CALENDAR_MANUAL_OVERRIDE_FIELDS)
+    const allowedLns = await allowedCalendarLnsForUser(auth.user.id, 'update')
 
     if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
       safeData.code = normalizeAdaEventCode(String(safeData.code || ''))
@@ -144,6 +158,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(docRef)
       const previous = snap.exists ? snap.data() || {} : {}
+      const nextLn = Object.prototype.hasOwnProperty.call(safeData, 'LN')
+        ? safeData.LN
+        : previous.LN
+      if (
+        !isCalendarLnAllowed(previous.LN, allowedLns) ||
+        !isCalendarLnAllowed(nextLn, allowedLns)
+      ) {
+        throw new Error('CALENDAR_LN_FORBIDDEN')
+      }
       const manualOverrides: Record<string, true> = {
         ...((previous.manualOverrides && typeof previous.manualOverrides === 'object'
           ? previous.manualOverrides
@@ -218,6 +241,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     console.log(`✅ Esdeveniment ${id} actualitzat correctament a ${collection}`)
     return NextResponse.json({ ok: true })
   } catch (err) {
+    if (err instanceof Error && err.message === 'CALENDAR_LN_FORBIDDEN') {
+      return NextResponse.json(
+        { error: 'No tens permisos per editar esdeveniments en aquesta línia de negoci.' },
+        { status: 403 }
+      )
+    }
     if (err instanceof CalendarCodeConflictError) {
       return NextResponse.json(
         {

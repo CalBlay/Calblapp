@@ -22,6 +22,7 @@ export default function CalendarLegend({
     { label: 'Empresa', key: 'empresa' },
     { label: 'Casaments', key: 'casaments' },
     { label: 'Grups Restaurants', key: 'grups restaurants' },
+    { label: 'Green Vita', key: 'green vita' },
     { label: 'Foodlovers', key: 'foodlovers' },
     { label: 'Agenda', key: 'agenda' },
     { label: 'Altres', key: 'altres' },

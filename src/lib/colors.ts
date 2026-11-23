@@ -40,6 +40,7 @@ export const COLORS_LN: Record<string, string> = {
   empresa: 'bg-blue-50 border border-blue-200 text-blue-800',
   casaments: 'bg-pink-50 border border-pink-200 text-pink-800',
   'grups restaurants': 'bg-amber-50 border border-amber-200 text-amber-800',
+  'green vita': 'bg-teal-50 border border-teal-200 text-teal-800',
   foodlovers: 'bg-emerald-50 border border-emerald-200 text-emerald-800',
   agenda: 'bg-orange-50 border border-orange-200 text-orange-800',
   altres: 'bg-gray-50 border border-gray-200 text-gray-700',

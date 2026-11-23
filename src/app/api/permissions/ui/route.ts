@@ -98,6 +98,10 @@ import {
   REPORTS_DOMAIN_PERMISSIONS,
   REPORTS_UI_PATH,
 } from '@/lib/informes/permissions'
+import {
+  CALENDAR_LN_PERMISSION,
+  calendarLnScopeIdsForPermission,
+} from '@/lib/calendar/calendarLn'
 
 type UiPermissionMap = Record<string, boolean>
 type UiEditMap = Record<string, boolean>
@@ -659,6 +663,10 @@ export async function GET() {
     map,
     edit,
     actions,
+    calendarLnScopes: {
+      create: calendarLnScopeIdsForPermission(assignment, CALENDAR_LN_PERMISSION.create),
+      update: calendarLnScopeIdsForPermission(assignment, CALENDAR_LN_PERMISSION.update),
+    },
     profile: {
       isDepartmentRobaLead: Boolean(accessUser.isDepartmentRobaLead),
       department: String(accessUser.department || ''),

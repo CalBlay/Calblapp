@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { CalendarMailGroup, CalendarMailGroupMember } from '@/lib/calendar/calendarMailGroups'
 
-const LN_OPTIONS = ['', 'Casaments', 'Empresa', 'Foodlovers', 'Grups Restaurants', 'Altres']
+const LN_OPTIONS = ['', 'Casaments', 'Empresa', 'Foodlovers', 'Grups Restaurants', 'Green Vita', 'Altres']
 
 type UserOption = {
   id: string

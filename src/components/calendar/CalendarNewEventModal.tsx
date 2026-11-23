@@ -23,6 +23,10 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 import { formatDateOnly } from '@/lib/date-format'
+import {
+  calendarLnOptionsForScope,
+  isCalendarLnAllowed,
+} from '@/lib/calendar/calendarLn'
 
 interface Props {
   date: string           // data de la casella clicada
@@ -93,7 +97,12 @@ type CalendarCodeConflict = {
  */
 export default function CalendarNewEventModal({ date, trigger, onSaved }: Props) {
   const { data: session } = useSession()
-  const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
+  const {
+    uiEdit,
+    uiActions,
+    data: uiPermissionData,
+    ready: permsReady,
+  } = useUiPermissions()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [createdId, setCreatedId] = useState<string | null>(null)
@@ -145,6 +154,11 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     if (permCalendarEdit) return true
     return baseCanEdit && canCreate
   }, [permsReady, uiEdit, baseCanEdit, canCreate, permCalendarEdit])
+  const allowedCreateLns = uiPermissionData?.calendarLnScopes?.create
+  const lnOptions = useMemo(
+    () => calendarLnOptionsForScope(allowedCreateLns),
+    [allowedCreateLns]
+  )
 
   // Dades del nou esdeveniment
   const [formData, setFormData] = useState<EventFormData>({
@@ -160,6 +174,8 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     Servei: '',
     Comercial: '',
   })
+  const canCreateInSelectedLn =
+    canEdit && isCalendarLnAllowed(formData.LN, allowedCreateLns)
 
   const canSendEmail = useMemo(() => {
     if (!permsReady) return canAttach
@@ -287,12 +303,15 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
 
   useEffect(() => {
     if (!open) return
-    if (!defaultLN) return
+    const initialLn = isCalendarLnAllowed(defaultLN, allowedCreateLns)
+      ? defaultLN
+      : lnOptions[0]?.label || ''
+    if (!initialLn) return
     setFormData((prev) => {
       if (String(prev.LN || '').trim()) return prev
-      return { ...prev, LN: defaultLN }
+      return { ...prev, LN: initialLn }
     })
-  }, [open, defaultLN])
+  }, [open, defaultLN, allowedCreateLns, lnOptions])
 
   // Comprova si existeix una finca o servei i el crea si cal
   const ensureExists = async (collection: 'finques' | 'serveis', nom: string) => {
@@ -332,8 +351,8 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
 
   // Desa l'esdeveniment nou reutilitzant /api/calendar/attachments
   const handleSave = async () => {
-    if (!canEdit) {
-      alert('No tens permisos per crear esdeveniments.')
+    if (!canCreateInSelectedLn) {
+      alert('No tens permisos per crear esdeveniments en aquesta línia de negoci.')
       return
     }
 
@@ -441,7 +460,9 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       Ubicacio: '',
       Servei: '',
       Comercial: userName || '',
-      LN: defaultLN || '',
+      LN: isCalendarLnAllowed(defaultLN, allowedCreateLns)
+        ? defaultLN
+        : lnOptions[0]?.label || '',
     })
   }
 
@@ -515,12 +536,11 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
             >
               <option value="">-- Selecciona --</option>
-              <option value="Empresa">Empresa</option>
-              <option value="Casaments">Casaments</option>
-              <option value="Grups Restaurants">Grups Restaurants</option>
-              <option value="Foodlovers">Foodlovers</option>
-              <option value="Agenda">Agenda</option>
-              <option value="Altres">Altres</option>
+              {lnOptions.map((option) => (
+                <option key={option.key} value={option.label}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -740,14 +760,14 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
         </div>
 
         <DialogFooter className="mt-4 flex flex-col gap-2">
-          {!canEdit && (
+          {!canCreateInSelectedLn && (
             <p className="text-sm text-red-600 text-center w-full">
-              No tens permisos per crear esdeveniments.
+              No tens permisos per crear esdeveniments en aquesta línia de negoci.
             </p>
           )}
           <Button
             onClick={handleSave}
-            disabled={saving || !canEdit}
+            disabled={saving || !canCreateInSelectedLn}
             className="w-full bg-emerald-500 text-white hover:bg-emerald-600"
           >
             Desa esdeveniment

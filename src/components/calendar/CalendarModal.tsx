@@ -30,6 +30,10 @@ import {
   buildMenuTastingManualDelete,
   buildMenuTastingManualUpdate,
 } from '@/lib/calendar/menuTastingManualUpdate'
+import {
+  calendarLnOptionsForScope,
+  isCalendarLnAllowed,
+} from '@/lib/calendar/calendarLn'
 
 interface Props {
   deal: Deal
@@ -174,7 +178,12 @@ export default function CalendarModal({
   const mutationDocId = mutationDocIds[0] || deal.id
   const isGroupedMenuTasting = isMenuTasting && mutationDocIds.length > 1
   const { data: session } = useSession()
-  const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
+  const {
+    uiEdit,
+    uiActions,
+    data: uiPermissionData,
+    ready: permsReady,
+  } = useUiPermissions()
   const [open, setOpen] = useState(false)
   const [preferPanel, setPreferPanel] = useState(
     () =>
@@ -329,12 +338,22 @@ export default function CalendarModal({
     if (!permsReady) return true
     return uiActions[PERM.action(calendarPath, 'manual:delete')] === true
   }, [permsReady, uiActions])
+  const allowedUpdateLns = uiPermissionData?.calendarLnScopes?.update
+  const canMutateCurrentLn = isCalendarLnAllowed(
+    get(dealRecord, 'LN', 'ln', 'liniaNegoci') || 'Altres',
+    allowedUpdateLns
+  )
+  const lnOptions = useMemo(
+    () => calendarLnOptionsForScope(allowedUpdateLns),
+    [allowedUpdateLns]
+  )
   const canEdit = useMemo(() => {
+    if (!canMutateCurrentLn) return false
     if (!permsReady) return baseCanEdit
     if (uiEdit[calendarPath] === false) return false
     if (permCalendarEdit && !readonly && (isManual || isZohoVerd)) return true
     return baseCanEdit && canUpdate
-  }, [permsReady, uiEdit, baseCanEdit, canUpdate, permCalendarEdit, isManual, isZohoVerd, readonly])
+  }, [canMutateCurrentLn, permsReady, uiEdit, baseCanEdit, canUpdate, permCalendarEdit, isManual, isZohoVerd, readonly])
   const isOwnCommercialEvent = useMemo(() => {
     if (!isComercialRole) return false
     const eventCommercial = normalizeLoose(editData.Comercial)
@@ -346,12 +365,14 @@ export default function CalendarModal({
     !readonly &&
     !isGroupedMenuTasting &&
     (isZohoVerd || isManual || isMenuTasting) &&
-    canUpdate
+    canUpdate &&
+    canMutateCurrentLn
   const canEditGroupedMenuTastingCodes =
-    !readonly && isGroupedMenuTasting && canUpdate
+    !readonly && isGroupedMenuTasting && canUpdate && canMutateCurrentLn
   const canEditComercialIntern =
-    !readonly && !isMenuTasting && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
-  const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
+    !readonly && !isMenuTasting && (isZohoVerd || isManual) && (isAdmin || isCapProduccio) && canMutateCurrentLn
+  const canManageDocuments =
+    !readonly && canAttach && canMutateCurrentLn && (canEdit || isOwnCommercialEvent)
   const canDeleteDocuments =
     !readonly &&
     (isAdmin || (permsReady && uiActions[CALENDAR_PERM.deleteDocuments] === true))
@@ -950,12 +971,11 @@ export default function CalendarModal({
                 onChange={(e) => handleChange('LN', e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
-                <option value="Empresa">Empresa</option>
-                <option value="Casaments">Casaments</option>
-                <option value="Grups Restaurants">Grups Restaurants</option>
-                <option value="Foodlovers">Foodlovers</option>
-                <option value="Agenda">Agenda</option>
-                <option value="Altres">Altres</option>
+                {lnOptions.map((option) => (
+                  <option key={option.key} value={option.label}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             ) : (
               <p>{String(get(dealRecord, 'LN', 'ln') || editData.LN || '—')}</p>
