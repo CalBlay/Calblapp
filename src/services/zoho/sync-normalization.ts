@@ -101,8 +101,8 @@ export function classifyStage(stage: string): StageCollection | null {
 /**
  * Excepcions d'etapa que depenen de la línia de negoci.
  *
- * A Casaments, Zoho tracta la Prereserva com una etapa de seguiment groga.
- * La resta de línies conserva la classificació general (taronja).
+ * Casaments té una classificació pròpia per a les etapes comunicades pel
+ * departament. La resta de línies conserva la classificació general.
  */
 export function classifyStageForBusinessLine(
   stage: string,
@@ -118,13 +118,20 @@ export function classifyStageForBusinessLine(
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[\s_-]+/g, '')
+    .replace(/[^a-z0-9]+/g, '')
 
-  if (
-    normalizedBusinessLine === 'casaments' &&
-    compactStage.includes('prereserva')
-  ) {
-    return 'groc'
+  if (normalizedBusinessLine === 'casaments') {
+    if (compactStage.includes('prereserva')) return 'groc'
+
+    if (
+      compactStage === 'propuestaconfirmada' ||
+      compactStage === 'propostaconfirmada' ||
+      compactStage === 'fulldedades' ||
+      compactStage === 'contractesignat' ||
+      compactStage === 'cerradaganada'
+    ) {
+      return 'verd'
+    }
   }
 
   return standardStage
@@ -208,7 +215,6 @@ export async function normalizeZohoDeals(
 
   for (const deal of deals) {
     let group = classifyZohoDealStage(deal)
-    if (!group) continue
 
     const dateISO =
       deps.parseZohoDate(deal.Fecha_del_evento) ||
@@ -266,9 +272,10 @@ export async function normalizeZohoDeals(
     const comercial = ownerCommercial
     ln = deps.lnForMartaGranatoCommercial(ln, comercial)
 
-    // L'excepció de Prereserva s'aplica després de resoldre definitivament la
-    // línia de negoci, incloses les regles de centres restaurant i comercials.
+    // Les excepcions de Casaments s'apliquen després de resoldre definitivament
+    // la línia de negoci, incloses les regles de centres restaurant i comercials.
     group = classifyStageForBusinessLine(deal.Stage || '', ln) || group
+    if (!group) continue
 
     const fincaMatch = deps.findFincaForUbicacio(ubicacions, ln)
     const comercialIntern = deps.extractZohoDisplayName(deal.Comercial_Interna) || ''

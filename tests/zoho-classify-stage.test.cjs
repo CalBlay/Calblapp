@@ -191,7 +191,27 @@ test('Casaments routes Prereserva to groc without changing Empresa', () => {
   assert.equal(classifyStageForBusinessLine('Pre-reserva', 'Casaments'), 'groc')
   assert.equal(classifyStageForBusinessLine('Prereserva', 'Empresa'), 'taronja')
   assert.equal(classifyStageForBusinessLine('2na proposta', 'Casaments'), 'groc')
+  assert.equal(classifyStageForBusinessLine('2ª PROPUESTA', 'Casaments'), 'groc')
   assert.equal(classifyStageForBusinessLine('2na proposta', 'Empresa'), 'groc')
+})
+
+test('Casaments routes confirmed wedding stages to verd without changing Empresa', () => {
+  for (const stage of [
+    'Propuesta confirmada',
+    'Proposta confirmada',
+    'Full de dades',
+    'Contracte signat',
+    'Cerrada ganada',
+  ]) {
+    assert.equal(classifyStageForBusinessLine(stage, 'Casaments'), 'verd')
+  }
+
+  assert.equal(
+    classifyStageForBusinessLine('Propuesta confirmada', 'Empresa'),
+    'groc'
+  )
+  assert.equal(classifyStageForBusinessLine('Full de dades', 'Empresa'), null)
+  assert.equal(classifyStageForBusinessLine('Contracte signat', 'Empresa'), null)
 })
 
 test('normalizeZohoDeals applies the Prereserva exception from Pipeline', async () => {
@@ -231,6 +251,46 @@ test('normalizeZohoDeals applies the Prereserva exception from Pipeline', async 
       { LN: 'Casaments', collection: 'groc' },
       { LN: 'Empresa', collection: 'taronja' },
     ]
+  )
+})
+
+test('normalizeZohoDeals imports Casaments confirmed stages as verd', async () => {
+  const dependencies = {
+    parseZohoDate: (value) => value || null,
+    parseZohoTime: () => null,
+    getLN: async () => 'Agenda',
+    lnForMartaGranatoCommercial: (ln) => ln,
+    stripCode: (value) => String(value).trim(),
+    normalizeIncomingZohoCode: (value) => value || null,
+    extractCodeFromName: () => null,
+    isBadCode: () => false,
+    hasRestaurantKeyword: () => false,
+    findFincaForUbicacio: () => null,
+    extractZohoDisplayName: () => null,
+    operativeResponsableFromZohoDeal: () => '',
+    fincaLnForDeal: (ln) => ln,
+  }
+  const stages = [
+    'Propuesta confirmada',
+    'Full de dades',
+    'Contracte signat',
+    'Cerrada ganada',
+  ]
+  const deals = stages.map((Stage, index) => ({
+    id: `casaments-confirmat-${index}`,
+    Deal_Name: Stage,
+    Stage,
+    Pipeline: 'Bodas',
+    Fecha_del_evento: '2027-06-21',
+    Owner: { id: 'owner', name: 'Comercial' },
+  }))
+
+  const normalized = await normalizeZohoDeals(deals, dependencies)
+
+  assert.equal(normalized.length, stages.length)
+  assert.deepEqual(
+    normalized.map(({ LN, collection }) => ({ LN, collection })),
+    stages.map(() => ({ LN: 'Casaments', collection: 'verd' }))
   )
 })
 

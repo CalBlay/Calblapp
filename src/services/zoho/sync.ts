@@ -870,6 +870,11 @@ async function syncStageCollections({
       const data = doc.data() as { origen?: string }
       if (data?.origen !== 'zoho') continue
 
+      // La normalització ja incorpora les excepcions específiques de cada LN.
+      // Si l'objectiu calculat és verd, la regla genèrica (que no coneix la LN)
+      // no ha de tornar a classificar ni eliminar aquest document.
+      if (idsVerd.has(id)) continue
+
       const zoho = zohoById.get(id)
       if (!zoho) {
         // Una resposta paginada incompleta o una incidència temporal de Zoho no
