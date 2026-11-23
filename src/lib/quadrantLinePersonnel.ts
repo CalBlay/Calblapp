@@ -128,6 +128,48 @@ function findBasePerson(
   })
 }
 
+function findPersonGroup(
+  base: UnknownRow & { role: QuadrantPersonnelRole },
+  groups: UnknownRow[]
+) {
+  const explicitGroupId = text(base.groupId)
+  if (explicitGroupId) {
+    const explicit = groups.find(
+      (group) => text(group.id || group.groupId) === explicitGroupId
+    )
+    if (explicit) return explicit
+  }
+
+  const fields: Array<[string, (group: UnknownRow) => string, number]> = [
+    [text(base.serviceDate || base.startDate), (group) => text(group.serviceDate || group.startDate), 4],
+    [text(base.startTime || base.time || base.hour), (group) => text(group.startTime), 4],
+    [text(base.endTime), (group) => text(group.endTime), 2],
+    [text(base.meetingPoint), (group) => text(group.meetingPoint), 1],
+  ]
+  const comparable = fields.filter(([value]) => Boolean(value))
+  if (comparable.length > 0) {
+    let bestGroup: UnknownRow | undefined
+    let bestScore = 0
+    for (const group of groups) {
+      let score = 0
+      for (const [value, groupValue, weight] of comparable) {
+        const candidate = groupValue(group)
+        if (candidate === value) score += weight
+        else if (candidate) score -= weight
+      }
+      if (score > bestScore) {
+        bestGroup = group
+        bestScore = score
+      }
+    }
+    if (bestGroup) return bestGroup
+  }
+
+  // Sense grup, aquests rols es replicarien a totes les convocatòries.
+  if (base.role === 'responsable' || base.role === 'conductor') return groups[0]
+  return undefined
+}
+
 function scheduledPerson(params: {
   doc: UnknownRow
   base?: UnknownRow & { role: QuadrantPersonnelRole }
@@ -250,14 +292,9 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
 
   for (const base of people) {
     if (represented.has(identity(base))) continue
-    const explicitGroupId = text(base.groupId)
-    const fallbackGroup = groups.find(
-      (group) => explicitGroupId && text(group.id || group.groupId) === explicitGroupId
-    ) || (base.role === 'responsable' ? groups[0] : undefined)
-    // En quadrants antics, el responsable només existeix a la capçalera. Si
-    // també hi ha grups, l'assignem a un únic grup (l'explícit o el primer) i
-    // no el deixem sense groupId, perquè això el replicava a tots els horaris.
-    // Conductors i treballadors antics conserven l'horari general.
+    const fallbackGroup = findPersonGroup(base, groups)
+    // Els responsables i conductors antics es vinculen a un únic grup perquè
+    // no es repliquin a totes les convocatòries del servei.
     const person = scheduledPerson({
       doc,
       base,

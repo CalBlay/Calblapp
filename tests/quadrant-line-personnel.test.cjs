@@ -129,6 +129,40 @@ test('legacy top-level responsible belongs to only the first service group', () 
   )
 })
 
+test('top-level driver is linked only to the service shift matching their schedule', () => {
+  const rows = collectQuadrantLinePersonnel({
+    startDate: '2026-11-17',
+    conductors: [
+      {
+        id: 'driver-1',
+        name: 'Marc',
+        startDate: '2026-11-17',
+        startTime: '18:00',
+        endTime: '23:00',
+      },
+    ],
+    groups: [
+      {
+        id: 'shift-lunch',
+        serviceDate: '2026-11-17',
+        startTime: '08:00',
+        endTime: '16:00',
+      },
+      {
+        id: 'shift-dinner',
+        serviceDate: '2026-11-17',
+        startTime: '18:00',
+        endTime: '23:00',
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    rows.map((row) => ({ name: row.name, role: row.role, groupId: row.groupId })),
+    [{ name: 'Marc', role: 'conductor', groupId: 'shift-dinner' }]
+  )
+})
+
 test('logistics manual worker lines keep their own schedule when saved', () => {
   const [worker] = attachManualWorkerLineSchedules(
     [{ name: 'Anna' }],
