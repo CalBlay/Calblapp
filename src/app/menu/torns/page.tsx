@@ -45,6 +45,7 @@ type TornsFiltersState = Omit<SmartFiltersChange, 'roleType'> & {
 }
 type ApiTorn = {
   id: string
+  quadrantId?: string | null
   eventId?: string
   code: string
   eventName: string
@@ -318,7 +319,7 @@ export default function TornsPage() {
       fincaId: t.fincaId ?? null,
       fincaCode: t.fincaCode ?? null,
       location: t.location || '',
-      quadrantId: String(t.id || '').split(':')[0] || undefined,
+      quadrantId: t.quadrantId || undefined,
     })
     setEventMenuOpen(true)
   }

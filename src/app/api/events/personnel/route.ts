@@ -6,7 +6,10 @@ import type { AccessUser } from '@/lib/accessControl'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
-import { eventPersonnelIdentityKey } from '@/lib/eventPersonnelIdentity'
+import {
+  closingPersonnelIdentityKey,
+  mergeResponsiblePersonnelSchedules,
+} from '@/lib/eventPersonnelIdentity'
 import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 export const runtime = 'nodejs'
@@ -353,10 +356,15 @@ export async function GET(req: NextRequest) {
 
     const dedupMap = new Map<string, PersonnelListEntry>()
     people.forEach((person) => {
-      const key = eventPersonnelIdentityKey(person)
+      const key = closingPersonnelIdentityKey(person)
       const existing = dedupMap.get(key)
       if (!existing) {
         dedupMap.set(key, person)
+        return
+      }
+
+      if (person.role === 'responsable' || existing.role === 'responsable') {
+        dedupMap.set(key, mergeResponsiblePersonnelSchedules(existing, person))
         return
       }
 

@@ -46,6 +46,7 @@ type TokenLike = {
 
 type ApiTorn = {
   id: string
+  quadrantId?: string | null
   code?: string
   eventId: string
   eventName: string
@@ -293,6 +294,7 @@ export async function GET(req: NextRequest) {
 
     const dto: ApiTorn[] = data.map((t) => ({
       id: String(t.id), // id de torn ja únic (event + workerKey si cal)
+      quadrantId: t.quadrantId,
       code: t.code,
       eventId: t.eventId,
       eventName: t.eventName,

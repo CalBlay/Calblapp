@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
 
-const { dedupeTorns } = require('../src/services/tornsService')
+const { consolidateResponsibleTorns, dedupeTorns } = require('../src/services/tornsService')
 
 const worker = {
   key: 'worker-1',
@@ -72,4 +72,45 @@ test('different phases or schedules remain separate shifts', () => {
   ])
 
   assert.equal(result.length, 3)
+})
+
+test('responsible sees one event card with the full interval and one phase closing', () => {
+  const responsible = {
+    ...worker,
+    id: 'responsible-1',
+    key: 'responsible-1',
+    name: 'Luis Soguero',
+    role: 'responsable',
+  }
+  const result = consolidateResponsibleTorns([
+    {
+      ...base,
+      id: 'event-shift-1',
+      quadrantId: 'event-shift-1',
+      dayNote: 'Event',
+      phaseLabel: 'Event',
+      startTime: '09:30',
+      endTime: '17:30',
+      workerName: responsible.name,
+      workerRole: 'responsable',
+      __rawWorkers: [{ ...responsible, startTime: '09:30', endTime: '17:30' }],
+    },
+    {
+      ...base,
+      id: 'event-shift-2',
+      quadrantId: 'event-shift-2',
+      dayNote: 'Event',
+      phaseLabel: 'Event',
+      startTime: '12:30',
+      endTime: '17:30',
+      workerName: responsible.name,
+      workerRole: 'responsable',
+      __rawWorkers: [{ ...responsible, startTime: '12:30', endTime: '17:30' }],
+    },
+  ])
+
+  assert.equal(result.length, 1)
+  assert.equal(result[0].startTime, '09:30')
+  assert.equal(result[0].endTime, '17:30')
+  assert.equal(result[0].quadrantId, null)
 })

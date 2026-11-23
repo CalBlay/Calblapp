@@ -5,6 +5,8 @@ import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
 
 export type Torn = {
   id: string
+  /** Document concret per tancar; null indica una targeta consolidada de fase. */
+  quadrantId?: string | null
   code?: string
   eventId: string
   eventName: string
@@ -201,6 +203,10 @@ export function dedupeTorns(torns: Torn[]): Torn[] {
     }
     byShift.set(key, {
       ...existing,
+      quadrantId:
+        existing.quadrantId && existing.quadrantId === torn.quadrantId
+          ? existing.quadrantId
+          : null,
       code: existing.code || torn.code,
       eventName: existing.eventName || torn.eventName,
       location: existing.location || torn.location,
@@ -211,6 +217,62 @@ export function dedupeTorns(torns: Torn[]): Torn[] {
   }
 
   return Array.from(byShift.values())
+}
+
+function responsibleCardKey(torn: Torn) {
+  const eventKey = canonicalEventId(torn.eventId)
+    ? `event:${norm(canonicalEventId(torn.eventId))}`
+    : torn.code
+      ? `code:${norm(torn.code)}`
+      : `doc:${torn.id}`
+  return [
+    eventKey,
+    norm(torn.department),
+    torn.date || torn.startDate,
+    norm(torn.phaseLabel || torn.dayNote),
+    norm(torn.workerName),
+  ].join('|')
+}
+
+/**
+ * El responsable representa tota la fase operativa de l'esdeveniment. Encara
+ * que hi hagi diversos torns interns, veu una sola targeta amb l'interval
+ * complet i fa un únic tancament de fase.
+ */
+export function consolidateResponsibleTorns(torns: Torn[]): Torn[] {
+  const result: Torn[] = []
+  const indexByKey = new Map<string, number>()
+
+  for (const torn of torns) {
+    if (norm(torn.workerRole) !== 'responsable') {
+      result.push(torn)
+      continue
+    }
+
+    const key = responsibleCardKey(torn)
+    const existingIndex = indexByKey.get(key)
+    if (existingIndex == null) {
+      indexByKey.set(key, result.length)
+      result.push({ ...torn })
+      continue
+    }
+
+    const existing = result[existingIndex]
+    const starts = [existing.startTime, torn.startTime].filter(Boolean).sort()
+    const ends = [existing.endTime, torn.endTime].filter(Boolean).sort()
+    result[existingIndex] = {
+      ...existing,
+      startTime: starts[0] || existing.startTime,
+      endTime: ends.at(-1) || existing.endTime,
+      quadrantId:
+        existing.quadrantId && existing.quadrantId === torn.quadrantId
+          ? existing.quadrantId
+          : null,
+      __rawWorkers: mergeTornWorkers(existing.__rawWorkers, torn.__rawWorkers),
+    }
+  }
+
+  return result
 }
 
 function pad2(n: number | string): string {
@@ -397,6 +459,7 @@ function mapDocToTorn(
 
   return {
     id: String(id || ''),
+    quadrantId: String(id || ''),
     code: doc?.code ? String(doc.code) : undefined,
     eventId,
     eventName,
@@ -636,7 +699,7 @@ export async function fetchAllTorns(
           fetchDeptCollectionRange(db, dep, startISO, endISO, out),
           fetchTransportAssignmentsRange(db, startISO, endISO, out, dep),
         ])
-        return dedupeTorns(out).filter((t) => {
+        const assignedTorns = dedupeTorns(out).filter((t) => {
           if (!Array.isArray(t.__rawWorkers)) return false
           const matchWorker = t.__rawWorkers.find(
             (w) => norm(w.name) === norm(workerName)
@@ -651,6 +714,7 @@ export async function fetchAllTorns(
           }
           return false
         })
+        return consolidateResponsibleTorns(assignedTorns)
       }
       return []
     }
