@@ -43,9 +43,11 @@ import {
 export function PreventiusTemplatesContent({
   embedded = false,
   hideFab = false,
+  navigationSuffix = '',
 }: {
   embedded?: boolean
   hideFab?: boolean
+  navigationSuffix?: string
 }) {
   const { setContent } = useFilters()
   const [centers, setCenters] = useState<MaintenanceCenterHierarchyRow[]>([])
@@ -315,13 +317,13 @@ export function PreventiusTemplatesContent({
   }, [embedded, selectedTemplate?.id])
 
   const openTemplate = (id: string) => {
-    const url = `/menu/manteniment/preventius/plantilles/${id}`
+    const url = `/menu/manteniment/preventius/plantilles/${id}${navigationSuffix}`
     const win = window.open(url, '_blank', 'noopener')
     if (win) win.opener = null
   }
 
   const openNew = () => {
-    const url = `/menu/manteniment/preventius/plantilles/new`
+    const url = `/menu/manteniment/preventius/plantilles/new${navigationSuffix}`
     const win = window.open(url, '_blank', 'noopener')
     if (win) win.opener = null
   }

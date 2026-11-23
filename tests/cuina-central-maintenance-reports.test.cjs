@@ -48,16 +48,23 @@ test('unused production and daily decisions pages are removed from Cuina Central
   assert.equal(fs.existsSync(path.join(ROOT, 'src/app/menu/cuina-central/decisions/page.tsx')), false)
 })
 
-test('Cuina Central data reuses the maintenance machine form and permissions', () => {
+test('Cuina Central data reuses the complete maintenance data page and permissions', () => {
   const page = read('src/app/menu/cuina-central/dades/page.tsx')
+  const maintenancePage = read('src/app/menu/manteniment/dades/page.tsx')
   const panel = read('src/app/menu/manteniment/dades/components/MachinesPanel.tsx')
   const auth = read('src/lib/server/maintenanceApiAuth.ts')
   const clientLayout = read('src/app/ClientLayout.tsx')
   const moduleLayout = read('src/app/menu/cuina-central/layout.tsx')
 
-  assert.match(page, /api\/maintenance\/data\/machines/)
-  assert.match(page, /<MachinesPanel/)
-  assert.match(page, /detailHrefSuffix="\?source=cuina-central"/)
+  assert.match(page, /import MaintenanceDataPage from '@\/app\/menu\/manteniment\/dades\/page'/)
+  assert.match(page, /return <MaintenanceDataPage \/>/)
+  assert.match(maintenancePage, /api\/maintenance\/data\/machines/)
+  assert.match(maintenancePage, /<MachinesPanel/)
+  assert.match(maintenancePage, /<PreventiusTemplatesContent/)
+  assert.match(maintenancePage, /<SuppliersPanel/)
+  assert.match(maintenancePage, /<CentersPanel/)
+  assert.match(maintenancePage, /<ResolutionCategoriesPanel/)
+  assert.match(maintenancePage, /isCuinaCentral \? '\?source=cuina-central' : ''/)
   assert.doesNotMatch(page, /api\/cuina-central\/(articles|shifts|rates)/)
   assert.match(panel, /detailHrefBase/)
   assert.match(panel, /detailHrefSuffix/)

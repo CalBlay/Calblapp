@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import {
   getMaintenanceCenterOptions,
@@ -13,6 +14,11 @@ import MaintenancePermissionGate from '../../../components/MaintenancePermission
 type PersonnelApiItem = { name?: string }
 
 export default function PlantillaNewPage() {
+  const searchParams = useSearchParams()
+  const fromCuinaCentral = searchParams?.get('source') === 'cuina-central'
+  const permissionPath = fromCuinaCentral
+    ? '/menu/cuina-central/dades'
+    : '/menu/manteniment/preventius/plantilles'
   const [centers, setCenters] = useState<MaintenanceCenterHierarchyRow[]>([])
   const [operators, setOperators] = useState<string[]>([])
   const [name, setName] = useState('')
@@ -128,9 +134,13 @@ export default function PlantillaNewPage() {
   }
 
   return (
-    <MaintenancePermissionGate>
+    <MaintenancePermissionGate path={permissionPath}>
       <div className="w-full max-w-5xl mx-auto p-4 space-y-5">
-        <ModuleHeader subtitle="Nova plantilla" />
+        <ModuleHeader
+          title={fromCuinaCentral ? 'Cuina central' : 'Manteniment'}
+          subtitle="Nova plantilla"
+          mainHref={fromCuinaCentral ? '/menu/cuina-central/dades' : '/menu/manteniment/dades'}
+        />
 
         <div className="rounded-2xl border bg-white p-5 space-y-5">
           <label className="flex flex-col gap-1">

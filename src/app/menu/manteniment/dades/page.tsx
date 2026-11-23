@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Building2, ClipboardList, Factory, Search, Truck, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
@@ -34,6 +35,14 @@ import {
 import { parseFetchJson } from '@/lib/parseFetchJson'
 
 export default function MaintenanceDataPage() {
+  const pathname = usePathname() || ''
+  const isCuinaCentral = pathname.startsWith('/menu/cuina-central/dades')
+  const permissionPath = isCuinaCentral
+    ? '/menu/cuina-central/dades'
+    : '/menu/manteniment/dades'
+  const moduleTitle = isCuinaCentral ? 'Cuina central' : 'Manteniment'
+  const mainHref = isCuinaCentral ? '/menu/cuina-central' : '/menu/manteniment'
+  const machineDetailHrefSuffix = isCuinaCentral ? '?source=cuina-central' : ''
   const { setContent } = useFilters()
   const [tab, setTab] = useState<'machines' | 'preventives' | 'suppliers' | 'centers' | 'resolutionCategories'>('machines')
   const [machines, setMachines] = useState<MachineRow[]>([])
@@ -385,9 +394,9 @@ export default function MaintenanceDataPage() {
   }
 
   return (
-    <MaintenancePermissionGate path="/menu/manteniment/dades">
+    <MaintenancePermissionGate path={permissionPath}>
       <div className="mx-auto w-full max-w-none space-y-4 p-4 lg:px-6 xl:px-8">
-        <ModuleHeader title="Manteniment" subtitle="Dades" mainHref="/menu/manteniment" />
+        <ModuleHeader title={moduleTitle} subtitle="Dades" mainHref={mainHref} />
 
         {tab !== 'preventives' && tab !== 'centers' ? (
           <MaintenanceToolbar
@@ -566,6 +575,7 @@ export default function MaintenanceDataPage() {
             machineForm={machineForm}
             machineStats={machineStats}
             machineStatsById={machineDataIndex.machineStatsById}
+            detailHrefSuffix={machineDetailHrefSuffix}
             onSelectMachine={(machine) => {
               if (selectedMachineId === machine.id) {
                 setSelectedMachineId(null)
@@ -588,7 +598,11 @@ export default function MaintenanceDataPage() {
             onSaveMachine={() => void saveMachine()}
           />
         ) : tab === 'preventives' ? (
-          <PreventiusTemplatesContent embedded hideFab />
+          <PreventiusTemplatesContent
+            embedded
+            hideFab
+            navigationSuffix={machineDetailHrefSuffix}
+          />
         ) : tab === 'centers' ? (
           <>
             <MaintenanceToolbar
@@ -704,7 +718,7 @@ export default function MaintenanceDataPage() {
               return
             }
             if (tab === 'preventives') {
-              const url = `/menu/manteniment/preventius/plantilles/new`
+              const url = `/menu/manteniment/preventius/plantilles/new${machineDetailHrefSuffix}`
               const win = window.open(url, '_blank', 'noopener')
               if (win) win.opener = null
               return

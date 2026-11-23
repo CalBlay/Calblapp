@@ -9,6 +9,7 @@ import {
   ROLES_MAINTENANCE_TEMPLATES_READ,
   ROLES_MAINTENANCE_TEMPLATES_WRITE,
 } from '@/lib/server/maintenanceTemplatesAccess'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -72,7 +73,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
   const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_WRITE)
-  if (denied) return denied.res
+  if (denied) {
+    const dataAuth = await requireMaintenanceDataAccess('edit')
+    if (!dataAuth.ok) return denied.res
+  }
 
   const { user } = auth
 
@@ -121,7 +125,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
   const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_WRITE)
-  if (denied) return denied.res
+  if (denied) {
+    const dataAuth = await requireMaintenanceDataAccess('edit')
+    if (!dataAuth.ok) return denied.res
+  }
 
   const { id } = await ctx.params
   try {

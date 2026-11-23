@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import {
@@ -51,6 +51,11 @@ const createLocalId = () => {
 export default function PlantillaDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fromCuinaCentral = searchParams?.get('source') === 'cuina-central'
+  const permissionPath = fromCuinaCentral
+    ? '/menu/cuina-central/dades'
+    : '/menu/manteniment/preventius/plantilles'
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
 
   const [template, setTemplate] = useState<Template | null>(null)
@@ -347,16 +352,20 @@ export default function PlantillaDetailPage() {
 
   if (!template) {
     return (
-      <MaintenancePermissionGate>
+      <MaintenancePermissionGate path={permissionPath}>
         <div className="p-6 text-sm text-gray-600">Plantilla no trobada.</div>
       </MaintenancePermissionGate>
     )
   }
 
   return (
-    <MaintenancePermissionGate>
+    <MaintenancePermissionGate path={permissionPath}>
       <div className="min-h-screen w-full bg-white flex flex-col">
-        <ModuleHeader subtitle={form.name || template.name} />
+        <ModuleHeader
+          title={fromCuinaCentral ? 'Cuina central' : 'Manteniment'}
+          subtitle={form.name || template.name}
+          mainHref={fromCuinaCentral ? '/menu/cuina-central/dades' : '/menu/manteniment/dades'}
+        />
 
         <div className="border-b px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
