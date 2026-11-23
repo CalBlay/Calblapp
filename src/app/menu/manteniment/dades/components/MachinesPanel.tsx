@@ -35,6 +35,8 @@ type Props = {
   onMachineFormChange: (updater: (prev: MachineView) => MachineView) => void
   onResetMachine: () => void
   onSaveMachine: () => void
+  detailHrefBase?: string
+  detailHrefSuffix?: string
 }
 
 export default function MachinesPanel({
@@ -53,6 +55,8 @@ export default function MachinesPanel({
   onMachineFormChange,
   onResetMachine,
   onSaveMachine,
+  detailHrefBase = '/menu/manteniment/dades/maquinaria',
+  detailHrefSuffix = '',
 }: Props) {
   const activeCenter =
     centers.find((center) => center.name === machineForm.center) || null
@@ -102,6 +106,8 @@ export default function MachinesPanel({
                 onMachineFormChange={onMachineFormChange}
                 onResetMachine={onResetMachine}
                 onSaveMachine={onSaveMachine}
+                detailHrefBase={detailHrefBase}
+                detailHrefSuffix={detailHrefSuffix}
               />
             </div>
           </article>
@@ -193,6 +199,8 @@ export default function MachinesPanel({
                       onMachineFormChange={onMachineFormChange}
                       onResetMachine={onResetMachine}
                       onSaveMachine={onSaveMachine}
+                      detailHrefBase={detailHrefBase}
+                      detailHrefSuffix={detailHrefSuffix}
                     />
                   </div>
                 ) : null}
@@ -233,6 +241,8 @@ function MachineEditor({
   onMachineFormChange,
   onResetMachine,
   onSaveMachine,
+  detailHrefBase,
+  detailHrefSuffix,
 }: {
   machineForm: MachineView
   centers: CenterRow[]
@@ -246,6 +256,8 @@ function MachineEditor({
   onMachineFormChange: (updater: (prev: MachineView) => MachineView) => void
   onResetMachine: () => void
   onSaveMachine: () => void
+  detailHrefBase: string
+  detailHrefSuffix: string
 }) {
   return (
     <div className="space-y-4">
@@ -284,7 +296,7 @@ function MachineEditor({
         <div className="flex items-end">
           {selectedMachine ? (
             <Link
-              href={`/menu/manteniment/dades/maquinaria/${encodeURIComponent(selectedMachine.id)}`}
+              href={`${detailHrefBase}/${encodeURIComponent(selectedMachine.id)}${detailHrefSuffix}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"

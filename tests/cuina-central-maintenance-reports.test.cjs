@@ -44,38 +44,28 @@ test('unused production and daily decisions pages are removed from Cuina Central
 
   assert.doesNotMatch(subnav, /cuina-central\/(produccio|decisions)/)
   assert.doesNotMatch(accessControl, /cuina-central\/(produccio|decisions)/)
-  assert.equal(
-    fs.existsSync(path.join(ROOT, 'src/app/menu/cuina-central/produccio/page.tsx')),
-    false
-  )
-  assert.equal(
-    fs.existsSync(path.join(ROOT, 'src/app/menu/cuina-central/decisions/page.tsx')),
-    false
-  )
+  assert.equal(fs.existsSync(path.join(ROOT, 'src/app/menu/cuina-central/produccio/page.tsx')), false)
+  assert.equal(fs.existsSync(path.join(ROOT, 'src/app/menu/cuina-central/decisions/page.tsx')), false)
 })
 
-test('Cuina Central data only exposes and loads machines', () => {
+test('Cuina Central data reuses the maintenance machine form and permissions', () => {
   const page = read('src/app/menu/cuina-central/dades/page.tsx')
+  const panel = read('src/app/menu/manteniment/dades/components/MachinesPanel.tsx')
+  const auth = read('src/lib/server/maintenanceApiAuth.ts')
+  const clientLayout = read('src/app/ClientLayout.tsx')
+  const moduleLayout = read('src/app/menu/cuina-central/layout.tsx')
 
-  assert.match(page, /api\/cuina-central\/machines/)
-  assert.match(page, /entity="machines"/)
+  assert.match(page, /api\/maintenance\/data\/machines/)
+  assert.match(page, /<MachinesPanel/)
+  assert.match(page, /detailHrefSuffix="\?source=cuina-central"/)
   assert.doesNotMatch(page, /api\/cuina-central\/(articles|shifts|rates)/)
-  assert.doesNotMatch(page, /Articles \(Bases\)|Torns producció|Rendiment teòric/)
-  assert.match(page, /onClick=\{\(\) => openMachine\(machine\)\}/)
-  assert.match(page, /<Dialog open=/)
-  assert.match(page, /Desar canvis/)
-  assert.match(page, /void deleteMachine\(\)/)
-  assert.doesNotMatch(page, /<EditableDataTable/)
-  assert.match(page, /machineCode: selectedMachine\.code/)
-  assert.match(page, /Historial de tiquets/)
-  assert.match(page, /Veure historial/)
-  assert.match(page, /if \(!historyVisible \|\| !selectedMachine\?\.code\) return/)
-  assert.match(page, /onClick=\{\(\) => setHistoryVisible\(true\)\}/)
-  assert.match(page, /manteniment\/tickets\?ticketId=/)
-  assert.match(page, /Cerca per codi, nom, zona o ubicació/)
-  assert.match(page, /normalize\('NFD'\)/)
-  assert.match(page, /tokens\.every\(\(token\) => searchable\.includes\(token\)\)/)
-  assert.match(page, /filteredMachines\.map/)
+  assert.match(panel, /detailHrefBase/)
+  assert.match(panel, /detailHrefSuffix/)
+  assert.match(auth, /CUINA_CENTRAL_DATA_PATH = '\/menu\/cuina-central\/dades'/)
+  assert.match(auth, /canEditUiPath\(\{ user: auth\.user, path: CUINA_CENTRAL_DATA_PATH \}\)/)
+  assert.match(clientLayout, /pathname\.startsWith\('\/menu\/cuina-central\/dades'\)/)
+  assert.match(moduleLayout, /isWideWorkspace/)
+  assert.match(moduleLayout, /pathname\.startsWith\('\/menu\/cuina-central\/dades'\)/)
 })
 
 test('maintenance tickets API supports machine history filtering', () => {

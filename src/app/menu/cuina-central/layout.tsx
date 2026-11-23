@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils'
 
 export default function CuinaCentralLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || ''
-  const isMaintenanceWorkspace = pathname.startsWith('/menu/cuina-central/manteniment')
+  const isWideWorkspace =
+    pathname.startsWith('/menu/cuina-central/manteniment') ||
+    pathname.startsWith('/menu/cuina-central/dades')
 
   return (
     <MaintenancePermissionGate path="/menu/cuina-central">
@@ -16,10 +18,10 @@ export default function CuinaCentralLayout({ children }: { children: React.React
         <div
           className={cn(
             'w-full pb-10 pt-4',
-            !isMaintenanceWorkspace && 'mx-auto max-w-[1400px] px-4'
+            !isWideWorkspace && 'mx-auto max-w-[1400px] px-4'
           )}
         >
-          <div className={cn(isMaintenanceWorkspace && 'px-4')}>
+          <div className={cn(isWideWorkspace && 'px-4')}>
             <CuinaCentralSubnav />
           </div>
           {children}

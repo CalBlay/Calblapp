@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
@@ -12,6 +13,11 @@ import { parseFetchJson } from '@/lib/parseFetchJson'
 import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 
 export default function MachineDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const searchParams = useSearchParams()
+  const fromCuinaCentral = searchParams?.get('source') === 'cuina-central'
+  const permissionPath = fromCuinaCentral
+    ? '/menu/cuina-central/dades'
+    : '/menu/manteniment/dades'
   const [machineId, setMachineId] = useState('')
   const [machines, setMachines] = useState<MachineRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
@@ -128,9 +134,13 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <MaintenancePermissionGate>
+    <MaintenancePermissionGate path={permissionPath}>
       <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
-        <ModuleHeader title="Manteniment" subtitle="Fitxa de maquina" mainHref="/menu/manteniment/dades" />
+        <ModuleHeader
+          title={fromCuinaCentral ? 'Cuina central' : 'Manteniment'}
+          subtitle="Fitxa de maquina"
+          mainHref={fromCuinaCentral ? '/menu/cuina-central/dades' : '/menu/manteniment/dades'}
+        />
 
         {loading ? (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-4 py-10 text-sm text-slate-500">
