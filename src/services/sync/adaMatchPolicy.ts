@@ -29,6 +29,19 @@ export type AdaMatchResult = {
   fields: string[]
 }
 
+export function isStrongAdaMatchFields(fields: readonly string[]): boolean {
+  const matched = new Set(fields)
+  return (
+    matched.has('date') &&
+    fields.length >= 3 &&
+    (matched.has('client') || matched.has('name'))
+  )
+}
+
+export function isStrongAdaMatch(match: AdaMatchResult): boolean {
+  return isStrongAdaMatchFields(match.fields)
+}
+
 const unaccent = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 

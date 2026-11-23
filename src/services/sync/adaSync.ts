@@ -13,6 +13,8 @@ import { revalidateEventsListCache } from '@/lib/eventsListCache'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
   buildAdaMatch,
+  isStrongAdaMatch,
+  isStrongAdaMatchFields,
   stageAdaDateKeys,
   type AdaMatchResult,
 } from './adaMatchPolicy'
@@ -266,6 +268,7 @@ export async function syncAdaEventsToFirestore(opts?: {
   let updated = 0
   let skippedConfirmedCode = 0
   let repairedDuplicateCodes = 0
+  let repairedWeakMatches = 0
   let replacedProvisionalCodes = 0
 
   const now = new Date().toISOString()
@@ -286,14 +289,24 @@ export async function syncAdaEventsToFirestore(opts?: {
         snapshot: await firestore
           .collection(collectionName)
           .where('code', 'in', variants)
-          .limit(1)
           .get(),
       }))
     )
-    const match = snapshots.find(({ snapshot }) => !snapshot.empty)
-    const owner = match
-      ? `${match.collectionName}/${match.snapshot.docs[0].id}`
-      : null
+    const match = snapshots
+      .flatMap(({ collectionName, snapshot }) =>
+        snapshot.docs.map((doc) => ({ collectionName, doc }))
+      )
+      .find(({ doc }) => {
+        const data = doc.data() as StageEvent
+        const source = String(data.codeSource || '').toLowerCase()
+        const fields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
+        return !(
+          source === 'auto' &&
+          fields.length > 0 &&
+          !isStrongAdaMatchFields(fields)
+        )
+      })
+    const owner = match ? `${match.collectionName}/${match.doc.id}` : null
     codeOwner.set(normalizedCode, owner)
     return owner
   }
@@ -314,6 +327,34 @@ export async function syncAdaEventsToFirestore(opts?: {
       )
     })
 
+  const weakAutomaticDocs = new Set<string>()
+  for (const { collectionName, doc } of stageDocs) {
+    const data = doc.data() as StageEvent
+    const currentCode = String(data.code || '').trim()
+    const fields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
+    if (
+      currentCode &&
+      !isProvisionalPmCode(currentCode) &&
+      String(data.codeSource || '').toLowerCase() === 'auto' &&
+      fields.length > 0 &&
+      !isStrongAdaMatchFields(fields)
+    ) {
+      weakAutomaticDocs.add(`${collectionName}/${doc.id}`)
+      batch.update(doc.ref, {
+        code: '',
+        codeConfirmed: false,
+        codeMatchScore: 0,
+        codeMatchFields: [],
+        codeSource: 'auto',
+        adaLinkedMenuTasting: false,
+        codeMatchedAt: now,
+      })
+      pending++
+      repairedWeakMatches++
+      if (pending >= 450) await flush()
+    }
+  }
+
   // Carrega primer els propietaris dels codis ja assignats dins del rang. Els manuals tenen
   // prioritat i, entre els automatics antics duplicats, conservem de manera
   // determinista el primer per data. La resta s'autocorregira en el bucle.
@@ -327,6 +368,7 @@ export async function syncAdaEventsToFirestore(opts?: {
       if (
         !currentCode ||
         isRepeatablePmCode(currentCode) ||
+        weakAutomaticDocs.has(`${collectionName}/${doc.id}`) ||
         isManual !== manualFirst
       ) {
         continue
@@ -342,6 +384,10 @@ export async function syncAdaEventsToFirestore(opts?: {
     total++
     const data = doc.data() as StageEvent
     const documentKey = `${collectionName}/${doc.id}`
+    if (weakAutomaticDocs.has(documentKey)) {
+      noMatch++
+      continue
+    }
     const currentCode = String(data.code || '').trim()
     const provisionalPmCode = isProvisionalPmCode(currentCode)
     const codeSource = String(data.codeSource || '').toLowerCase()
@@ -406,7 +452,7 @@ export async function syncAdaEventsToFirestore(opts?: {
       if (match.score === 4) break
     }
 
-    if (!best || best.score < 2) {
+    if (!best || !isStrongAdaMatch(best)) {
       noMatch++
       continue
     }
@@ -502,6 +548,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     skippedConfirmed,
     skippedConfirmedCode,
     repairedDuplicateCodes,
+    repairedWeakMatches,
     replacedProvisionalCodes,
     duplicateAdaCodes,
     adaCount: adaEvents.length,

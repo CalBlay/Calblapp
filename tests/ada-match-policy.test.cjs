@@ -3,6 +3,7 @@ const { test } = require('node:test')
 
 const {
   buildAdaMatch,
+  isStrongAdaMatch,
   stageAdaDateKeys,
 } = require('../src/services/sync/adaMatchPolicy.ts')
 
@@ -35,4 +36,48 @@ test('menu tasting dates are only considered for provisional PM matching', () =>
 
   assert.deepEqual(stageAdaDateKeys(stage, false), ['2026-12-10'])
   assert.deepEqual(stageAdaDateKeys(stage, true), ['2026-12-10', '2026-11-18'])
+})
+
+test('date and commercial alone are not a strong ADA match', () => {
+  const match = buildAdaMatch(
+    {
+      NomEvent: 'CAFES NOVELL, S.A. / 18/12/26 / 200',
+      NomClient: 'CAFES NOVELL, S.A.',
+      Comercial: 'Anna Ferrete',
+      DataInici: '2026-12-18',
+    },
+    {
+      codigo: 'E2600641',
+      descripcion: 'E 181226 CASA AMETLLER/COCKTAIL - FDLC',
+      fechaInicio: '2026-12-18T00:00:00',
+      nombreCliente: 'CASA AMETLLER, S.L.',
+      nombreComercial: 'Anna Ferrete',
+    },
+    false
+  )
+
+  assert.deepEqual(match.fields, ['date', 'commercial'])
+  assert.equal(isStrongAdaMatch(match), false)
+})
+
+test('date, commercial and client form a strong ADA match', () => {
+  const match = buildAdaMatch(
+    {
+      NomEvent: 'CASA AMETLLER, S.L. / 18/12/26 / 230',
+      NomClient: 'CASA AMETLLER, S.L.',
+      Comercial: 'Anna Ferrete',
+      DataInici: '2026-12-18',
+    },
+    {
+      codigo: 'E2600641',
+      descripcion: 'E 181226 CASA AMETLLER/COCKTAIL - FDLC',
+      fechaInicio: '2026-12-18T00:00:00',
+      nombreCliente: 'CASA AMETLLER, S.L.',
+      nombreComercial: 'Anna Ferrete',
+    },
+    false
+  )
+
+  assert.deepEqual(match.fields, ['date', 'commercial', 'client'])
+  assert.equal(isStrongAdaMatch(match), true)
 })
