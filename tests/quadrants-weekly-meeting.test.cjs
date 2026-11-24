@@ -7,6 +7,10 @@ const {
   meetingDecisionKey,
   normalizeMeetingCommentDepartment,
 } = require('../src/lib/quadrantsWeeklyMeeting')
+const {
+  buildQuadrantsPageEvents,
+} = require('../src/app/menu/quadrants/hooks/useQuadrantsPageData')
+const { groupQuadrantsByDayAndEvent } = require('../src/lib/quadrantsGrouping')
 
 const event = {
   id: 'event-1',
@@ -15,7 +19,7 @@ const event = {
   start: '2026-09-15T18:00:00',
 }
 
-test('weekly meeting NO VA hides the event only in the selected department', () => {
+test('weekly meeting NO VA keeps the full weekly event list in every department', () => {
   const decisions = [{
     id: 'decision-1',
     eventId: 'event-1',
@@ -37,10 +41,53 @@ test('weekly meeting NO VA hides the event only in the selected department', () 
   const kitchen = applyMeetingDecisionsToDashboard('cuina', [event], [], decisions)
   const services = applyMeetingDecisionsToDashboard('serveis', [event], [], decisions)
 
-  assert.equal(logistics.events.length, 0)
-  assert.equal(logistics.quadrants.length, 0)
+  assert.equal(logistics.events.length, 1)
+  assert.equal(logistics.quadrants.length, 1)
   assert.equal(kitchen.events.length, 1)
   assert.equal(services.events.length, 1)
+})
+
+test('weekly meeting source contains every Services card, including operational phase days', () => {
+  const rows = buildQuadrantsPageEvents({
+    events: [{
+      id: 'event-1',
+      code: 'E26001',
+      summary: 'Casament',
+      start: '2026-11-28T18:00:00',
+      end: '2026-11-28T23:00:00',
+      originalStart: '2026-11-28',
+      originalEnd: '2026-11-28',
+      location: 'Finca',
+      numPax: 100,
+    }],
+    quadrants: [{
+      id: 'setup-1',
+      eventId: 'event-1',
+      code: 'E26001',
+      eventName: 'Casament',
+      department: 'serveis',
+      phaseType: 'muntatge',
+      phaseLabel: 'Muntatge',
+      phaseDate: '2026-11-27',
+      startDate: '2026-11-27',
+      endDate: '2026-11-27',
+      startTime: '10:00',
+      endTime: '14:00',
+      status: 'confirmed',
+    }],
+    filters: {
+      start: '2026-11-23',
+      end: '2026-11-29',
+      ln: 'all',
+      responsable: '__all__',
+      location: '__all__',
+      status: '__all__',
+    },
+  })
+  const cards = groupQuadrantsByDayAndEvent(rows)
+
+  assert.equal(cards.reduce((total, day) => total + day.events.length, 0), 2)
+  assert.deepEqual(cards.map((day) => day.day), ['2026-11-27', '2026-11-28'])
 })
 
 test('weekly meeting arrival time is overlaid without mutating the source rows', () => {

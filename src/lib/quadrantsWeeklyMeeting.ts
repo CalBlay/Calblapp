@@ -172,25 +172,23 @@ export function applyMeetingDecisionsToDashboard<T extends Record<string, unknow
     )
   }
 
-  const visibleEvents = events.flatMap((event) => {
+  const adjustedEvents = events.map((event) => {
     const day = String(event.day || event.start || '').slice(0, 10)
     const decision = resolve(event, day)
-    if (decision?.required === false) return []
-    return [{ ...event, ...(decision?.arrivalTime ? { arrivalTime: decision.arrivalTime } : {}) }]
+    return { ...event, ...(decision?.arrivalTime ? { arrivalTime: decision.arrivalTime } : {}) }
   })
 
-  const visibleQuadrants = quadrants.flatMap((quadrant) => {
+  const adjustedQuadrants = quadrants.map((quadrant) => {
     const decision = resolve(quadrant)
-    if (decision?.required === false) return []
     const phase = String(quadrant.phaseType || quadrant.phaseLabel || '').toLowerCase()
     const isEventPhase = !phase || phase === 'event'
-    return [{
+    return {
       ...quadrant,
       ...(decision?.arrivalTime && isEventPhase
         ? { arrivalTime: decision.arrivalTime }
         : {}),
-    }]
+    }
   })
 
-  return { events: visibleEvents, quadrants: visibleQuadrants }
+  return { events: adjustedEvents, quadrants: adjustedQuadrants }
 }

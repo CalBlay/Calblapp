@@ -8,7 +8,7 @@ import { isQuadrantRecordConfirmed } from '@/lib/quadrantsPermissions'
 import { preferRealAdaCode } from '@/services/sync/adaCodePolicy'
 import { mergeQuadrantPeople } from '@/lib/quadrantPeopleMerge'
 
-interface UseQuadrantsPageDataParams {
+export interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
   quadrants: QuadrantDraft[]
   filters: FiltersState
@@ -52,7 +52,7 @@ type QuadrantGroup = {
   responsibleName?: string | null
 }
 
-type QuadrantDraft = {
+export type QuadrantDraft = {
   id?: string
   eventId?: string
   eventCode?: string
@@ -331,12 +331,11 @@ const buildWorkersSummary = (q: QuadrantDraft) => {
   return names.join(', ')
 }
 
-export function useQuadrantsPageData({
+export function buildQuadrantsPageEvents({
   events,
   quadrants,
   filters,
-}: UseQuadrantsPageDataParams): UseQuadrantsPageDataResult {
-  const eventsWithStatus = useMemo<UnifiedEvent[]>(() => {
+}: UseQuadrantsPageDataParams): UnifiedEvent[] {
     const out: UnifiedEvent[] = []
     const eventsById = new Map<string, QuadrantEventLike>()
     const eventsByCode = new Map<string, QuadrantEventLike>()
@@ -718,7 +717,21 @@ export function useQuadrantsPageData({
       if (!day) return false
       return day >= rangeStart && day <= rangeEnd
     })
-  }, [events, quadrants, filters.start, filters.end])
+}
+
+export function useQuadrantsPageData({
+  events,
+  quadrants,
+  filters,
+}: UseQuadrantsPageDataParams): UseQuadrantsPageDataResult {
+  const eventsWithStatus = useMemo<UnifiedEvent[]>(
+    () => buildQuadrantsPageEvents({
+      events,
+      quadrants,
+      filters: { start: filters.start, end: filters.end },
+    }),
+    [events, quadrants, filters.start, filters.end]
+  )
 
   const phasesByEventId = useMemo(() => {
     const map: Record<string, Set<string>> = {}

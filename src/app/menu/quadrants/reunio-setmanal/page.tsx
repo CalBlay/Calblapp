@@ -125,7 +125,7 @@ function buildMinutesHtml(session: MeetingSession, fallbackRows: WeeklyMeetingRo
   }).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Acta reunió de quadrants</title>
     <style>
-      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:10px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:6px;vertical-align:top}th{background:#111827;color:white;text-align:left}.minutes-grid th:nth-child(1){width:8%}.minutes-grid th:nth-child(2){width:22%}.minutes-grid th:nth-child(3){width:4%}.minutes-grid th:nth-child(4){width:13%}.minutes-grid th:nth-child(5){width:16%}.minutes-grid th:nth-child(6),.minutes-grid th:nth-child(7){width:18.5%}hr{border:0;border-top:1px solid #cbd5e1;margin:7px 0}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
+      body{font-family:Arial,sans-serif;color:#172033;padding:24px;font-size:10px}h1{font-size:20px;margin:0 0 5px}p{white-space:pre-wrap}.meta{color:#64748b;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #94a3b8;padding:6px;vertical-align:top}th{background:#111827;color:white;text-align:left}.minutes-grid th:nth-child(1){width:8%}.minutes-grid th:nth-child(2){width:22%}.minutes-grid th:nth-child(3){width:4%}.minutes-grid th:nth-child(4){width:17%}.minutes-grid th:nth-child(5){width:16%}.minutes-grid th:nth-child(6),.minutes-grid th:nth-child(7){width:16.5%}hr{border:0;border-top:1px solid #cbd5e1;margin:7px 0}.notes{margin-top:20px;border:1px solid #cbd5e1;padding:12px}@page{size:A4 landscape;margin:12mm}</style>
     </head><body><h1>Acta de reunió setmanal de quadrants</h1>
     <div class="meta">Període del ${escapeHtml(format(parseISO(session.weekStart), 'dd/MM/yyyy'))} al ${escapeHtml(format(parseISO(session.weekEnd), 'dd/MM/yyyy'))}${session.finalizedByName ? ` · Tancada per ${escapeHtml(session.finalizedByName)}` : ''}</div>
     <table class="minutes-grid"><thead><tr><th>DIA</th><th>LLOC / SERVEIS</th><th>PAX</th><th>HORARI</th><th>OBS. SERVEIS</th><th>LOGÍSTICA</th><th>CUINA</th></tr></thead><tbody>${body}</tbody></table>
@@ -848,7 +848,7 @@ export default function QuadrantsWeeklyMeetingPage() {
         : <div className="overflow-x-auto">
           <table className="w-full min-w-[1480px] table-fixed border-collapse text-sm">
             <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-white">
-              <tr><th className="w-[8%] p-2.5">Dia</th><th className="w-[21%] p-2.5">Lloc / quadrant de Serveis</th><th className="w-[4%] p-2 text-center">PAX</th><th className="w-[13%] p-2.5">Horari</th><th className="w-[16%] p-2.5">Obs. Serveis</th><th className="w-[19%] p-2.5">Logística</th><th className="w-[19%] p-2.5">Cuina</th></tr>
+              <tr><th className="w-[8%] p-2.5">Dia</th><th className="w-[21%] p-2.5">Lloc / quadrant de Serveis</th><th className="w-[4%] p-2 text-center">PAX</th><th className="w-[17%] p-2.5">Horari</th><th className="w-[16%] p-2.5">Obs. Serveis</th><th className="w-[17%] p-2.5">Logística</th><th className="w-[17%] p-2.5">Cuina</th></tr>
             </thead>
             <tbody>
               {visibleRows.map((row, index) => (

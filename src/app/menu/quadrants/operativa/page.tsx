@@ -110,7 +110,7 @@ export default function QuadrantsOperativaPage() {
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href="/menu/quadrants/reunio-setmanal"
+              href={`/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(dashboard.filters.start)}&end=${encodeURIComponent(dashboard.filters.end)}`}
               className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
             >
               Reunió setmanal
@@ -126,7 +126,7 @@ export default function QuadrantsOperativaPage() {
       />
 
       <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-1', typography('bodyMd'))}>
-        <span>Total assignacions: {dashboard.totalVisible}</span>
+        <span>Total esdeveniments: {dashboard.totalVisible}</span>
       </div>
 
       <CorporateFiltersShell variant="toolbar" className="mb-2">

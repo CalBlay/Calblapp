@@ -171,6 +171,7 @@ export default function QuadrantsPage() {
     session: { status?: 'draft' | 'finalized' } | null
   }>(meetingMinutesUrl, fetchMeetingMinutesState)
   const meetingStatus = meetingMinutesData?.session?.status || null
+  const weeklyMeetingHref = `/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}`
   const meetingHref = `/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}&acta=1`
   const meetingHistoryHref = `/menu/quadrants/reunio-setmanal?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}&history=1`
   const openEventId = useMemo(() => {
@@ -588,7 +589,7 @@ export default function QuadrantsPage() {
     setOpen(true)
   }
 
-  const totalVisible = visibleFilteredEvents.length
+  const totalVisible = groupedDays.reduce((total, day) => total + day.events.length, 0)
   const statusFilterActive = filters.status !== '__all__'
 
   return (
@@ -613,7 +614,7 @@ export default function QuadrantsPage() {
               Vista operativa
             </Link>
             <Link
-              href="/menu/quadrants/reunio-setmanal"
+              href={weeklyMeetingHref}
               className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
             >
               Reunió setmanal
@@ -673,7 +674,7 @@ export default function QuadrantsPage() {
       />
 
       <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-1', typography('bodyMd'))}>
-        <span>Total assignacions: {totalVisible}</span>
+        <span>Total esdeveniments: {totalVisible}</span>
       </div>
 
       <CorporateFiltersShell variant="toolbar" className="mb-2">

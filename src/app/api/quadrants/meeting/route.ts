@@ -4,6 +4,12 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { listQuadrantEventsInRange } from '@/lib/quadrantEvents'
+import {
+  buildQuadrantsPageEvents,
+  type QuadrantDraft,
+} from '@/app/menu/quadrants/hooks/useQuadrantsPageData'
+import { groupQuadrantsByDayAndEvent } from '@/lib/quadrantsGrouping'
+import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
@@ -125,7 +131,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Rang de dates invàlid' }, { status: 400 })
     }
 
-    const [events, servicesResult, logisticsResult, kitchenResult, decisions, eventNotes] =
+    const [calendarEvents, servicesResult, logisticsResult, kitchenResult, decisions, eventNotes] =
       await Promise.all([
         listQuadrantEventsInRange(start, end),
         computeQuadrantsGet(start, end, 'serveis'),
@@ -134,6 +140,48 @@ export async function GET(req: NextRequest) {
         listMeetingDecisions(start, end),
         listMeetingEventNotes(start, end),
       ])
+    const serviceCards = groupQuadrantsByDayAndEvent(
+      buildQuadrantsPageEvents({
+        events: calendarEvents as unknown as QuadrantEvent[],
+        quadrants: servicesResult.quadrants as QuadrantDraft[],
+        filters: {
+          start,
+          end,
+          mode: 'range',
+          ln: 'all',
+          responsable: '__all__',
+          location: '__all__',
+          status: '__all__',
+        },
+      })
+    )
+    const events = serviceCards.flatMap(({ day, events: cards }) =>
+      cards.map((card) => {
+        const phase = card.phases.find((item) =>
+          ['', 'event'].includes(
+            String(item.phaseType || item.phaseLabel || '').trim().toLowerCase()
+          )
+        ) || card.phases[0]
+        const horaInici = String(
+          phase?.displayStartTime || phase?.horaInici || phase?.start || ''
+        ).slice(phase?.displayStartTime || phase?.horaInici ? 0 : 11, 16)
+        const horaFi = String(
+          phase?.displayEndTime || phase?.horaFi || phase?.end || ''
+        ).slice(phase?.displayEndTime || phase?.horaFi ? 0 : 11, 16)
+
+        return {
+          id: card.eventId,
+          summary: card.summary,
+          location: card.location || '',
+          lnLabel: card.ln || '',
+          numPax: String(card.numPax ?? ''),
+          code: card.eventCode,
+          horaInici,
+          horaFi,
+          day,
+        }
+      })
+    )
     const decisionsByKey = decisionMap(decisions)
     const notesByKey = new Map(
       eventNotes.map((note) => [meetingEventKey(note.eventId, note.eventDay), note])

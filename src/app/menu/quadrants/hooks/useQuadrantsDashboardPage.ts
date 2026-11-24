@@ -248,7 +248,7 @@ export function useQuadrantsDashboardPage() {
     hideCuinaMinorServices,
     setHideCuinaMinorServices,
     hiddenCuinaEventCount,
-    totalVisible: visibleFilteredEvents.length,
+    totalVisible: groupedDays.reduce((total, day) => total + day.events.length, 0),
     statusFilterActive: filters.status !== '__all__',
     hasContent: groupedDays.length > 0,
   }
