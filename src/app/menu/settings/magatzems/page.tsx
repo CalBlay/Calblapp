@@ -39,6 +39,7 @@ const DEFAULT_WAREHOUSE_DEPT_KEYS = new Set([
   normalizeDepartmentLabel('Logistica'),
   normalizeDepartmentLabel('Produccio'),
   normalizeDepartmentLabel('Cuina Central'),
+  normalizeDepartmentLabel('Decoracio'),
 ])
 
 const isDefaultWarehouseDeptUser = (user: AssignmentUser) =>
@@ -461,7 +462,7 @@ function WarehouseMemberPicker({
           </p>
           <p className="text-xs text-slate-500">
             Pots assignar <strong>diversos usuaris</strong> a aquest magatzem. Per defecte:
-            Logística, Producció i Cuina Central.
+            Logística, Producció, Cuina Central i Decoració.
           </p>
         </div>
         <div className="border-b border-slate-100 px-3 py-2">

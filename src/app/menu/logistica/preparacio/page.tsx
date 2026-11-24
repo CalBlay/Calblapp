@@ -676,10 +676,12 @@ export default function LogisticsPage() {
     : 'preparacio-logistica-setmana'
 
   const handleWarehouseComandaClick = useCallback((task: LogisticsWarehousePrepRow) => {
-    const returnTo = encodeURIComponent('/menu/logistica/preparacio')
+    const returnTo = encodeURIComponent(
+      isDecoPreparation ? '/menu/deco/preparacio' : '/menu/logistica/preparacio'
+    )
     const url = `/menu/events/${encodeURIComponent(task.eventId)}/comanda?returnTo=${returnTo}`
     window.open(url, '_blank', 'noopener,noreferrer')
-  }, [])
+  }, [isDecoPreparation])
 
   const exportRows = useMemo<PreparationExportRow[]>(() => {
     const eventRows = rows.map((ev) => ({
@@ -868,7 +870,7 @@ export default function LogisticsPage() {
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
         <LogisticsGrid
           rows={rows}
-          warehouseTasks={isDecoRestricted ? [] : warehouseTasks}
+          warehouseTasks={warehouseTasks}
           loading={loading}
           isWorker={showPreparerView}
           canEditPreparationList={isDecoPreparation ? false : canEditPreparationList}
