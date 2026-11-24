@@ -169,6 +169,10 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/calendar', 'mail-groups:manage'), label: 'Gestionar grups d’enviament' },
       { key: PERM.action('/menu/calendar', 'sync:zoho'), label: 'Sync Zoho' },
       { key: PERM.action('/menu/calendar', 'sync:ada'), label: 'Sync Ada' },
+      {
+        key: PERM.action('/menu/calendar', 'sync:oportunitats-sap'),
+        label: 'Oportunitats SAP (correu → projectes)',
+      },
     ],
   },
   {

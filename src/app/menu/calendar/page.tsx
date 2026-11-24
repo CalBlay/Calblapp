@@ -27,6 +27,7 @@ import CalendarDayPanel from '@/components/calendar/CalendarDayPanel'
 import CalendarActiveFilters from '@/components/calendar/CalendarActiveFilters'
 import CalendarModal from '@/components/calendar/CalendarModal'
 import Legend from '@/components/calendar/CalendarLegend'
+import { CalendarOportunitatsSapControls } from '@/components/calendar/CalendarOportunitatsSapControls'
 import CalendarFilters, { CalendarLN } from '@/components/calendar/CalendarFilters'
 import { useSession } from 'next-auth/react'
 import FilterButton from '@/components/ui/filter-button'
@@ -322,6 +323,8 @@ export default function CalendarPage() {
     permsReady && uiActions[CALENDAR_PERM.manageMailGroups] === true
   const canSyncZoho = permsReady && uiActions[CALENDAR_PERM.syncZoho] === true
   const canSyncAda = permsReady && uiActions[CALENDAR_PERM.syncAda] === true
+  const canSyncOportunitatsSap =
+    permsReady && uiActions[CALENDAR_PERM.syncOportunitatsSap] === true
   const normalize = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
@@ -882,6 +885,7 @@ export default function CalendarPage() {
               {syncingAda ? 'Sincronitzant...' : 'Sincronitzar ADA'}
             </Button>
           ) : null}
+          <CalendarOportunitatsSapControls visible={canSyncOportunitatsSap} />
         </div>
       </div>
 

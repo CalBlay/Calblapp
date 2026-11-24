@@ -11,6 +11,8 @@ export const CALENDAR_ACTION = {
   manageMailGroups: 'mail-groups:manage',
   syncZoho: 'sync:zoho',
   syncAda: 'sync:ada',
+  /** Crear/revisar oportunitats SAP des de correu (worker PC). */
+  syncOportunitatsSap: 'sync:oportunitats-sap',
 } as const
 
 export const CALENDAR_PERM = {
@@ -21,4 +23,8 @@ export const CALENDAR_PERM = {
   manageMailGroups: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.manageMailGroups),
   syncZoho: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.syncZoho),
   syncAda: PERM.action(CALENDAR_UI_PATH, CALENDAR_ACTION.syncAda),
+  syncOportunitatsSap: PERM.action(
+    CALENDAR_UI_PATH,
+    CALENDAR_ACTION.syncOportunitatsSap
+  ),
 } as const
