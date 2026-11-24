@@ -70,6 +70,9 @@ export type PreparationWarehouseForm = {
   eventRowId: string
   warehouseCode: PreparationWarehouseCode
   carts: number
+  fridgeCarts: number
+  fridgeBoxes: number
+  boxes: number
   euroPallets: number
   americanPallets: number
   racks: number

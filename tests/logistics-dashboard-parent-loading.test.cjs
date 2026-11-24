@@ -18,6 +18,9 @@ function form(eventRowId, carts) {
     eventRowId,
     warehouseCode: 'BODEGA',
     carts,
+    fridgeCarts: 0,
+    fridgeBoxes: 0,
+    boxes: 0,
     euroPallets: 0,
     americanPallets: 0,
     racks: 0,
@@ -67,6 +70,28 @@ test('dashboard loading never mixes different parent events', () => {
 
   assert.equal(result.get('parent-1').find((line) => line.key === 'BODEGA:carts').quantity, 2)
   assert.equal(result.get('parent-2').find((line) => line.key === 'BODEGA:carts').quantity, 7)
+})
+
+test('Deco loading uses fridge and box counters instead of EU pallets and gel', () => {
+  const decoForm = {
+    ...form('service-deco', 2),
+    warehouseCode: 'DECO',
+    fridgeCarts: 3,
+    fridgeBoxes: 4,
+    boxes: 5,
+    euroPallets: 6,
+    gelPileBags: 7,
+  }
+
+  const lines = buildDashboardLoadingLinesByEventKey([
+    { eventKey: 'parent-deco', form: decoForm },
+  ], new Map()).get('parent-deco')
+
+  assert.equal(lines.find((line) => line.key === 'DECO:fridge-carts').quantity, 3)
+  assert.equal(lines.find((line) => line.key === 'DECO:fridge-boxes').quantity, 4)
+  assert.equal(lines.find((line) => line.key === 'DECO:boxes').quantity, 5)
+  assert.equal(lines.some((line) => line.key === 'DECO:euro-pallets'), false)
+  assert.equal(lines.some((line) => line.key === 'DECO:gel-pile'), false)
 })
 
 test('unprepared articles remain visible as pending in truck loading', () => {

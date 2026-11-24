@@ -61,6 +61,9 @@ function emptyForm(eventRowId: string, warehouseCode: PreparationWarehouseCode):
     eventRowId,
     warehouseCode,
     carts: 0,
+    fridgeCarts: 0,
+    fridgeBoxes: 0,
+    boxes: 0,
     euroPallets: 0,
     americanPallets: 0,
     racks: 0,
@@ -514,20 +517,30 @@ export default function PreparationFormDialog({
                   <h3 className="mb-3 font-semibold text-slate-900">Càrrega · {selectedWarehouse?.label}</h3>
                   <div className="grid grid-cols-1 gap-3 min-[440px]:grid-cols-2 xl:grid-cols-4">
                     <QuantityField label="Carros" value={form.carts} onChange={(value) => updateCount('carts', value)} />
-                    <QuantityField label="Palets EU" value={form.euroPallets} onChange={(value) => updateCount('euroPallets', value)} />
+                    {warehouseCode === 'DECO' ? (
+                      <>
+                        <QuantityField label="Carro nevera" value={form.fridgeCarts} onChange={(value) => updateCount('fridgeCarts', value)} />
+                        <QuantityField label="Caixa nevera" value={form.fridgeBoxes} onChange={(value) => updateCount('fridgeBoxes', value)} />
+                        <QuantityField label="Caixa" value={form.boxes} onChange={(value) => updateCount('boxes', value)} />
+                      </>
+                    ) : (
+                      <QuantityField label="Palets EU" value={form.euroPallets} onChange={(value) => updateCount('euroPallets', value)} />
+                    )}
                     <QuantityField label="Palets AM" value={form.americanPallets} onChange={(value) => updateCount('americanPallets', value)} />
                     <QuantityField label="Racks" value={form.racks} onChange={(value) => updateCount('racks', value)} />
                   </div>
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="mb-3 font-semibold text-slate-900">Gel</h3>
-                  <div className="grid grid-cols-1 gap-3 min-[440px]:grid-cols-2 lg:grid-cols-3">
-                    <QuantityField label="Sacs gel pilé" value={form.gelPileBags} onChange={(value) => updateCount('gelPileBags', value)} />
-                    <QuantityField label="Sacs gel pedra" value={form.gelStoneBags} onChange={(value) => updateCount('gelStoneBags', value)} />
-                    <QuantityField label="Gel mojito" value={form.gelMojitoBags} onChange={(value) => updateCount('gelMojitoBags', value)} />
-                  </div>
-                </section>
+                {warehouseCode !== 'DECO' ? (
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="mb-3 font-semibold text-slate-900">Gel</h3>
+                    <div className="grid grid-cols-1 gap-3 min-[440px]:grid-cols-2 lg:grid-cols-3">
+                      <QuantityField label="Sacs gel pilé" value={form.gelPileBags} onChange={(value) => updateCount('gelPileBags', value)} />
+                      <QuantityField label="Sacs gel pedra" value={form.gelStoneBags} onChange={(value) => updateCount('gelStoneBags', value)} />
+                      <QuantityField label="Gel mojito" value={form.gelMojitoBags} onChange={(value) => updateCount('gelMojitoBags', value)} />
+                    </div>
+                  </section>
+                ) : null}
 
                 <ArticlePicker rowId={event.id} warehouseCode={warehouseCode} purpose="machinery" title="Maquinària" description="Només mostra les unitats disponibles durant l’horari de l’esdeveniment. Els articles nous reben codi MAQ." selected={form.machinery} onChange={(machinery) => { setDirty(true); setForm((current) => ({ ...current, machinery })) }} allowCreate />
                 <div className="grid min-w-0 gap-4 lg:grid-cols-2">

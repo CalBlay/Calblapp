@@ -187,15 +187,24 @@ function addFormLines(
   form: StoredPreparationForm
 ) {
   const warehouseCode = text(form.warehouseCode).toUpperCase()
-  const counters: Array<[string, string, number]> = [
+  const commonCounters: Array<[string, string, number]> = [
     ['carts', 'Carros', count(form.carts)],
-    ['euro-pallets', 'Palets EU', count(form.euroPallets)],
     ['american-pallets', 'Palets AM', count(form.americanPallets)],
     ['racks', 'Racks', count(form.racks)],
-    ['gel-pile', 'Sacs de gel pilé', count(form.gelPileBags)],
-    ['gel-stone', 'Sacs de gel pedra', count(form.gelStoneBags)],
-    ['gel-mojito', 'Sacs de gel mojito', count(form.gelMojitoBags)],
   ]
+  const warehouseCounters: Array<[string, string, number]> = warehouseCode === 'DECO'
+    ? [
+        ['fridge-carts', 'Carros nevera', count(form.fridgeCarts)],
+        ['fridge-boxes', 'Caixes nevera', count(form.fridgeBoxes)],
+        ['boxes', 'Caixes', count(form.boxes)],
+      ]
+    : [
+        ['euro-pallets', 'Palets EU', count(form.euroPallets)],
+        ['gel-pile', 'Sacs de gel pilé', count(form.gelPileBags)],
+        ['gel-stone', 'Sacs de gel pedra', count(form.gelStoneBags)],
+        ['gel-mojito', 'Sacs de gel mojito', count(form.gelMojitoBags)],
+      ]
+  const counters = [...commonCounters, ...warehouseCounters]
   for (const [key, label, quantity] of counters) {
     addLine(lines, {
       key: warehouseCode ? `${warehouseCode}:${key}` : key,
