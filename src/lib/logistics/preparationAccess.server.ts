@@ -72,17 +72,27 @@ export async function listPreparationWarehousesForUser(
     accessUser,
     assignmentSnap.exists ? (assignmentSnap.data() as UserAccessAssignmentDoc) : null
   )
-  if (
-    options.scope === 'deco' && uiMap[DECO_PREPARATION_UI_PATH] === true
-  ) {
+  const canPrepareDeco = uiMap[DECO_PREPARATION_UI_PATH] === true
+  if (options.scope === 'deco' && canPrepareDeco) {
     return ['DECO'] as PreparationWarehouseCode[]
   }
   if (options.scope === 'deco') return [] as PreparationWarehouseCode[]
-  if (uiMap[PREPARATION_UI_PATH] !== true) return [] as PreparationWarehouseCode[]
 
   const actions = buildActionsFromAssignment(
     assignmentSnap.exists ? (assignmentSnap.data() as UserAccessAssignmentDoc) : null
   )
+  const allowed = new Set<PreparationWarehouseCode>()
 
-  return listExplicitPreparationWarehouses(actions)
+  if (uiMap[PREPARATION_UI_PATH] === true) {
+    for (const warehouse of listExplicitPreparationWarehouses(actions)) {
+      allowed.add(warehouse)
+    }
+  }
+
+  // La preparació oberta des d'Imatge-Deco reutilitza les mateixes API de fitxa,
+  // catàleg i xat. El permís del mòdul Deco ha d'autoritzar només aquest magatzem,
+  // sense obligar l'usuari a veure el mòdul de Logística.
+  if (canPrepareDeco) allowed.add('DECO')
+
+  return PREPARATION_WAREHOUSE_CODES.filter((warehouse) => allowed.has(warehouse))
 }
