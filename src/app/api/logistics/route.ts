@@ -493,6 +493,13 @@ export async function GET(req: NextRequest) {
       const code = firstEventCode(data)
       if (code && !stageDocByCode.has(code)) stageDocByCode.set(code, { id: doc.id, data })
     })
+    const serviceDocByCard = new Map<string, RawEvent>()
+    serviceDocs.forEach((doc) => {
+      const data = doc.data() as RawEvent
+      const code = firstEventCode(data) || String(data.ParentEventCode ?? '').trim()
+      const day = normalizeDataInici(data.ServiceDate ?? data.DataInici)
+      if (code && day) serviceDocByCard.set(`${code}::${day}`, data)
+    })
 
     logisticsCards.forEach(({ day, events: cards }) => {
       cards.forEach((card) => {
@@ -512,6 +519,21 @@ export async function GET(req: NextRequest) {
           : stageDocByCode.get(eventCode)
         const parent = parentEntry?.data
         const parentId = parentEntry?.id || card.eventId
+        const persistedService = serviceDocByCard.get(cardKey)
+        const plannedPreparationDate = String(
+          persistedService?.PreparacioData ?? parent?.PreparacioData ?? ''
+        ).trim()
+        if (
+          plannedPreparationDate &&
+          !isPreparationPlanningDateInRange(
+            plannedPreparationDate,
+            day,
+            startStr,
+            endStr
+          )
+        ) {
+          return
+        }
         const parentStart = normalizeDataInici(parent?.DataInici)
         const parentEnd = normalizeDataInici(parent?.DataFi ?? parent?.DataInici) || day
         const isDirectEventRow = Boolean(parentEntry && parentStart === day && parentEnd === day)
