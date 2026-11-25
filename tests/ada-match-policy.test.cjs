@@ -3,6 +3,7 @@ const { test } = require('node:test')
 
 const {
   buildAdaMatch,
+  chooseAdaCodeWinner,
   isStrongAdaMatch,
   stageAdaDateKeys,
 } = require('../src/services/sync/adaMatchPolicy.ts')
@@ -80,4 +81,22 @@ test('date, commercial and client form a strong ADA match', () => {
 
   assert.deepEqual(match.fields, ['date', 'commercial', 'client'])
   assert.equal(isStrongAdaMatch(match), true)
+})
+
+test('a stronger ADA contender beats the current weak owner', () => {
+  const winner = chooseAdaCodeWinner([
+    { documentKey: 'stage_taronja/cafes-novell', score: 2, ownsCode: true },
+    { documentKey: 'stage_verd/casa-ametller', score: 3, ownsCode: false },
+  ])
+
+  assert.equal(winner?.documentKey, 'stage_verd/casa-ametller')
+})
+
+test('the current ADA owner is preserved when the best score is tied', () => {
+  const winner = chooseAdaCodeWinner([
+    { documentKey: 'stage_verd/first', score: 2, ownsCode: false },
+    { documentKey: 'stage_verd/current', score: 2, ownsCode: true },
+  ])
+
+  assert.equal(winner?.documentKey, 'stage_verd/current')
 })

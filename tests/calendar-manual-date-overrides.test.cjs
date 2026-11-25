@@ -148,7 +148,10 @@ test('ADA sync protects manual real codes but replaces provisional PM codes', ()
   assert.match(source, /&& !provisionalPmCode/)
   assert.match(source, /manualOverrides\.code.*FieldValue\.delete/)
   assert.match(source, /manualOverrideValues\.code.*FieldValue\.delete/)
-  assert.match(source, /!code \|\| isProvisionalPmCode\(code\)/)
+  assert.match(
+    source,
+    /!normalizedCode \|\| isProvisionalPmCode\(normalizedCode\)/
+  )
   assert.match(source, /codeSource: nextCodeSource/)
   assert.match(source, /adaLinkedMenuTasting: canShareExistingAdaCode/)
 })
@@ -178,6 +181,18 @@ test('manual ADA sync covers a full year by default', () => {
     source,
     /addMonthsToISO\(startDate, ADA_DEFAULT_MONTHS_AHEAD, ADA_TIMEZONE\)/
   )
+})
+
+test('ADA sync never deletes an existing code merely because its old match was weak', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../src/services/sync/adaSync.ts'),
+    'utf8'
+  )
+
+  assert.doesNotMatch(source, /weakAutomaticDocs/)
+  assert.doesNotMatch(source, /repairedWeakMatches/)
+  assert.match(source, /best\.score < 2/)
+  assert.match(source, /chooseAdaCodeWinner/)
 })
 
 test('calendar PUT protects both date fields when either boundary changes', () => {

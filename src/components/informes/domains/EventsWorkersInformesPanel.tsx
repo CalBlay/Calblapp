@@ -67,6 +67,7 @@ type EventsWorkersExportRow = {
   Esdeveniment: string
   Ubicació: string
   Departament: string
+  Tipus: string
   Treballador: string
   Rols: string
   'Hora inici efectiva': string
@@ -84,18 +85,21 @@ function roleExportLabel(role: string) {
 function buildEventsWorkersExportRows(entries: EventsWorkersOverview['entries']): EventsWorkersExportRow[] {
   return groupEventsWorkersByEvent(entries).flatMap((event) =>
     event.departments.flatMap((department) =>
-      department.rows.map((row) => ({
+      [...department.rows, ...department.ettRows].map((row) => ({
         Data: formatDateOnly(event.eventDate, event.eventDate),
         Codi: event.eventCode,
         Esdeveniment: event.eventName,
         Ubicació: event.location,
         Departament: department.department,
+        Tipus: row.isEtt ? 'ETT' : 'Personal intern',
         Treballador: row.workerName,
         Rols: row.roles.map(roleExportLabel).join(', '),
         'Hora inici efectiva': row.actualStartTime || row.plannedStartTime,
         'Hora final oficial': row.realEndTime || 'Pendent',
         'Hores oficials': row.realEndTime ? Number(row.actualHours.toFixed(2)) : '',
-        'Total hores treballador': Number(row.periodActualHours.toFixed(2)),
+        'Total hores treballador': Number(
+          (row.isEtt ? row.actualHours : row.periodActualHours).toFixed(2)
+        ),
       }))
     )
   )
@@ -391,8 +395,6 @@ export function EventsWorkersInformesPanel() {
     ;(eventsData?.entries ?? []).forEach((entry) => {
       if (
         entry.noShow ||
-        entry.isEtt ||
-        hasEttWorkerMarker(entry.workerName) ||
         !entry.department ||
         (eventsWorker && entry.workerName !== eventsWorker)
       ) return
@@ -418,10 +420,11 @@ export function EventsWorkersInformesPanel() {
       (eventsData?.entries ?? []).filter(
         (entry) =>
           !entry.noShow &&
-          !entry.isEtt &&
-          !hasEttWorkerMarker(entry.workerName) &&
           (!eventsDepartment || entry.department === eventsDepartment) &&
-          (!eventsWorker || entry.workerName === eventsWorker)
+          (!eventsWorker ||
+            (!entry.isEtt &&
+              !hasEttWorkerMarker(entry.workerName) &&
+              entry.workerName === eventsWorker))
       ),
     [eventsData, eventsDepartment, eventsWorker]
   )

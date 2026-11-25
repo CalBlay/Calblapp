@@ -8,6 +8,7 @@ import { PERM } from '@/lib/permissionKeys'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
 import {
   closingPersonnelIdentityKey,
+  labelEttPersonnel,
   mergeResponsiblePersonnelSchedules,
 } from '@/lib/eventPersonnelIdentity'
 import { collectQuadrantLinePersonnel } from '@/lib/quadrantLinePersonnel'
@@ -123,6 +124,10 @@ type PersonnelListEntry = {
   closingRevision?: number
   closingChangedAt?: string
   closingCorrectionReason?: string
+  externalType?: string
+  isExternal?: boolean
+  ettProviderName?: string
+  displayName?: string
   sourceUpdatedAt: number
 }
 
@@ -354,6 +359,9 @@ export async function GET(req: NextRequest) {
           closingRevision: person.closingRevision,
           closingChangedAt: person.closingChangedAt,
           closingCorrectionReason: person.closingCorrectionReason,
+          externalType: String(person.externalType || ''),
+          isExternal: person.isExternal === true,
+          ettProviderName: String(person.ettProviderName || ''),
           sourceUpdatedAt,
           ...(plate ? { plate } : {}),
         })
@@ -436,7 +444,9 @@ export async function GET(req: NextRequest) {
       })
     })
 
-    const withPhones = dedup.map((p) => ({ ...p, phone: phoneMap.get(p.name) }))
+    const withPhones = labelEttPersonnel(
+      dedup.map((p) => ({ ...p, phone: phoneMap.get(p.name) }))
+    )
 
     /* ────────────────────────────────────────────────
        6) RETORN FINAL

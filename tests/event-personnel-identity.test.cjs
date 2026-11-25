@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const {
   closingPersonnelIdentityKey,
   eventPersonnelIdentityKey,
+  labelEttPersonnel,
   mergeResponsiblePersonnelSchedules,
 } = require('../src/lib/eventPersonnelIdentity')
 
@@ -73,4 +74,20 @@ test('merged responsible keeps one global planned interval', () => {
   assert.equal(merged.time, '09:30')
   assert.equal(merged.plannedStartTime, '09:30')
   assert.equal(merged.endTime, '17:30')
+})
+
+test('labels every ETT slot with its department sequence and provider', () => {
+  const rows = labelEttPersonnel([
+    { id: 's-1', name: 'ETT', department: 'Serveis', externalType: 'ett', ettProviderName: 'Randstad' },
+    { id: 's-2', name: 'ETT', department: 'Serveis', externalType: 'ett', ettProviderName: 'Randstad' },
+    { id: 'l-1', name: 'ETT', department: 'Logística', externalType: 'ett', ettProviderName: 'Eurofirms' },
+    { id: 'w-1', name: 'Anna', department: 'Serveis' },
+  ])
+
+  assert.deepEqual(rows.map((row) => row.displayName || row.name), [
+    'ETT 1 · Randstad',
+    'ETT 2 · Randstad',
+    'ETT 1 · Eurofirms',
+    'Anna',
+  ])
 })

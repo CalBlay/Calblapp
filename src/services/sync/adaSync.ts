@@ -13,8 +13,7 @@ import { revalidateEventsListCache } from '@/lib/eventsListCache'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
   buildAdaMatch,
-  isStrongAdaMatch,
-  isStrongAdaMatchFields,
+  chooseAdaCodeWinner,
   stageAdaDateKeys,
   type AdaMatchResult,
 } from './adaMatchPolicy'
@@ -268,11 +267,124 @@ export async function syncAdaEventsToFirestore(opts?: {
   let updated = 0
   let skippedConfirmedCode = 0
   let repairedDuplicateCodes = 0
-  let repairedWeakMatches = 0
+  let reassignedStrongerMatches = 0
   let replacedProvisionalCodes = 0
 
   const now = new Date().toISOString()
   const codeOwner = new Map<string, string | null>()
+
+  const stageDocs = stageSnapshots
+    .flatMap(({ collectionName, snapshot }) =>
+      snapshot.docs.map((doc) => ({ collectionName, doc }))
+    )
+    .sort((a, b) => {
+      const dateDiff = dateKey((a.doc.data() as StageEvent).DataInici).localeCompare(
+        dateKey((b.doc.data() as StageEvent).DataInici)
+      )
+      return (
+        dateDiff ||
+        ADA_SYNC_STAGE_COLLECTIONS.indexOf(a.collectionName) -
+          ADA_SYNC_STAGE_COLLECTIONS.indexOf(b.collectionName) ||
+        a.doc.id.localeCompare(b.doc.id)
+      )
+    })
+
+  type AdaProposal = {
+    best: AdaMatchResult
+    code: string
+    normalizedCode: string
+  }
+
+  const proposalsByDocument = new Map<string, AdaProposal>()
+  const contendersByCode = new Map<string, Array<{
+    documentKey: string
+    score: number
+    ownsCode: boolean
+  }>>()
+  const manualOwnersByCode = new Map<string, string>()
+
+  for (const { collectionName, doc } of stageDocs) {
+    const data = doc.data() as StageEvent
+    const documentKey = `${collectionName}/${doc.id}`
+    const currentCode = String(data.code || '').trim()
+    const normalizedCurrentCode = normalizeAdaEventCode(currentCode)
+    const codeSource = String(data.codeSource || '').toLowerCase()
+    const codeManuallyOverridden = data.manualOverrides?.code === true
+
+    if (
+      normalizedCurrentCode &&
+      !isRepeatablePmCode(normalizedCurrentCode) &&
+      (codeSource === 'manual' || codeManuallyOverridden) &&
+      !manualOwnersByCode.has(normalizedCurrentCode)
+    ) {
+      manualOwnersByCode.set(normalizedCurrentCode, documentKey)
+    }
+
+    const shareableMenuTastingCode =
+      isProvisionalPmCode(currentCode) ||
+      data.adaLinkedMenuTasting === true ||
+      codeSource === 'ada-menu-tasting'
+    const matchDates = stageAdaDateKeys(data, shareableMenuTastingCode)
+    const candidates = Array.from(
+      new Set(matchDates.flatMap((matchDate) => adaByDate.get(matchDate) || []))
+    )
+
+    let best: AdaMatchResult | null = null
+    for (const candidate of candidates) {
+      const match = buildAdaMatch(data, candidate, shareableMenuTastingCode)
+      if (!best || match.score > best.score) best = match
+      if (match.score === 4) break
+    }
+    if (!best || best.score < 2) continue
+
+    const code = String(best.ada.codigo || '').trim()
+    const normalizedCode = normalizeAdaEventCode(code)
+    if (!normalizedCode || isProvisionalPmCode(normalizedCode)) continue
+
+    proposalsByDocument.set(documentKey, { best, code, normalizedCode })
+    const contenders = contendersByCode.get(normalizedCode) || []
+    contenders.push({
+      documentKey,
+      score: best.score,
+      ownsCode: normalizedCurrentCode === normalizedCode,
+    })
+    contendersByCode.set(normalizedCode, contenders)
+  }
+
+  const preferredOwnerByCode = new Map<string, string>()
+  for (const [normalizedCode, contenders] of contendersByCode) {
+    const manualOwner = manualOwnersByCode.get(normalizedCode)
+    const winner = manualOwner ? null : chooseAdaCodeWinner(contenders)
+    const preferredOwner = manualOwner || winner?.documentKey
+    if (preferredOwner) preferredOwnerByCode.set(normalizedCode, preferredOwner)
+  }
+
+  // Un codi automatic nomes es mou quan el propietari actual continua proposant
+  // el mateix codi pero un altre document hi te una coincidencia estrictament millor.
+  const displacedOwners = new Set<string>()
+  for (const { collectionName, doc } of stageDocs) {
+    const data = doc.data() as StageEvent
+    const documentKey = `${collectionName}/${doc.id}`
+    const currentCode = normalizeAdaEventCode(data.code)
+    const source = String(data.codeSource || '').toLowerCase()
+    const proposal = proposalsByDocument.get(documentKey)
+    const preferredOwner = preferredOwnerByCode.get(currentCode)
+    const preferredProposal = preferredOwner
+      ? proposalsByDocument.get(preferredOwner)
+      : undefined
+    if (
+      currentCode &&
+      source !== 'manual' &&
+      data.manualOverrides?.code !== true &&
+      proposal?.normalizedCode === currentCode &&
+      preferredOwner &&
+      preferredOwner !== documentKey &&
+      preferredProposal &&
+      preferredProposal.best.score > proposal.best.score
+    ) {
+      displacedOwners.add(documentKey)
+    }
+  }
 
   const getCodeOwner = async (code: string) => {
     const normalizedCode = normalizeAdaEventCode(code)
@@ -296,63 +408,12 @@ export async function syncAdaEventsToFirestore(opts?: {
       .flatMap(({ collectionName, snapshot }) =>
         snapshot.docs.map((doc) => ({ collectionName, doc }))
       )
-      .find(({ doc }) => {
-        const data = doc.data() as StageEvent
-        const source = String(data.codeSource || '').toLowerCase()
-        const fields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
-        return !(
-          source === 'auto' &&
-          fields.length > 0 &&
-          !isStrongAdaMatchFields(fields)
-        )
-      })
+      .find(({ collectionName, doc }) =>
+        !displacedOwners.has(`${collectionName}/${doc.id}`)
+      )
     const owner = match ? `${match.collectionName}/${match.doc.id}` : null
     codeOwner.set(normalizedCode, owner)
     return owner
-  }
-
-  const stageDocs = stageSnapshots
-    .flatMap(({ collectionName, snapshot }) =>
-      snapshot.docs.map((doc) => ({ collectionName, doc }))
-    )
-    .sort((a, b) => {
-      const dateDiff = dateKey((a.doc.data() as StageEvent).DataInici).localeCompare(
-        dateKey((b.doc.data() as StageEvent).DataInici)
-      )
-      return (
-        dateDiff ||
-        ADA_SYNC_STAGE_COLLECTIONS.indexOf(a.collectionName) -
-          ADA_SYNC_STAGE_COLLECTIONS.indexOf(b.collectionName) ||
-        a.doc.id.localeCompare(b.doc.id)
-      )
-    })
-
-  const weakAutomaticDocs = new Set<string>()
-  for (const { collectionName, doc } of stageDocs) {
-    const data = doc.data() as StageEvent
-    const currentCode = String(data.code || '').trim()
-    const fields = Array.isArray(data.codeMatchFields) ? data.codeMatchFields : []
-    if (
-      currentCode &&
-      !isProvisionalPmCode(currentCode) &&
-      String(data.codeSource || '').toLowerCase() === 'auto' &&
-      fields.length > 0 &&
-      !isStrongAdaMatchFields(fields)
-    ) {
-      weakAutomaticDocs.add(`${collectionName}/${doc.id}`)
-      batch.update(doc.ref, {
-        code: '',
-        codeConfirmed: false,
-        codeMatchScore: 0,
-        codeMatchFields: [],
-        codeSource: 'auto',
-        adaLinkedMenuTasting: false,
-        codeMatchedAt: now,
-      })
-      pending++
-      repairedWeakMatches++
-      if (pending >= 450) await flush()
-    }
   }
 
   // Carrega primer els propietaris dels codis ja assignats dins del rang. Els manuals tenen
@@ -368,7 +429,7 @@ export async function syncAdaEventsToFirestore(opts?: {
       if (
         !currentCode ||
         isRepeatablePmCode(currentCode) ||
-        weakAutomaticDocs.has(`${collectionName}/${doc.id}`) ||
+        displacedOwners.has(`${collectionName}/${doc.id}`) ||
         isManual !== manualFirst
       ) {
         continue
@@ -384,10 +445,6 @@ export async function syncAdaEventsToFirestore(opts?: {
     total++
     const data = doc.data() as StageEvent
     const documentKey = `${collectionName}/${doc.id}`
-    if (weakAutomaticDocs.has(documentKey)) {
-      noMatch++
-      continue
-    }
     const currentCode = String(data.code || '').trim()
     const provisionalPmCode = isProvisionalPmCode(currentCode)
     const codeSource = String(data.codeSource || '').toLowerCase()
@@ -404,6 +461,21 @@ export async function syncAdaEventsToFirestore(opts?: {
     // ADA el pot substituir quan trobi el codi definitiu del mateix registre.
     if ((codeSource === 'manual' || codeManuallyOverridden) && !provisionalPmCode) {
       skippedManual++
+      continue
+    }
+    if (displacedOwners.has(documentKey)) {
+      batch.update(doc.ref, {
+        code: '',
+        codeConfirmed: false,
+        codeMatchScore: 0,
+        codeMatchFields: [],
+        codeSource: 'auto',
+        adaLinkedMenuTasting: false,
+        codeMatchedAt: now,
+      })
+      pending++
+      reassignedStrongerMatches++
+      if (pending >= 450) await flush()
       continue
     }
     const currentOwner = await getCodeOwner(currentCode)
@@ -437,31 +509,13 @@ export async function syncAdaEventsToFirestore(opts?: {
       }
     }
 
-    const candidates = Array.from(
-      new Set(matchDates.flatMap((matchDate) => adaByDate.get(matchDate) || []))
-    )
-    if (!candidates.length) {
+    const proposal = proposalsByDocument.get(documentKey)
+    if (!proposal) {
       noMatch++
       continue
     }
 
-    let best: AdaMatchResult | null = null
-    for (const cand of candidates) {
-      const match = buildAdaMatch(data, cand, shareableMenuTastingCode)
-      if (!best || match.score > best.score) best = match
-      if (match.score === 4) break
-    }
-
-    if (!best || !isStrongAdaMatch(best)) {
-      noMatch++
-      continue
-    }
-
-    const code = String(best.ada.codigo || '').trim()
-    if (!code || isProvisionalPmCode(code)) {
-      noMatch++
-      continue
-    }
+    const { best, code, normalizedCode } = proposal
 
     const matchScore = best.score
     const matchFields = best.fields
@@ -473,6 +527,16 @@ export async function syncAdaEventsToFirestore(opts?: {
 
     if (confirmed) matched3++
     else matched2++
+
+    const preferredOwner = preferredOwnerByCode.get(normalizedCode)
+    if (
+      preferredOwner &&
+      preferredOwner !== documentKey &&
+      !canShareExistingAdaCode
+    ) {
+      skippedConfirmedCode++
+      continue
+    }
 
     const existingOwner = await getCodeOwner(code)
     if (
@@ -548,7 +612,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     skippedConfirmed,
     skippedConfirmedCode,
     repairedDuplicateCodes,
-    repairedWeakMatches,
+    reassignedStrongerMatches,
     replacedProvisionalCodes,
     duplicateAdaCodes,
     adaCount: adaEvents.length,

@@ -12,6 +12,36 @@ export type EventPersonnelIdentity = {
   role?: string
 }
 
+export type EventPersonnelDisplay = EventPersonnelIdentity & {
+  displayName?: string
+  externalType?: string
+  isExternal?: boolean
+  ettProviderName?: string
+}
+
+/**
+ * Dona una etiqueta humana a cada plaça ETT sense canviar el nom intern que
+ * s'utilitza per desar i relacionar el tancament.
+ */
+export function labelEttPersonnel<T extends EventPersonnelDisplay>(people: T[]): T[] {
+  const counters = new Map<string, number>()
+  return people.map((person) => {
+    const isEtt =
+      normalizeIdentityPart(person.externalType) === 'ett' ||
+      (person.isExternal === true && normalizeIdentityPart(person.name).startsWith('ett'))
+    if (!isEtt) return person
+
+    const department = normalizeIdentityPart(person.department)
+    const number = (counters.get(department) || 0) + 1
+    counters.set(department, number)
+    const provider = String(person.ettProviderName || '').trim()
+    return {
+      ...person,
+      displayName: `ETT ${number}${provider ? ` · ${provider}` : ''}`,
+    }
+  })
+}
+
 /**
  * Manté separades les línies amb identificador propi (com els treballadors ETT),
  * però continua deduplicant les línies històriques que només tenen nom.

@@ -63,6 +63,7 @@ export type EventsWorkersWorkerRow = {
 }
 
 export type EventsWorkersEntryRow = {
+  workerId?: string
   eventId: string
   eventCode: string
   eventName: string
@@ -82,6 +83,7 @@ export type EventsWorkersEntryRow = {
   lateArrival: boolean
   leftEarly: boolean
   isEtt: boolean
+  ettProviderName?: string
   notes: string
   wasCorrected: boolean
   correctionReason: string

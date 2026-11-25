@@ -7,6 +7,7 @@ import useSWR from 'swr'
 export interface Person {
   id?: string
   name?: string
+  displayName?: string
   role?: string
   phone?: string
   department?: string

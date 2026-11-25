@@ -151,7 +151,9 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
     try {
       const missingArrival = rows.find((row) => row.lateArrival && !row.startTimeReal)
       if (missingArrival) {
-        throw new Error(`Indica l'hora real d'arribada de ${missingArrival.name || 'la persona'}`)
+        throw new Error(
+          `Indica l'hora real d'arribada de ${missingArrival.displayName || missingArrival.name || 'la persona'}`
+        )
       }
       if (hasCorrections && !correctionReason.trim()) {
         throw new Error('Indica el motiu de la correcciÃ³ de les hores ja tancades')
@@ -295,7 +297,9 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                   return (
                     <article key={`${row.id || row.name}-${index}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="min-w-0">
-                        <p className="break-words text-base font-semibold text-slate-950">{row.name || 'Sense nom'}</p>
+                        <p className="break-words text-base font-semibold text-slate-950">
+                          {row.displayName || row.name || 'Sense nom'}
+                        </p>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                           {row.plannedStartTime || row.time ? (
                             <span>Convocatòria: {row.plannedStartTime || row.time}</span>

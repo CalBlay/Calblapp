@@ -54,7 +54,7 @@ test('groups event workers by department and preserves operational closing time'
   assert.equal(groups[0].departments[0].rows[0].realEndTime, '')
 })
 
-test('excludes no-shows and ETT personnel even when ETT is at the end of the name', () => {
+test('excludes no-shows and shows ETT personnel in a separate department list', () => {
   const groups = groupEventsWorkersByEvent([
     {
       ...base,
@@ -83,7 +83,46 @@ test('excludes no-shows and ETT personnel even when ETT is at the end of the nam
     },
   ])
 
-  assert.deepEqual(groups, [])
+  assert.equal(groups.length, 1)
+  assert.equal(groups[0].workersCount, 0)
+  assert.equal(groups[0].ettCount, 2)
+  assert.equal(groups[0].departments[0].rows.length, 0)
+  assert.deepEqual(
+    groups[0].departments[0].ettRows.map((row) => row.workerName),
+    ['ETT 1', 'ETT 2']
+  )
+})
+
+test('labels ETT slots with their provider and keeps their closing hours separate', () => {
+  const groups = groupEventsWorkersByEvent([
+    {
+      ...base,
+      workerId: 'ett-group-1',
+      department: 'Cuina',
+      workerName: 'ETT',
+      plannedStartTime: '16:00',
+      realEndTime: '23:00',
+      isEtt: true,
+      ettProviderName: 'Randstad',
+    },
+    {
+      ...base,
+      workerId: 'ett-group-2',
+      department: 'Cuina',
+      workerName: 'ETT',
+      plannedStartTime: '17:00',
+      realEndTime: '',
+      isEtt: true,
+      ettProviderName: 'Randstad',
+    },
+  ])
+
+  const department = groups[0].departments[0]
+  assert.deepEqual(department.ettRows.map((row) => row.workerName), [
+    'ETT 1 · Randstad',
+    'ETT 2 · Randstad',
+  ])
+  assert.equal(department.closedCount, 1)
 })
 
 test('merges multiple roles for the same worker into one row', () => {

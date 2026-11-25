@@ -42,6 +42,22 @@ export function isStrongAdaMatch(match: AdaMatchResult): boolean {
   return isStrongAdaMatchFields(match.fields)
 }
 
+export type AdaCodeContender = {
+  documentKey: string
+  score: number
+  ownsCode: boolean
+}
+
+/** Highest score wins; an existing owner wins only when tied. */
+export function chooseAdaCodeWinner(
+  contenders: readonly AdaCodeContender[]
+): AdaCodeContender | null {
+  if (contenders.length === 0) return null
+  const highestScore = Math.max(...contenders.map((contender) => contender.score))
+  const strongest = contenders.filter((contender) => contender.score === highestScore)
+  return strongest.find((contender) => contender.ownsCode) || strongest[0] || null
+}
+
 const unaccent = (value: string) =>
   value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 

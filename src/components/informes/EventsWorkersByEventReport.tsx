@@ -78,10 +78,13 @@ export function EventsWorkersByEventReport({
                   {event.departments.length} departaments
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5">
-                  {event.workersCount} persones
+                  {event.workersCount} personal intern
+                </span>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800">
+                  {event.ettCount} ETT
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5">
-                  {event.closedCount}/{event.departments.reduce((sum, item) => sum + item.rows.length, 0)} tancats
+                  {event.closedCount}/{event.departments.reduce((sum, item) => sum + item.rows.length + item.ettRows.length, 0)} tancats
                 </span>
               </div>
             </div>
@@ -99,9 +102,10 @@ export function EventsWorkersByEventReport({
                     </div>
                   </div>
                   <p className="text-xs opacity-70">
-                    {department.workersCount} persones · {department.closedCount}/{department.rows.length} amb tancament
+                    {department.workersCount} interns · {department.ettCount} ETT · {department.closedCount}/{department.rows.length + department.ettRows.length} amb tancament
                   </p>
                 </div>
+                {department.rows.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table className="min-w-[980px]">
                     <TableHeader className="bg-slate-50/80">
@@ -180,6 +184,59 @@ export function EventsWorkersByEventReport({
                     </TableBody>
                   </Table>
                 </div>
+                ) : null}
+                {department.ettRows.length > 0 ? (
+                  <div className="border-t border-amber-200 bg-amber-50/30 px-4 py-4 sm:px-5">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">
+                          Personal extern
+                        </p>
+                        <h5 className="text-base font-bold text-amber-950">ETT</h5>
+                      </div>
+                      <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-800">
+                        {department.ettCount} places
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto rounded-xl border border-amber-200 bg-white">
+                      <Table className="min-w-[720px]">
+                        <TableHeader className="bg-amber-50/80">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="min-w-[240px] text-xs font-bold uppercase tracking-[0.1em] text-amber-900">Plaça i empresa ETT</TableHead>
+                            <TableHead className="min-w-[130px] text-xs font-bold uppercase tracking-[0.1em] text-slate-700">Hora inici</TableHead>
+                            <TableHead className="min-w-[150px] text-xs font-bold uppercase tracking-[0.1em] text-slate-700">Hora final</TableHead>
+                            <TableHead className="min-w-[130px] text-xs font-bold uppercase tracking-[0.1em] text-slate-700">Total hores</TableHead>
+                            <TableHead className="text-xs font-bold uppercase tracking-[0.1em] text-slate-700">Estat</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {department.ettRows.map((row, index) => {
+                            const closed = Boolean(row.realEndTime)
+                            return (
+                              <TableRow key={`${row.eventId}-${row.workerId || index}-ett`}>
+                                <TableCell className="py-3 font-bold text-amber-950">{row.workerName}</TableCell>
+                                <TableCell className="py-3 font-semibold tabular-nums text-slate-900">
+                                  {row.actualStartTime || row.plannedStartTime || '—'}
+                                </TableCell>
+                                <TableCell className={`py-3 font-semibold tabular-nums ${closed ? 'text-slate-900' : 'text-amber-700'}`}>
+                                  {row.realEndTime || 'Pendent'}
+                                </TableCell>
+                                <TableCell className="py-3 font-bold tabular-nums text-emerald-800">
+                                  {closed ? formatHours(row.actualHours) : '—'}
+                                </TableCell>
+                                <TableCell className="py-3">
+                                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${closed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                                    {row.wasCorrected ? 'Corregit' : closed ? 'Tancat' : 'Pendent de tancament'}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ) : null}
               </section>
             ))}
           </div>

@@ -4,7 +4,9 @@ import { hasEttWorkerMarker } from '@/lib/quadrantExternalWorkers'
 export type EventsWorkersEventDepartment = {
   department: string
   rows: EventsWorkersEventPersonRow[]
+  ettRows: EventsWorkersEventPersonRow[]
   workersCount: number
+  ettCount: number
   closedCount: number
 }
 
@@ -22,6 +24,7 @@ export type EventsWorkersEventGroup = {
   location: string
   departments: EventsWorkersEventDepartment[]
   workersCount: number
+  ettCount: number
   closedCount: number
 }
 
@@ -61,8 +64,10 @@ function effectiveStartTime(row: Pick<EventsWorkersEntryRow, 'actualStartTime' |
 function mergeDepartmentRows(rows: EventsWorkersEntryRow[]): EventsWorkersEventPersonRow[] {
   const byWorker = new Map<string, EventsWorkersEventPersonRow>()
 
-  rows.forEach((row) => {
-    const key = normalize(row.workerName)
+  rows.forEach((row, index) => {
+    const key = row.isEtt
+      ? `ett:${normalize(row.workerId) || `${normalize(row.ettProviderName)}:${index}`}`
+      : normalize(row.workerName)
     const current = byWorker.get(key)
     if (!current) {
       const next = { ...row, roles: [row.role], periodActualHours: 0 }
@@ -128,18 +133,22 @@ export function groupEventsWorkersByEvent(
   >()
 
   entries.forEach((entry) => {
-    if (entry.noShow || entry.isEtt || hasEttWorkerMarker(entry.workerName)) return
-    const key = eventKey(entry)
+    if (entry.noShow) return
+    const normalizedEntry =
+      entry.isEtt || hasEttWorkerMarker(entry.workerName)
+        ? { ...entry, isEtt: true }
+        : entry
+    const key = eventKey(normalizedEntry)
     const event = events.get(key) ?? {
-      sample: entry,
+      sample: normalizedEntry,
       departments: new Map<string, { label: string; rows: EventsWorkersEntryRow[] }>(),
     }
-    const departmentKey = normalize(entry.department) || 'sense-departament'
+    const departmentKey = normalize(normalizedEntry.department) || 'sense-departament'
     const department = event.departments.get(departmentKey) ?? {
-      label: entry.department || 'Sense departament',
+      label: normalizedEntry.department || 'Sense departament',
       rows: [],
     }
-    department.rows.push(entry)
+    department.rows.push(normalizedEntry)
     event.departments.set(departmentKey, department)
     events.set(key, event)
   })
@@ -148,17 +157,28 @@ export function groupEventsWorkersByEvent(
     .map(([key, event]) => {
       const departments = Array.from(event.departments.values())
         .map(({ label, rows }) => {
-          const sortedRows = mergeDepartmentRows(rows)
+          const sortedRows = mergeDepartmentRows(rows.filter((row) => !row.isEtt))
+          const ettRows = mergeDepartmentRows(rows.filter((row) => row.isEtt)).map(
+            (row, index) => ({
+              ...row,
+              workerName: `ETT ${index + 1}${row.ettProviderName ? ` · ${row.ettProviderName}` : ''}`,
+            })
+          )
           return {
             department: label,
             rows: sortedRows,
+            ettRows,
             workersCount: sortedRows.length,
-            closedCount: sortedRows.filter((row) => Boolean(row.realEndTime)).length,
+            ettCount: ettRows.length,
+            closedCount: [...sortedRows, ...ettRows].filter((row) => Boolean(row.realEndTime)).length,
           }
         })
         .sort((a, b) => a.department.localeCompare(b.department, 'ca'))
 
-      const rows = departments.flatMap((department) => department.rows)
+      const rows = departments.flatMap((department) => [
+        ...department.rows,
+        ...department.ettRows,
+      ])
       const sample = event.sample
       return {
         key,
@@ -168,7 +188,8 @@ export function groupEventsWorkersByEvent(
         eventDate: sample.eventDate,
         location: sample.location,
         departments,
-        workersCount: new Set(rows.map((row) => normalize(row.workerName))).size,
+        workersCount: departments.reduce((sum, department) => sum + department.workersCount, 0),
+        ettCount: departments.reduce((sum, department) => sum + department.ettCount, 0),
         closedCount: rows.filter((row) => Boolean(row.realEndTime)).length,
       }
     })

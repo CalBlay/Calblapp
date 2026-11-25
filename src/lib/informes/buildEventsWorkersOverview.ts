@@ -219,6 +219,7 @@ function uniquePushOption(
 
 function collectPersonLines(doc: QuadrantDoc) {
   const lines: Array<{
+    id: string
     name: string
     role: string
     isResponsible: boolean
@@ -231,6 +232,7 @@ function collectPersonLines(doc: QuadrantDoc) {
     lateArrival: boolean
     leftEarly: boolean
     isEtt: boolean
+    ettProviderName: string
     notes: string
     closingRevision: number
     closingChangedAt: string
@@ -242,6 +244,7 @@ function collectPersonLines(doc: QuadrantDoc) {
     const name = person.name
     const externalType = String(person.externalType || '')
     lines.push({
+      id: String(person.id || '').trim(),
       name,
       role: person.role,
       isResponsible: person.role === 'responsable',
@@ -258,6 +261,7 @@ function collectPersonLines(doc: QuadrantDoc) {
         getExternalWorkerTypeFromName(name) === 'ett' ||
         hasEttWorkerMarker(name) ||
         (person.isExternal === true && externalType !== 'centerExternalExtra'),
+      ettProviderName: String(person.ettProviderName || '').trim(),
       notes: String(person.sortidaNotes || '').trim(),
       closingRevision: person.closingRevision || 0,
       closingChangedAt: person.closingChangedAt || '',
@@ -332,6 +336,7 @@ export async function buildEventsWorkersOverview({
           )
 
       const entry: EventsWorkersEntryRow = {
+        workerId: line.id || undefined,
         eventId,
         eventCode,
         eventName,
@@ -351,6 +356,7 @@ export async function buildEventsWorkersOverview({
         lateArrival: line.lateArrival,
         leftEarly: line.leftEarly,
         isEtt: line.isEtt,
+        ettProviderName: line.ettProviderName || undefined,
         notes: line.notes,
         wasCorrected: Boolean(line.closingCorrectionReason || (line.closingRevision || 0) > 1),
         correctionReason: line.closingCorrectionReason || '',
