@@ -367,12 +367,6 @@ export default function MeetingMinutesDialog({
     return json.session as IncidentMeetingSession
   }
 
-  const startNextMeetingCycle = async () => {
-    await createNewDraftSession()
-    onSessionStatusChange?.('draft')
-    onOpenChange(false)
-  }
-
   const completeFinalizedActaAndClose = async () => {
     if (saving || sending) return
     setSaving(true)
@@ -392,8 +386,7 @@ export default function MeetingMinutesDialog({
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(String(json?.error || 'Error desant'))
       }
-      if (historyMode) onOpenChange(false)
-      else await startNextMeetingCycle()
+      onOpenChange(false)
     } catch (e) {
       toast({
         title: 'Error tancant acta',
@@ -566,7 +559,7 @@ export default function MeetingMinutesDialog({
         description: `Correu enviat a ${json.recipients ?? 0} destinataris.`,
       })
       if (historyMode) await loadSession()
-      else await startNextMeetingCycle()
+      else onOpenChange(false)
     } catch (e) {
       toast({
         title: 'Error enviant correu',
