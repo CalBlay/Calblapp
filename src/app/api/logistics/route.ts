@@ -7,6 +7,14 @@ import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMag
 import { isPreparationPlanningDateInRange } from '@/lib/logistics/preparationRange'
 import { normalizeRole } from '@/lib/roles'
 import { buildPreparationDayId, listEventDays } from '@/lib/logistics/preparationDays'
+import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
+import { listQuadrantEventsInRange } from '@/lib/quadrantEvents'
+import {
+  buildQuadrantsPageEvents,
+  type QuadrantDraft,
+} from '@/app/menu/quadrants/hooks/useQuadrantsPageData'
+import { groupQuadrantsByDayAndEvent } from '@/lib/quadrantsGrouping'
+import type { QuadrantEvent } from '@/types/QuadrantEvent'
 
 export const runtime = 'nodejs'
 
@@ -285,9 +293,11 @@ export async function GET(req: NextRequest) {
 
     const startStr = String(start)
     const endStr = String(end)
-    const [stageDocs, serviceDocs] = await Promise.all([
+    const [stageDocs, serviceDocs, calendarEvents, logisticsResult] = await Promise.all([
       loadStageVerdRange(startStr, endStr),
       loadServiceRange(startStr, endStr),
+      listQuadrantEventsInRange(startStr, endStr),
+      computeQuadrantsGet(startStr, endStr, 'logistica'),
     ])
     const events: LogisticsEvent[] = []
     const codesWithServices = new Set<string>()
@@ -454,6 +464,113 @@ export async function GET(req: NextRequest) {
         PreparacioFetaPerNom: String(ev.PreparacioFetaPerNom ?? '').trim(),
         PreparacioFetaAt: String(ev.PreparacioFetaAt ?? '').trim(),
         PreparacioMagatzems: normalizePreparationWarehouseMap(ev.PreparacioMagatzems),
+      })
+    })
+
+    // La preparació ha de contenir, com a mínim, les mateixes targetes que
+    // Quadrants > Logística. Les files ja carregades conserven les dades de
+    // preparació i els serveis importats; només afegim les targetes absents.
+    const logisticsCards = groupQuadrantsByDayAndEvent(
+      buildQuadrantsPageEvents({
+        events: calendarEvents as unknown as QuadrantEvent[],
+        quadrants: logisticsResult.quadrants as QuadrantDraft[],
+        filters: { start: startStr, end: endStr },
+      })
+    )
+    const representedCards = new Set(
+      events.map((event) =>
+        `${String(event.EventCode || '').trim()}::${String(
+          event.ServiceDate || event.EventDate || event.DataInici || ''
+        ).slice(0, 10)}`
+      )
+    )
+    const stageDocByCode = new Map<string, {
+      id: string
+      data: RawEvent
+    }>()
+    stageDocs.forEach((doc) => {
+      const data = doc.data() as RawEvent
+      const code = firstEventCode(data)
+      if (code && !stageDocByCode.has(code)) stageDocByCode.set(code, { id: doc.id, data })
+    })
+
+    logisticsCards.forEach(({ day, events: cards }) => {
+      cards.forEach((card) => {
+        const eventCode = String(card.eventCode || '').trim()
+        if (!eventCode) return
+        const cardKey = `${eventCode}::${day}`
+        if (representedCards.has(cardKey)) return
+
+        const phase = card.phases.find((item) =>
+          ['', 'event'].includes(
+            String(item.phaseType || item.phaseLabel || '').trim().toLowerCase()
+          )
+        ) || card.phases[0]
+        const parentById = stageById.get(card.eventId)
+        const parentEntry = parentById
+          ? { id: card.eventId, data: parentById }
+          : stageDocByCode.get(eventCode)
+        const parent = parentEntry?.data
+        const parentId = parentEntry?.id || card.eventId
+        const parentStart = normalizeDataInici(parent?.DataInici)
+        const parentEnd = normalizeDataInici(parent?.DataFi ?? parent?.DataInici) || day
+        const isDirectEventRow = Boolean(parentEntry && parentStart === day && parentEnd === day)
+        const eventTime = String(
+          phase?.displayStartTime || phase?.horaInici || parent?.HoraInici || ''
+        ).slice(0, 5)
+        const eventEndTime = String(
+          phase?.displayEndTime || phase?.horaFi || parent?.HoraFi || eventTime
+        ).slice(0, 5)
+
+        events.push({
+          id: isDirectEventRow
+            ? parentId
+            : buildPreparationDayId(parentId || eventCode, day),
+          sourceCollection: isDirectEventRow
+            ? 'stage_verd'
+            : 'logistics_preparation_services',
+          planningMode: isDirectEventRow ? 'event' : 'day',
+          generatedDay: !isDirectEventRow,
+          EventCode: eventCode,
+          NomEvent: formatEventName(card.summary || parent?.NomEvent || ''),
+          PreparacioNomEvent: isDirectEventRow
+            ? String(parent?.PreparacioNomEvent ?? '').trim()
+            : '',
+          PreparacioObservacions: isDirectEventRow
+            ? String(parent?.PreparacioObservacions ?? '').trim()
+            : '',
+          Ubicacio: String(card.location || parent?.Ubicacio || parent?.finca || '').trim(),
+          NumPax: Number(card.numPax ?? parent?.NumPax ?? parent?.numPax ?? 0) || 0,
+          DataInici: day,
+          DataVisual: day,
+          HoraInici: eventTime,
+          DataFi: parentEnd,
+          HoraFi: eventEndTime,
+          EventDate: day,
+          EventTime: eventTime,
+          ServiceName: String(
+            phase?.phaseLabel || phase?.phaseType || card.service || parent?.Servei || ''
+          ).trim(),
+          ServiceDate: isDirectEventRow ? '' : day,
+          ServiceTime: isDirectEventRow ? '' : eventTime,
+          ParentEventId: parentId,
+          PreparacioData: isDirectEventRow ? String(parent?.PreparacioData ?? '') : '',
+          PreparacioHora: isDirectEventRow ? String(parent?.PreparacioHora ?? '') : '',
+          PreparacioFeta: isDirectEventRow ? Boolean(parent?.PreparacioFeta) : false,
+          PreparacioFetaPerUserId: isDirectEventRow
+            ? String(parent?.PreparacioFetaPerUserId ?? '').trim()
+            : '',
+          PreparacioFetaPerNom: isDirectEventRow
+            ? String(parent?.PreparacioFetaPerNom ?? '').trim()
+            : '',
+          PreparacioFetaAt: isDirectEventRow
+            ? String(parent?.PreparacioFetaAt ?? '').trim()
+            : '',
+          PreparacioMagatzems: isDirectEventRow
+            ? normalizePreparationWarehouseMap(parent?.PreparacioMagatzems)
+            : {},
+        })
+        representedCards.add(cardKey)
       })
     })
 
