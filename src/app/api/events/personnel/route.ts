@@ -120,6 +120,9 @@ type PersonnelListEntry = {
   lateArrival?: boolean
   leftEarly?: boolean
   plate?: string
+  closingRevision?: number
+  closingChangedAt?: string
+  closingCorrectionReason?: string
   sourceUpdatedAt: number
 }
 
@@ -348,6 +351,9 @@ export async function GET(req: NextRequest) {
           noShow: person.noShow === true,
           lateArrival: person.lateArrival === true,
           leftEarly: person.leftEarly === true,
+          closingRevision: person.closingRevision,
+          closingChangedAt: person.closingChangedAt,
+          closingCorrectionReason: person.closingCorrectionReason,
           sourceUpdatedAt,
           ...(plate ? { plate } : {}),
         })

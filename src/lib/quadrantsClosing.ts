@@ -14,6 +14,24 @@ export type ClosingQuadrantDoc = {
   data: Record<string, unknown>
 }
 
+export type ClosingPersonState = {
+  startTimeReal: string
+  endTimeReal: string
+  notes: string
+  noShow: boolean
+  lateArrival: boolean
+  leftEarly: boolean
+}
+
+export type ClosingAuditChange = {
+  personName: string
+  role: string
+  before: ClosingPersonState
+  after: ClosingPersonState
+  isCorrection: boolean
+  revision: number
+}
+
 const unaccent = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
@@ -132,10 +150,35 @@ export function applyClosingUpdatesToQuadrantData(params: {
   closeDept?: boolean
   nowIso: string
   userId: string
-}): { payload: Record<string, unknown>; matchedPeople: number } {
-  const { data, updates, department, closeDept, nowIso, userId } = params
+  userName?: string
+  correctionReason?: string
+}): { payload: Record<string, unknown>; matchedPeople: number; changes: ClosingAuditChange[] } {
+  const {
+    data,
+    updates,
+    department,
+    closeDept,
+    nowIso,
+    userId,
+    userName = '',
+    correctionReason = '',
+  } = params
+  const changesByPerson = new Map<string, ClosingAuditChange>()
+
+  const stateOf = (item: ClosingRow): ClosingPersonState => ({
+    startTimeReal: String(item.startTimeReal || ''),
+    endTimeReal: String(item.endTimeReal || ''),
+    notes: String(item.sortidaNotes || ''),
+    noShow: item.noShow === true,
+    lateArrival: item.lateArrival === true,
+    leftEarly: item.leftEarly === true,
+  })
 
   const setter = (item: ClosingRow, upd: ClosingPersonUpdate) => {
+    const before = stateOf(item)
+    const hadPreviousSetBy = Boolean(
+      item.sortidaSetBy && typeof item.sortidaSetBy === 'object'
+    )
     const noShow = !!upd.noShow
     const lateArrival = !noShow && !!upd.lateArrival
     item.startTimeReal = lateArrival ? upd.startTimeReal || null : null
@@ -145,6 +188,44 @@ export function applyClosingUpdatesToQuadrantData(params: {
     item.lateArrival = lateArrival
     item.leftEarly = !!upd.leftEarly
     item.sortidaSetBy = { userId, ts: nowIso }
+    const after = stateOf(item)
+    if (JSON.stringify(before) === JSON.stringify(after)) return
+
+    const hadPreviousClosing =
+      hadPreviousSetBy ||
+      Boolean(item.closingRevision) ||
+      Boolean(before.startTimeReal) ||
+      Boolean(before.endTimeReal) ||
+      Boolean(before.notes) ||
+      before.noShow ||
+      before.lateArrival ||
+      before.leftEarly
+    const revision = Math.max(0, Number(item.closingRevision) || 0) + 1
+    item.closingRevision = revision
+    item.closingChangedAt = nowIso
+    item.closingChangedBy = { userId, userName }
+    if (hadPreviousClosing) {
+      item.closingCorrection = {
+        reason: correctionReason.trim(),
+        userId,
+        userName,
+        ts: nowIso,
+      }
+    }
+
+    const change: ClosingAuditChange = {
+      personName: String(upd.name || ''),
+      role: String(upd.role || ''),
+      before,
+      after,
+      isCorrection: hadPreviousClosing,
+      revision,
+    }
+    const key = normalizeClosingName(upd.name)
+    const previous = changesByPerson.get(key)
+    if (!previous || (!previous.isCorrection && change.isCorrection)) {
+      changesByPerson.set(key, change)
+    }
   }
 
   const rawResp = data.responsable
@@ -210,5 +291,5 @@ export function applyClosingUpdatesToQuadrantData(params: {
     }
   }
 
-  return { payload, matchedPeople }
+  return { payload, matchedPeople, changes: Array.from(changesByPerson.values()) }
 }

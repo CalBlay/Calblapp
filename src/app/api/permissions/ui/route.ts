@@ -86,6 +86,7 @@ import {
 } from '@/lib/decoTicketsPermissions'
 import {
   EVENT_CLOSING_ACTION,
+  EVENT_CLOSING_CROSS_DEPARTMENT_ACTION,
   canEnableEventClosingAction,
 } from '@/lib/eventClosingPermissions'
 import {
@@ -149,6 +150,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'docs:attach:visit-video' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
+  { path: '/menu/events', action: EVENT_CLOSING_CROSS_DEPARTMENT_ACTION },
   { path: '/menu/events', action: 'comanda:create' },
   { path: '/menu/events', action: 'comanda:prepare' },
   { path: '/menu/events', action: 'warehouse:comanda-only' },
@@ -349,6 +351,13 @@ export async function GET() {
     canEditEvents: edit[EVENTS_UI_PATH] === true,
     hasClosingOverride: effectFor(assignment, eventClosingPermission) === 'allow',
   })
+  const crossDepartmentClosingPermission = PERM.action(
+    EVENTS_UI_PATH,
+    EVENT_CLOSING_CROSS_DEPARTMENT_ACTION
+  )
+  actions[crossDepartmentClosingPermission] =
+    actions[eventClosingPermission] === true &&
+    effectFor(assignment, crossDepartmentClosingPermission) === 'allow'
 
   if (edit['/menu/calendar'] === true) {
     for (const action of CALENDAR_EDIT_IMPLIED_ACTIONS) {

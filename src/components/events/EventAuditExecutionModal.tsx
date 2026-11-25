@@ -27,14 +27,20 @@ import {
   afterMobileFilePicker,
   prepareAuditImageUpload,
 } from '@/lib/media/prepareAuditImageUpload'
-import { resolveAuditDepartmentForEvent } from '@/lib/auditDepartment'
+import {
+  normalizeCommercialAuditGroup,
+  resolveAuditDepartmentForEvent,
+} from '@/lib/auditDepartment'
 import { cn } from '@/lib/utils'
 import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
 import EventExtrasModal from './EventExtrasModal'
 import EventClosingHoursPanel from './EventClosingModal'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
-import { canOpenEventClosing } from '@/lib/eventClosingPermissions'
+import {
+  EVENT_CLOSING_CROSS_DEPARTMENT_ACTION,
+  canOpenEventClosing,
+} from '@/lib/eventClosingPermissions'
 import type { EventLnKey } from '@/lib/events/eventsLnFilter'
 
 type Outcome = 'none' | 'reported'
@@ -157,6 +163,19 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       role: user.role,
       hasClosingPermission: uiActions[PERM.action('/menu/events', 'event:close')] === true,
     })
+  const userCommercialGroup = normalizeCommercialAuditGroup(user.department)
+  const eventCommercialGroup =
+    normalizeCommercialAuditGroup(event.lnKey) ||
+    (/^F(?:-|\d)/i.test(String(event.eventCode || '').trim()) ? 'foodlovers' : null)
+  const canViewCrossDepartment = Boolean(
+    userCommercialGroup && userCommercialGroup === eventCommercialGroup
+  )
+  const canEditCrossDepartment =
+    permissionsReady &&
+    uiActions[
+      PERM.action('/menu/events', EVENT_CLOSING_CROSS_DEPARTMENT_ACTION)
+    ] === true &&
+    (!userCommercialGroup || userCommercialGroup === eventCommercialGroup)
 
   const executionUrl = useMemo(() => {
     if (!open || !eventId || !department) return null
@@ -645,6 +664,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             quadrantId={event.quadrantId}
             phaseType={event.quadrantId ? undefined : 'event'}
             user={{ role: user.role, department: user.department }}
+            canViewCrossDepartment={canViewCrossDepartment}
+            canEditCrossDepartment={canEditCrossDepartment}
             onBack={() => setShowRealHours(false)}
             onClose={onClose}
             onSaved={() => {

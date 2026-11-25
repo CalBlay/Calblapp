@@ -17,6 +17,8 @@ type Props = {
   quadrantId?: string
   phaseType?: string
   user?: { role?: string; department?: string; id?: string }
+  canViewCrossDepartment?: boolean
+  canEditCrossDepartment?: boolean
 }
 
 type Row = Person & {
@@ -33,13 +35,41 @@ const norm = (value?: string | null) =>
 
 const normDepartment = (value?: string | null) => normalizeDept(value)
 
-export default function EventClosingHoursPanel({ onBack, onClose, onSaved, eventId, eventName, quadrantId, phaseType, user }: Props) {
-  const { data, loading, error } = useEventPersonnel(eventId, true, { quadrantId, phaseType })
+const closingState = (row: Row) => JSON.stringify({
+  startTimeReal: row.startTimeReal || '',
+  endTimeReal: row.endTimeReal || '',
+  notes: row.notes || '',
+  noShow: Boolean(row.noShow),
+  lateArrival: Boolean(row.lateArrival),
+  leftEarly: Boolean(row.leftEarly),
+})
+
+const closingRowKey = (row: Row) => String(row.id || row.name || '').trim().toLowerCase()
+
+const alreadyClosed = (row: Row) =>
+  Boolean(
+    row.closingRevision ||
+      row.startTimeReal ||
+      row.endTimeReal ||
+      row.notes ||
+      row.noShow ||
+      row.lateArrival ||
+      row.leftEarly
+  )
+
+export default function EventClosingHoursPanel({ onBack, onClose, onSaved, eventId, eventName, quadrantId, phaseType, user, canViewCrossDepartment = false, canEditCrossDepartment = false }: Props) {
+  const loadsAllDepartments = canViewCrossDepartment || canEditCrossDepartment
+  const { data, loading, error } = useEventPersonnel(eventId, true, {
+    quadrantId: loadsAllDepartments ? undefined : quadrantId,
+    phaseType: loadsAllDepartments ? 'event' : phaseType,
+  })
   const [selectedDept, setSelectedDept] = useState('')
   const [rows, setRows] = useState<Row[]>([])
+  const [originalRows, setOriginalRows] = useState<Row[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [bulkHour, setBulkHour] = useState('')
+  const [correctionReason, setCorrectionReason] = useState('')
 
   const departments = useMemo(() => {
     const values = new Set<string>()
@@ -73,6 +103,9 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
     appendRows(data?.conductors, 'conductor')
     appendRows(data?.treballadors, 'treballador')
     setRows(list)
+    setOriginalRows(list)
+    setBulkHour('')
+    setCorrectionReason('')
   }, [data, selectedDept])
 
   const normalizedRole = norm(user?.role)
@@ -80,13 +113,22 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
     normalizedRole === 'admin' ||
     normalizedRole === 'direccio' ||
     normalizedRole === 'direccion' ||
-    normalizedRole.includes('cap')
+    normalizedRole.includes('cap') ||
+    loadsAllDepartments
   const canEdit = canCloseEventDepartment({
     role: user?.role,
     userDepartment: user?.department,
     targetDepartment: selectedDept,
     hasClosingPermission: true,
+    hasCrossDepartmentPermission: canEditCrossDepartment,
   })
+  const hasCorrections = useMemo(() => {
+    const originalByKey = new Map(originalRows.map((row) => [closingRowKey(row), row]))
+    return rows.some((row) => {
+      const original = originalByKey.get(closingRowKey(row))
+      return Boolean(original && alreadyClosed(original) && closingState(original) !== closingState(row))
+    })
+  }, [originalRows, rows])
 
   const applyHourToAll = (hour: string) => {
     setBulkHour(hour)
@@ -111,6 +153,9 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
       if (missingArrival) {
         throw new Error(`Indica l'hora real d'arribada de ${missingArrival.name || 'la persona'}`)
       }
+      if (hasCorrections && !correctionReason.trim()) {
+        throw new Error('Indica el motiu de la correcciÃ³ de les hores ja tancades')
+      }
       const updates = rows.map((row) => ({
         name: row.name || '',
         role: row.role,
@@ -129,8 +174,9 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
           eventId,
           department: selectedDept,
           updates,
-          quadrantId: quadrantId || undefined,
-          phaseType: quadrantId ? undefined : phaseType,
+          quadrantId: canEditCrossDepartment ? undefined : quadrantId || undefined,
+          phaseType: canEditCrossDepartment ? 'event' : quadrantId ? undefined : phaseType,
+          correctionReason: hasCorrections ? correctionReason.trim() : undefined,
         }),
       })
 
@@ -384,6 +430,26 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
                   {saveError}
                 </p>
               ) : null}
+
+              {hasCorrections ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <label htmlFor="closing-correction-reason" className="mb-1.5 block text-sm font-semibold text-amber-950">
+                    Motiu de la correcciÃ³
+                  </label>
+                  <Input
+                    id="closing-correction-reason"
+                    required
+                    disabled={!canEdit}
+                    value={correctionReason}
+                    onChange={(event) => setCorrectionReason(event.target.value)}
+                    placeholder="Ex.: hora confirmada pel responsable"
+                    className="h-12 border-amber-300 bg-white text-base"
+                  />
+                  <p className="mt-1.5 text-xs text-amber-800">
+                    El canvi quedarÃ  registrat amb l'usuari, la data i els valors anterior i nou.
+                  </p>
+                </div>
+              ) : null}
             </section>
           </div>
 
@@ -391,7 +457,7 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
             <Button
               type="button"
               onClick={() => void handleSave()}
-              disabled={!canEdit || saving || rows.length === 0}
+              disabled={!canEdit || saving || rows.length === 0 || (hasCorrections && !correctionReason.trim())}
               className="h-12 w-full touch-manipulation rounded-xl bg-blue-600 text-base font-semibold text-white hover:bg-blue-700 disabled:bg-blue-400 disabled:opacity-60"
             >
               <CheckCircle2 className="mr-2 h-5 w-5" />

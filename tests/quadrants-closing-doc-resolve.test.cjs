@@ -219,3 +219,31 @@ test('normalizeClosingEventId strips compound quadrant document suffixes', () =>
   )
   assert.equal(normalizeClosingEventId('  deal-123  '), 'deal-123')
 })
+
+test('a correction increments the revision and returns an auditable before/after change', () => {
+  const { payload, changes } = applyClosingUpdatesToQuadrantData({
+    data: {
+      treballadors: [
+        {
+          name: 'Anna',
+          endTimeReal: '18:00',
+          closingRevision: 1,
+          sortidaSetBy: { userId: 'first-user', ts: '2026-11-20T10:00:00.000Z' },
+        },
+      ],
+    },
+    updates: [{ name: 'Anna', role: 'treballador', endTimeReal: '18:30' }],
+    department: 'serveis',
+    nowIso: '2026-11-25T12:00:00.000Z',
+    userId: 'commercial-1',
+    userName: 'Albert',
+    correctionReason: 'Hora confirmada pel responsable',
+  })
+
+  assert.equal(payload.treballadors[0].closingRevision, 2)
+  assert.equal(payload.treballadors[0].closingCorrection.reason, 'Hora confirmada pel responsable')
+  assert.equal(changes.length, 1)
+  assert.equal(changes[0].isCorrection, true)
+  assert.equal(changes[0].before.endTimeReal, '18:00')
+  assert.equal(changes[0].after.endTimeReal, '18:30')
+})

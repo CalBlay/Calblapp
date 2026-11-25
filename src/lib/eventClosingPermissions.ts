@@ -2,6 +2,7 @@ import { normalizeDept } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 
 export const EVENT_CLOSING_ACTION = 'event:close'
+export const EVENT_CLOSING_CROSS_DEPARTMENT_ACTION = 'event:close:cross-department'
 
 export function canEnableEventClosingAction(params: {
   canViewEvents: boolean
@@ -25,6 +26,7 @@ export function canCloseEventDepartment(params: {
   userDepartment?: string | null
   targetDepartment?: string | null
   hasClosingPermission: boolean
+  hasCrossDepartmentPermission?: boolean
 }): boolean {
   if (
     !canOpenEventClosing({
@@ -37,6 +39,7 @@ export function canCloseEventDepartment(params: {
 
   const role = normalizeRole(params.role || undefined)
   if (role === 'admin' || role === 'direccio' || role === 'cap') return true
+  if (params.hasCrossDepartmentPermission) return true
 
   const userDepartment = normalizeDept(params.userDepartment)
   const targetDepartment = normalizeDept(params.targetDepartment)

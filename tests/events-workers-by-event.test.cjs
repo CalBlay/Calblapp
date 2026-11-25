@@ -19,6 +19,9 @@ const base = {
   leftEarly: false,
   isEtt: false,
   notes: '',
+  wasCorrected: false,
+  correctionReason: '',
+  closingChangedAt: '',
 }
 
 test('groups event workers by department and preserves operational closing time', () => {
@@ -196,4 +199,32 @@ test('calculates each worker total official hours across the selected period wit
   )
   assert.equal(rows.length, 2)
   assert.ok(rows.every((row) => row.periodActualHours === 12.5))
+})
+
+test('keeps correction metadata when the same worker has multiple roles', () => {
+  const groups = groupEventsWorkersByEvent([
+    {
+      ...base,
+      department: 'LogÃ­stica',
+      workerName: 'Pau',
+      role: 'responsable',
+      plannedStartTime: '16:00',
+      realEndTime: '23:00',
+    },
+    {
+      ...base,
+      department: 'LogÃ­stica',
+      workerName: 'Pau',
+      role: 'conductor',
+      plannedStartTime: '16:00',
+      realEndTime: '23:30',
+      wasCorrected: true,
+      correctionReason: 'Hora confirmada pel responsable',
+      closingChangedAt: '2026-11-25T12:00:00.000Z',
+    },
+  ])
+
+  const row = groups[0].departments[0].rows[0]
+  assert.equal(row.wasCorrected, true)
+  assert.equal(row.correctionReason, 'Hora confirmada pel responsable')
 })

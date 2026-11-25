@@ -16,6 +16,7 @@ import {
 } from '@/lib/server/permissions'
 import {
   EVENT_CLOSING_ACTION,
+  EVENT_CLOSING_CROSS_DEPARTMENT_ACTION,
   canCloseEventDepartment,
   canEnableEventClosingAction,
 } from '@/lib/eventClosingPermissions'
@@ -26,6 +27,7 @@ import {
   type ClosingPersonUpdate,
 } from '@/lib/quadrantsClosing'
 import { isUserOperationalResponsibleInQuadrants } from '@/lib/server/eventOperationalResponsibility'
+import { normalizeCommercialAuditGroup } from '@/lib/auditDepartment'
 
 type Dept =
   | 'serveis'
@@ -57,12 +59,17 @@ export async function PUT(req: NextRequest) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const closingOverrideAllowed = await isAllowedByClientOverride({
-      userId: auth.user.id,
-      role: auth.user.role,
-      permission: PERM.action('/menu/events', EVENT_CLOSING_ACTION),
-    })
-    const [canViewEvents, canEditEvents] = await Promise.all([
+    const [closingOverrideAllowed, crossDepartmentOverrideAllowed, canViewEvents, canEditEvents] = await Promise.all([
+      isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/events', EVENT_CLOSING_ACTION),
+      }),
+      isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/events', EVENT_CLOSING_CROSS_DEPARTMENT_ACTION),
+      }),
       canViewUiPath({ user: auth.user, path: '/menu/events' }),
       canEditUiPath({ user: auth.user, path: '/menu/events' }),
     ])
@@ -78,13 +85,14 @@ export async function PUT(req: NextRequest) {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { eventId, department, updates, closeDept, quadrantId, phaseType } = (await req.json()) as {
+    const { eventId, department, updates, closeDept, quadrantId, phaseType, correctionReason } = (await req.json()) as {
       eventId?: string
       department?: Dept
       updates?: ClosingPersonUpdate[]
       closeDept?: boolean
       quadrantId?: string
       phaseType?: string
+      correctionReason?: string
     }
 
     if (!eventId || !department || !Array.isArray(updates)) {
@@ -113,6 +121,7 @@ export async function PUT(req: NextRequest) {
       userDepartment: deptToken,
       targetDepartment: department,
       hasClosingPermission,
+      hasCrossDepartmentPermission: crossDepartmentOverrideAllowed === true,
     })) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -120,6 +129,27 @@ export async function PUT(req: NextRequest) {
     const colName = await resolveCollection(department)
     const collection = db.collection(colName)
     const canonicalEventId = normalizeClosingEventId(eventId)
+    const targetDepartment = norm(String(department))
+    const userCommercialGroup = normalizeCommercialAuditGroup(auth.user.department)
+    const isCrossDepartmentChange = Boolean(deptToken && targetDepartment !== deptToken)
+    if (isCrossDepartmentChange && userCommercialGroup) {
+      const eventSnaps = await Promise.all(
+        ['stage_verd', 'stage_taronja'].map((collectionId) =>
+          db.collection(collectionId).doc(canonicalEventId).get()
+        )
+      )
+      const eventData = eventSnaps.find((snap) => snap.exists)?.data()
+      const eventCode = String(eventData?.code || eventData?.Codi || '').trim()
+      const eventCommercialGroup =
+        normalizeCommercialAuditGroup(String(eventData?.LN || eventData?.lnKey || '')) ||
+        (/^F(?:-|\d)/i.test(eventCode) ? 'foodlovers' : null)
+      if (eventCommercialGroup !== userCommercialGroup) {
+        return NextResponse.json(
+          { error: 'El permÃ­s interdepartamental nomÃ©s sâ€™aplica als esdeveniments de la teva lÃ­nia comercial' },
+          { status: 403 }
+        )
+      }
+    }
     const requestedQuadrantId = String(quadrantId || '').trim()
     if (requestedQuadrantId.includes('/')) {
       return NextResponse.json({ error: 'quadrantId no vàlid' }, { status: 400 })
@@ -175,24 +205,32 @@ export async function PUT(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const userId = jwtString(token, ['sub', 'id'])
+    const userId = auth.user.id || jwtString(token, ['sub', 'id'])
+    const reason = String(correctionReason || '').trim()
     let totalMatched = 0
     let written = 0
+    const pendingWrites: Array<{
+      target: (typeof targetDocs)[number]
+      payload: Record<string, unknown>
+      changes: ReturnType<typeof applyClosingUpdatesToQuadrantData>['changes']
+    }> = []
 
     for (const target of targetDocs) {
-      const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
+      const { payload, matchedPeople, changes } = applyClosingUpdatesToQuadrantData({
         data: target.data,
         updates,
         department: String(department),
         closeDept: Boolean(closeDept),
         nowIso: now,
         userId,
+        userName: auth.user.name || '',
+        correctionReason: reason,
       })
 
       totalMatched += matchedPeople
       if (matchedPeople === 0 && !closeDept) continue
 
-      await collection.doc(target.id).set(payload, { merge: true })
+      pendingWrites.push({ target, payload, changes })
       written += 1
     }
 
@@ -203,10 +241,51 @@ export async function PUT(req: NextRequest) {
       )
     }
 
+    const hasCorrections = pendingWrites.some(({ changes }) =>
+      changes.some((change) => change.isCorrection)
+    )
+    if (hasCorrections && !reason) {
+      return NextResponse.json(
+        { error: 'Cal indicar el motiu de la correcciÃ³ de les hores ja tancades' },
+        { status: 400 }
+      )
+    }
+
+    const batch = db.batch()
+    let auditEntries = 0
+    for (const { target, payload, changes } of pendingWrites) {
+      batch.set(collection.doc(target.id), payload, { merge: true })
+      for (const change of changes) {
+        const historyRef = db.collection('eventClosingHistory').doc()
+        batch.create(historyRef, {
+          eventId: canonicalEventId,
+          quadrantId: target.id,
+          department: norm(String(department)),
+          personName: change.personName,
+          personRole: change.role,
+          before: change.before,
+          after: change.after,
+          isCorrection: change.isCorrection,
+          revision: change.revision,
+          reason: change.isCorrection ? reason : '',
+          changedAt: now,
+          changedBy: {
+            userId,
+            userName: String(auth.user.name || ''),
+            userRole: String(auth.user.role || roleRaw || ''),
+            userDepartment: String(auth.user.department || deptToken || ''),
+          },
+        })
+        auditEntries += 1
+      }
+    }
+    await batch.commit()
+
     return NextResponse.json({
       ok: true,
       updatedDocs: written,
       matchedPeople: totalMatched,
+      auditEntries,
     })
   } catch (err: unknown) {
     console.error('[quadrants/closing] error', err)

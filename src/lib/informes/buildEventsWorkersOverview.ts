@@ -232,6 +232,9 @@ function collectPersonLines(doc: QuadrantDoc) {
     leftEarly: boolean
     isEtt: boolean
     notes: string
+    closingRevision: number
+    closingChangedAt: string
+    closingCorrectionReason: string
   }> = []
 
   const department = String(doc.department || '').trim()
@@ -256,6 +259,9 @@ function collectPersonLines(doc: QuadrantDoc) {
         hasEttWorkerMarker(name) ||
         (person.isExternal === true && externalType !== 'centerExternalExtra'),
       notes: String(person.sortidaNotes || '').trim(),
+      closingRevision: person.closingRevision || 0,
+      closingChangedAt: person.closingChangedAt || '',
+      closingCorrectionReason: person.closingCorrectionReason || '',
     })
   }
 
@@ -346,6 +352,9 @@ export async function buildEventsWorkersOverview({
         leftEarly: line.leftEarly,
         isEtt: line.isEtt,
         notes: line.notes,
+        wasCorrected: Boolean(line.closingCorrectionReason || (line.closingRevision || 0) > 1),
+        correctionReason: line.closingCorrectionReason || '',
+        closingChangedAt: line.closingChangedAt || '',
       }
 
       uniquePushOption(filterDepartments, entry.department, titleCase(entry.department))

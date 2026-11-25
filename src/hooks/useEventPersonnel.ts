@@ -21,6 +21,9 @@ export interface Person {
   noShow?: boolean
   lateArrival?: boolean
   leftEarly?: boolean
+  closingRevision?: number
+  closingChangedAt?: string
+  closingCorrectionReason?: string
 }
 
 export interface EventPersonnel {

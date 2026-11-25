@@ -83,6 +83,9 @@ export type EventsWorkersEntryRow = {
   leftEarly: boolean
   isEtt: boolean
   notes: string
+  wasCorrected: boolean
+  correctionReason: string
+  closingChangedAt: string
 }
 
 export type EventsWorkersFilterOptions = {

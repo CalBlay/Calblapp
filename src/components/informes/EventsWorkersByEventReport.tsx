@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Calendar } from 'lucide-react'
+import { Calendar, PencilLine } from 'lucide-react'
 import type { EventsWorkersEntryRow } from '@/lib/informes/eventsWorkersOverview'
 import { groupEventsWorkersByEvent } from '@/lib/informes/eventsWorkersByEvent'
 import { colorByDepartment, dotByDepartment } from '@/lib/colors'
@@ -23,7 +23,13 @@ function roleLabel(role: string) {
   return 'Treballador/a'
 }
 
-export function EventsWorkersByEventReport({ entries }: { entries: EventsWorkersEntryRow[] }) {
+export function EventsWorkersByEventReport({
+  entries,
+  onCorrectEvent,
+}: {
+  entries: EventsWorkersEntryRow[]
+  onCorrectEvent?: (event: { eventId: string; eventName: string }) => void
+}) {
   const events = useMemo(() => groupEventsWorkersByEvent(entries), [entries])
 
   if (events.length === 0) {
@@ -58,6 +64,16 @@ export function EventsWorkersByEventReport({ entries }: { entries: EventsWorkers
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-slate-700">
+                {onCorrectEvent ? (
+                  <button
+                    type="button"
+                    onClick={() => onCorrectEvent({ eventId: event.eventId, eventName: event.eventName })}
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 font-semibold text-violet-700 hover:bg-violet-100"
+                  >
+                    <PencilLine className="h-3.5 w-3.5" aria-hidden />
+                    Corregir hores
+                  </button>
+                ) : null}
                 <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5">
                   {event.departments.length} departaments
                 </span>
@@ -133,19 +149,30 @@ export function EventsWorkersByEventReport({ entries }: { entries: EventsWorkers
                               {formatHours(row.periodActualHours)}
                             </TableCell>
                             <TableCell className="py-4">
-                              <span
-                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                  closed
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-amber-50 text-amber-800'
-                                }`}
-                              >
-                                {row.lateArrival
-                                  ? 'Arribada tardana'
-                                  : closed
-                                    ? 'Tancat'
-                                    : 'Pendent de tancament'}
-                              </span>
+                              <div className="flex flex-col items-start gap-1">
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                    row.wasCorrected
+                                      ? 'bg-violet-50 text-violet-700'
+                                      : closed
+                                        ? 'bg-emerald-50 text-emerald-700'
+                                        : 'bg-amber-50 text-amber-800'
+                                  }`}
+                                >
+                                  {row.wasCorrected
+                                    ? 'Corregit'
+                                    : row.lateArrival
+                                      ? 'Arribada tardana'
+                                      : closed
+                                        ? 'Tancat'
+                                        : 'Pendent de tancament'}
+                                </span>
+                                {row.wasCorrected && row.correctionReason ? (
+                                  <span className="max-w-48 text-xs text-slate-500" title={row.correctionReason}>
+                                    {row.correctionReason}
+                                  </span>
+                                ) : null}
+                              </div>
                             </TableCell>
                           </TableRow>
                         )

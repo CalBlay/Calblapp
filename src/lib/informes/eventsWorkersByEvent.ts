@@ -91,6 +91,11 @@ function mergeDepartmentRows(rows: EventsWorkersEntryRow[]): EventsWorkersEventP
     current.isResponsible = current.isResponsible || row.isResponsible
     current.leftEarly = current.leftEarly || row.leftEarly
     current.lateArrival = current.lateArrival || row.lateArrival
+    if (row.wasCorrected) {
+      current.wasCorrected = true
+      current.correctionReason = row.correctionReason || current.correctionReason
+      current.closingChangedAt = row.closingChangedAt || current.closingChangedAt
+    }
     current.roles.sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b))
     if (effectiveStartTime(current) && current.realEndTime) {
       current.actualHours = workedHours(effectiveStartTime(current), current.realEndTime)

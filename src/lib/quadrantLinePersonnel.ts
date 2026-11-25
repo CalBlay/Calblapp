@@ -14,6 +14,9 @@ export type QuadrantScheduledPerson = Record<string, unknown> & {
   endTime: string
   meetingPoint: string
   groupId?: string
+  closingRevision?: number
+  closingChangedAt?: string
+  closingCorrectionReason?: string
 }
 
 type UnknownRow = Record<string, unknown>
@@ -232,6 +235,14 @@ function scheduledPerson(params: {
       text(base.meetingPoint) ||
       text(doc.meetingPoint),
     groupId: text(group.id || group.groupId) || undefined,
+    closingRevision:
+      Number(line.closingRevision || base.closingRevision) ||
+      (line.sortidaSetBy || base.sortidaSetBy ? 1 : 0),
+    closingChangedAt: text(line.closingChangedAt || base.closingChangedAt),
+    closingCorrectionReason: text(
+      (line.closingCorrection as UnknownRow | undefined)?.reason ||
+        (base.closingCorrection as UnknownRow | undefined)?.reason
+    ),
   }
 }
 

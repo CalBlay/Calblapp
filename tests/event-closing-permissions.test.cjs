@@ -44,6 +44,16 @@ test('workers and commercials can open closing only with the explicit permission
 test('workers and commercials close only their department; managers can switch', () => {
   assert.equal(
     canCloseEventDepartment({
+      role: 'comercial',
+      userDepartment: 'foodlovers',
+      targetDepartment: 'serveis',
+      hasClosingPermission: true,
+      hasCrossDepartmentPermission: true,
+    }),
+    true
+  )
+  assert.equal(
+    canCloseEventDepartment({
       role: 'treballador',
       userDepartment: 'Food Lover',
       targetDepartment: 'foodlovers',

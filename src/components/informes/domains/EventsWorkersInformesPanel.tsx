@@ -31,6 +31,11 @@ import { exportRowsToPdf } from '@/lib/roba-personal/robaExport'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
 import { toast } from '@/components/ui/use-toast'
+import { useSession } from 'next-auth/react'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import { EVENT_CLOSING_CROSS_DEPARTMENT_ACTION } from '@/lib/eventClosingPermissions'
+import EventClosingHoursPanel from '@/components/events/EventClosingModal'
 
 const EVENTS_META = INFORMES_DOMAINS.find((domain) => domain.id === 'events')!
 
@@ -220,6 +225,8 @@ function RankingList({
 }
 
 export function EventsWorkersInformesPanel() {
+  const { data: session } = useSession()
+  const { uiActions } = useUiPermissions()
   const [tab, setTab] = useState<'kpis' | 'events' | 'custom'>('kpis')
   const [days, setDays] = useState('30')
   const [kpiDepartment, setKpiDepartment] = useState('')
@@ -248,6 +255,14 @@ export function EventsWorkersInformesPanel() {
   const [filterOptions, setFilterOptions] = useState<EventsWorkersOverview['filterOptions'] | null>(
     null
   )
+  const [correctionEvent, setCorrectionEvent] = useState<{
+    eventId: string
+    eventName: string
+  } | null>(null)
+  const canCorrectCrossDepartment =
+    uiActions[
+      PERM.action('/menu/events', EVENT_CLOSING_CROSS_DEPARTMENT_ACTION)
+    ] === true
 
   const loadKpis = useCallback(async () => {
     setKpiLoading(true)
@@ -802,7 +817,33 @@ export function EventsWorkersInformesPanel() {
       ) : null}
 
       {tab === 'events' && eventsData && !eventsLoading ? (
-        <EventsWorkersByEventReport entries={filteredEventEntries} />
+        <EventsWorkersByEventReport
+          entries={filteredEventEntries}
+          onCorrectEvent={canCorrectCrossDepartment ? setCorrectionEvent : undefined}
+        />
+      ) : null}
+
+      {correctionEvent ? (
+        <div className="fixed inset-0 z-[100] bg-slate-950/45 sm:flex sm:items-center sm:justify-center sm:p-4">
+          <div className="h-[100dvh] w-full overflow-hidden bg-white sm:h-[min(92dvh,900px)] sm:max-w-lg sm:rounded-2xl sm:shadow-2xl">
+            <EventClosingHoursPanel
+              eventId={correctionEvent.eventId}
+              eventName={correctionEvent.eventName}
+              phaseType="event"
+              user={{
+                role: String(session?.user?.role || ''),
+                department: String(session?.user?.department || ''),
+              }}
+              canEditCrossDepartment
+              onBack={() => setCorrectionEvent(null)}
+              onClose={() => setCorrectionEvent(null)}
+              onSaved={() => {
+                setCorrectionEvent(null)
+                void runEventsReport()
+              }}
+            />
+          </div>
+        </div>
       ) : null}
 
       {activeData && tab !== 'events' ? (

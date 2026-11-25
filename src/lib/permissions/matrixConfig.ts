@@ -203,6 +203,10 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         key: PERM.action('/menu/events', 'event:close'),
         label: 'Tancament operatiu i hores reals',
       },
+      {
+        key: PERM.action('/menu/events', 'event:close:cross-department'),
+        label: 'Modificar hores de tots els departaments',
+      },
     ],
   },
   {
