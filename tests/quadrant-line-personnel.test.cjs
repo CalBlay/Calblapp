@@ -84,6 +84,46 @@ test('legacy quadrants still fall back to person and header hours', () => {
   assert.equal(person.endTime, '16:00')
 })
 
+test('ETT slots stored as external workers are included in closing personnel', () => {
+  const rows = collectQuadrantLinePersonnel({
+    startDate: '2026-11-25',
+    externalWorkers: [
+      {
+        id: 'serveis-event-1',
+        name: 'ETT',
+        isExternal: true,
+        externalType: 'ett',
+        startTime: '10:00',
+        endTime: '18:00',
+        meetingPoint: 'Sala',
+      },
+      {
+        id: 'serveis-event-2',
+        name: 'ETT',
+        isExternal: true,
+        externalType: 'ett',
+        startTime: '11:00',
+        endTime: '19:00',
+        meetingPoint: 'Sala',
+      },
+      {
+        id: 'external-extra-1',
+        name: 'Extra C.Extern - MEBOTA',
+        isExternal: true,
+        externalType: 'centerExternalExtra',
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    rows.map((row) => ({ id: row.id, name: row.name, startTime: row.startTime, endTime: row.endTime })),
+    [
+      { id: 'serveis-event-1', name: 'ETT', startTime: '10:00', endTime: '18:00' },
+      { id: 'serveis-event-2', name: 'ETT', startTime: '11:00', endTime: '19:00' },
+    ]
+  )
+})
+
 test('real arrival time overrides the effective start but preserves the planned call time', () => {
   const [person] = collectQuadrantLinePersonnel({
     startDate: '2026-11-16',

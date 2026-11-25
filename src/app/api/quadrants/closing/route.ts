@@ -261,6 +261,7 @@ export async function PUT(req: NextRequest) {
           eventId: canonicalEventId,
           quadrantId: target.id,
           department: norm(String(department)),
+          personId: change.personId || null,
           personName: change.personName,
           personRole: change.role,
           before: change.before,

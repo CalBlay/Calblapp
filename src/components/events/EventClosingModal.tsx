@@ -157,6 +157,7 @@ export default function EventClosingHoursPanel({ onBack, onClose, onSaved, event
         throw new Error('Indica el motiu de la correcciÃ³ de les hores ja tancades')
       }
       const updates = rows.map((row) => ({
+        id: row.id,
         name: row.name || '',
         role: row.role,
         startTimeReal: row.lateArrival ? row.startTimeReal || '' : '',

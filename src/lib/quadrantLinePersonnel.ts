@@ -88,6 +88,12 @@ function personName(row: UnknownRow) {
   return text(row.name || row.personName || row.nom || row.displayName)
 }
 
+function isEttPerson(row: UnknownRow) {
+  const externalType = norm(row.externalType)
+  const name = norm(row.name || row.personName || row.nom || row.displayName)
+  return externalType === 'ett' || (row.isExternal === true && name.startsWith('ett'))
+}
+
 function basePeople(doc: UnknownRow) {
   const out: Array<UnknownRow & { role: QuadrantPersonnelRole }> = []
   const push = (value: unknown, role: QuadrantPersonnelRole) => {
@@ -107,6 +113,12 @@ function basePeople(doc: UnknownRow) {
   pushArray(doc.conductors, 'conductor')
   pushArray(doc.treballadors, 'treballador')
   pushArray(doc.workers, 'treballador')
+  if (Array.isArray(doc.externalWorkers)) {
+    doc.externalWorkers
+      .filter((row): row is UnknownRow => Boolean(row && typeof row === 'object' && !Array.isArray(row)))
+      .filter(isEttPerson)
+      .forEach((row) => push(row, 'treballador'))
+  }
 
   if (!out.some((row) => row.role === 'responsable') && text(doc.responsableName)) {
     out.push({

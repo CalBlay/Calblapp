@@ -109,6 +109,32 @@ test('applyClosingUpdatesToQuadrantData writes endTimeReal onto phase-doc worker
   assert.equal(payload.updatedAt, '2026-07-26T12:00:00.000Z')
 })
 
+test('applyClosingUpdatesToQuadrantData updates each ETT external slot by id', () => {
+  const { payload, matchedPeople, changes } = applyClosingUpdatesToQuadrantData({
+    data: {
+      externalWorkers: [
+        { id: 'logistica-ett-mati-1', name: 'ETT', externalType: 'ett', endTime: '18:00' },
+        { id: 'logistica-ett-mati-2', name: 'ETT', externalType: 'ett', endTime: '18:00' },
+      ],
+    },
+    updates: [
+      { id: 'logistica-ett-mati-1', name: 'ETT', endTimeReal: '18:15' },
+      { id: 'logistica-ett-mati-2', name: 'ETT', endTimeReal: '19:05' },
+    ],
+    department: 'logistica',
+    nowIso: '2026-11-25T12:00:00.000Z',
+    userId: 'user-1',
+  })
+
+  assert.equal(matchedPeople, 2)
+  assert.equal(payload.externalWorkers[0].endTimeReal, '18:15')
+  assert.equal(payload.externalWorkers[1].endTimeReal, '19:05')
+  assert.deepEqual(changes.map((change) => change.personId), [
+    'logistica-ett-mati-1',
+    'logistica-ett-mati-2',
+  ])
+})
+
 test('applyClosingUpdatesToQuadrantData also updates the matching role line', () => {
   const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
     data: {

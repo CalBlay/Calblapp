@@ -1,4 +1,5 @@
 export type ClosingPersonUpdate = {
+  id?: string
   name: string
   role?: string
   startTimeReal?: string
@@ -24,6 +25,7 @@ export type ClosingPersonState = {
 }
 
 export type ClosingAuditChange = {
+  personId?: string
   personName: string
   role: string
   before: ClosingPersonState
@@ -50,6 +52,22 @@ function matchByName(a?: string, b?: string) {
 
 type ClosingRow = Record<string, unknown>
 
+const closingRowId = (row: ClosingRow) =>
+  String(row.id || row.personId || row.workerId || row.uid || '').trim()
+
+function matchesClosingUpdate(update: ClosingPersonUpdate, row: ClosingRow) {
+  const updateId = String(update.id || '').trim()
+  const rowId = closingRowId(row)
+  if (updateId) return Boolean(rowId && updateId === rowId)
+  const rowName =
+    typeof row.name === 'string'
+      ? row.name
+      : typeof row.personName === 'string'
+        ? row.personName
+        : undefined
+  return matchByName(update.name, rowName)
+}
+
 function updateArray(
   arr: ClosingRow[] | undefined,
   updates: ClosingPersonUpdate[],
@@ -58,8 +76,7 @@ function updateArray(
   if (!Array.isArray(arr)) return { next: arr, matched: 0 }
   let matched = 0
   const next = arr.map((item) => {
-    const itemName = typeof item.name === 'string' ? item.name : undefined
-    const upd = updates.find((u) => matchByName(u.name, itemName))
+    const upd = updates.find((update) => matchesClosingUpdate(update, item))
     if (!upd) return item
     matched += 1
     const cloned = { ...item }
@@ -79,13 +96,7 @@ function updateGroupRoleLines(
   const next = groups.map((group) => {
     if (!Array.isArray(group.roleLines)) return group
     const roleLines = (group.roleLines as ClosingRow[]).map((line) => {
-      const lineName =
-        typeof line.personName === 'string'
-          ? line.personName
-          : typeof line.name === 'string'
-            ? line.name
-            : undefined
-      const update = updates.find((item) => matchByName(item.name, lineName))
+      const update = updates.find((item) => matchesClosingUpdate(item, line))
       if (!update) return line
       matched += 1
       const cloned = { ...line }
@@ -214,6 +225,7 @@ export function applyClosingUpdatesToQuadrantData(params: {
     }
 
     const change: ClosingAuditChange = {
+      personId: String(upd.id || closingRowId(item) || '') || undefined,
       personName: String(upd.name || ''),
       role: String(upd.role || ''),
       before,
@@ -221,7 +233,7 @@ export function applyClosingUpdatesToQuadrantData(params: {
       isCorrection: hadPreviousClosing,
       revision,
     }
-    const key = normalizeClosingName(upd.name)
+    const key = String(upd.id || closingRowId(item) || normalizeClosingName(upd.name))
     const previous = changesByPerson.get(key)
     if (!previous || (!previous.isCorrection && change.isCorrection)) {
       changesByPerson.set(key, change)
@@ -251,6 +263,11 @@ export function applyClosingUpdatesToQuadrantData(params: {
     updates,
     setter
   )
+  const updatedExternalWorkers = updateArray(
+    Array.isArray(data.externalWorkers) ? (data.externalWorkers as ClosingRow[]) : undefined,
+    updates,
+    setter
+  )
   const updatedGroups = updateGroupRoleLines(
     Array.isArray(data.groups) ? (data.groups as ClosingRow[]) : undefined,
     updates,
@@ -262,6 +279,7 @@ export function applyClosingUpdatesToQuadrantData(params: {
     updatedConductors.matched +
     updatedTreballadors.matched +
     updatedWorkers.matched +
+    updatedExternalWorkers.matched +
     updatedGroups.matched
 
   const payload: Record<string, unknown> = {
@@ -277,6 +295,7 @@ export function applyClosingUpdatesToQuadrantData(params: {
   if (updatedConductors.next) payload.conductors = updatedConductors.next
   if (updatedTreballadors.next) payload.treballadors = updatedTreballadors.next
   if (updatedWorkers.next) payload.workers = updatedWorkers.next
+  if (updatedExternalWorkers.next) payload.externalWorkers = updatedExternalWorkers.next
   if (updatedGroups.next) payload.groups = updatedGroups.next
 
   if (closeDept) {
