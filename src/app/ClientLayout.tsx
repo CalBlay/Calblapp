@@ -23,6 +23,7 @@ import PWARegister from '@/components/PWARegister'
 import PushNotificationHandler from '@/components/PushNotificationHandler'
 import DocumentTitle from '@/components/DocumentTitle'
 import useSWR from 'swr'
+import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAccess'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -68,8 +69,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 
   const user = session?.user
   const isLogin = pathname.startsWith('/login')
+  const isExpeditionsMonitorRoute = pathname.startsWith('/monitor/expedicions')
   const { data: uiPermData } = useSWR(
-    user?.id ? '/api/permissions/ui' : null,
+    user?.id && !isExpeditionsMonitorRoute ? '/api/permissions/ui' : null,
     fetcher
   )
   const uiMap = useMemo(
@@ -83,6 +85,18 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
       router.replace('/login')
     }
   }, [status, user, pathname, router])
+
+  useEffect(() => {
+    if (
+      status !== 'loading' &&
+      user?.id &&
+      isExpeditionsMonitorUser(user.id) &&
+      !isLogin &&
+      !isExpeditionsMonitorRoute
+    ) {
+      router.replace('/monitor/expedicions?vista=doble')
+    }
+  }, [status, user?.id, isLogin, isExpeditionsMonitorRoute, router])
 
   /* Treballadors manteniment: sense accés a /menu/spaces (abans de qualsevol return per regles dels hooks) */
   useEffect(() => {
@@ -155,6 +169,10 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <FullScreenStatus message="Redirigint a l'inici de sessio..." />
+  }
+
+  if (isExpeditionsMonitorRoute) {
+    return <div className="min-h-[100dvh] bg-slate-950 text-white">{children}</div>
   }
 
   return (

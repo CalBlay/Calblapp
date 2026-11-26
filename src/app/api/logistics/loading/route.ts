@@ -4,6 +4,7 @@ import {
   listLogisticsLoadingEvents,
   setLogisticsLoadingLine,
 } from '@/lib/logistics/logisticsLoading.server'
+import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
   const forbidden = requireRoles(auth, ALLOWED_ROLES)
-  if (forbidden) return forbidden.res
+  if (forbidden && !isExpeditionsMonitorUser(auth.user.id)) return forbidden.res
   const { searchParams } = new URL(req.url)
   const start = String(searchParams.get('start') || '').trim()
   const end = String(searchParams.get('end') || '').trim()

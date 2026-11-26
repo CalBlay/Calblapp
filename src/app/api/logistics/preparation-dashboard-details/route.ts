@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { listLogisticsPreparationDashboardDetails } from '@/lib/logistics/logisticsLoading.server'
+import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
   const forbidden = requireRoles(auth, ALLOWED_ROLES)
-  if (forbidden) return forbidden.res
+  if (forbidden && !isExpeditionsMonitorUser(auth.user.id)) return forbidden.res
   const body = (await req.json().catch(() => ({}))) as { rowIds?: unknown }
   const rowIds = Array.isArray(body.rowIds)
     ? body.rowIds.map((value) => String(value || '').trim()).filter(Boolean)

@@ -15,6 +15,7 @@ import {
 } from '@/app/menu/quadrants/hooks/useQuadrantsPageData'
 import { groupQuadrantsByDayAndEvent } from '@/lib/quadrantsGrouping'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
+import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAccess'
 
 export const runtime = 'nodejs'
 
@@ -145,7 +146,7 @@ async function authContext(req: NextRequest) {
   }
 
   const role = normalizeRole(String((token as { role?: string }).role || 'treballador'))
-  if (!ALLOWED_ROLES.has(role)) {
+  if (!ALLOWED_ROLES.has(role) && !isExpeditionsMonitorUser(String(token.sub || ''))) {
     return { error: NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 }) }
   }
 
@@ -154,7 +155,7 @@ async function authContext(req: NextRequest) {
     return { error: NextResponse.json({ ok: false, error: 'Usuari no vàlid' }, { status: 401 }) }
   }
 
-  return { role, userId }
+  return { role, userId, isMonitor: isExpeditionsMonitorUser(userId) }
 }
 
 async function queryByStringRange(start: string, end: string) {
@@ -601,12 +602,14 @@ export async function GET(req: NextRequest) {
       return (a.HoraInici || '').localeCompare(b.HoraInici || '')
     })
 
-    const warehouseTasks = await listWarehousePrepTasksForUser({
-      userId: auth.userId,
-      role: auth.role,
-      rangeStart: startStr,
-      rangeEnd: endStr,
-    })
+    const warehouseTasks = auth.isMonitor
+      ? []
+      : await listWarehousePrepTasksForUser({
+          userId: auth.userId,
+          role: auth.role,
+          rangeStart: startStr,
+          rangeEnd: endStr,
+        })
 
     return NextResponse.json({
       ok: true,
