@@ -168,6 +168,16 @@ function LoadingEventCard({
   let totalMachinery = 0
   let totalSmallMachinery = 0
   let totalPalletJacks = 0
+  let loadedCarts = 0
+  let loadedPallets = 0
+  let loadedKits = 0
+  let loadedGelPileBags = 0
+  let loadedGelStoneBags = 0
+  let loadedGelMojitoBags = 0
+  let loadedRacks = 0
+  let loadedMachinery = 0
+  let loadedSmallMachinery = 0
+  let loadedPalletJacks = 0
   let totalPendingArticles = 0
   for (const line of event.lines) {
     const warehouseCode = line.warehouseCodes[0] || 'LOGISTICA'
@@ -175,25 +185,45 @@ function LoadingEventCard({
     current.push(line)
     warehouseGroups.set(warehouseCode, current)
     const lineType = line.key.slice(line.key.lastIndexOf(':') + 1)
-    if (lineType === 'carts') totalCarts += line.quantity
+    if (lineType === 'carts') {
+      totalCarts += line.quantity
+      if (line.loaded) loadedCarts += line.quantity
+    }
     if (lineType === 'euro-pallets' || lineType === 'american-pallets') {
       totalPallets += line.quantity
+      if (line.loaded) loadedPallets += line.quantity
     }
     if (line.key.startsWith('logistics-pack:') || line.key.includes(':logistics-pack:')) {
       totalKits += line.quantity
+      if (line.loaded) loadedKits += line.quantity
     }
-    if (lineType === 'gel-pile') totalGelPileBags += line.quantity
-    if (lineType === 'gel-stone') totalGelStoneBags += line.quantity
-    if (lineType === 'gel-mojito') totalGelMojitoBags += line.quantity
-    if (lineType === 'racks') totalRacks += line.quantity
+    if (lineType === 'gel-pile') {
+      totalGelPileBags += line.quantity
+      if (line.loaded) loadedGelPileBags += line.quantity
+    }
+    if (lineType === 'gel-stone') {
+      totalGelStoneBags += line.quantity
+      if (line.loaded) loadedGelStoneBags += line.quantity
+    }
+    if (lineType === 'gel-mojito') {
+      totalGelMojitoBags += line.quantity
+      if (line.loaded) loadedGelMojitoBags += line.quantity
+    }
+    if (lineType === 'racks') {
+      totalRacks += line.quantity
+      if (line.loaded) loadedRacks += line.quantity
+    }
     if (line.key.startsWith('machinery:') || line.key.includes(':machinery:')) {
       totalMachinery += line.quantity
+      if (line.loaded) loadedMachinery += line.quantity
     }
     if (line.key.startsWith('small-machinery:') || line.key.includes(':small-machinery:')) {
       totalSmallMachinery += line.quantity
+      if (line.loaded) loadedSmallMachinery += line.quantity
     }
     if (line.key.startsWith('pallet-jack:') || line.key.includes(':pallet-jack:')) {
       totalPalletJacks += line.quantity
+      if (line.loaded) loadedPalletJacks += line.quantity
     }
     if (!line.ready && line.pendingResolution !== 'left_unprepared') {
       totalPendingArticles += line.quantity
@@ -230,101 +260,101 @@ function LoadingEventCard({
                 {totalCarts > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-800 ring-1 ring-inset ring-sky-200"
-                    title={`${totalCarts} carros en total`}
-                    aria-label={`${totalCarts} carros en total`}
+                    title={`${loadedCarts} de ${totalCarts} carros carregats`}
+                    aria-label={`${loadedCarts} de ${totalCarts} carros carregats`}
                   >
                     <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalCarts} <span className="font-semibold">carros</span>
+                    {loadedCarts}/{totalCarts} <span className="font-semibold">carros</span>
                   </span>
                 ) : null}
                 {totalPallets > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-inset ring-violet-200"
-                    title={`${totalPallets} palets en total (EU + AM)`}
-                    aria-label={`${totalPallets} palets en total`}
+                    title={`${loadedPallets} de ${totalPallets} palets carregats (EU + AM)`}
+                    aria-label={`${loadedPallets} de ${totalPallets} palets carregats`}
                   >
                     <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalPallets} <span className="font-semibold">palets</span>
+                    {loadedPallets}/{totalPallets} <span className="font-semibold">palets</span>
                   </span>
                 ) : null}
                 {totalKits > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 ring-1 ring-inset ring-indigo-200"
-                    title={`${totalKits} kits de logística en total`}
-                    aria-label={`${totalKits} kits de logística en total`}
+                    title={`${loadedKits} de ${totalKits} kits de logística carregats`}
+                    aria-label={`${loadedKits} de ${totalKits} kits de logística carregats`}
                   >
                     <Package className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalKits} <span className="font-semibold">kits</span>
+                    {loadedKits}/{totalKits} <span className="font-semibold">kits</span>
                   </span>
                 ) : null}
                 {totalGelPileBags > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 ring-1 ring-inset ring-cyan-200"
-                    title={`${totalGelPileBags} sacs de gel pilé`}
-                    aria-label={`${totalGelPileBags} sacs de gel pilé`}
+                    title={`${loadedGelPileBags} de ${totalGelPileBags} sacs de gel pilé carregats`}
+                    aria-label={`${loadedGelPileBags} de ${totalGelPileBags} sacs de gel pilé carregats`}
                   >
                     <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalGelPileBags} <span className="font-semibold">gel pilé</span>
+                    {loadedGelPileBags}/{totalGelPileBags} <span className="font-semibold">gel pilé</span>
                   </span>
                 ) : null}
                 {totalGelStoneBags > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-inset ring-blue-200"
-                    title={`${totalGelStoneBags} sacs de gel pedra`}
-                    aria-label={`${totalGelStoneBags} sacs de gel pedra`}
+                    title={`${loadedGelStoneBags} de ${totalGelStoneBags} sacs de gel pedra carregats`}
+                    aria-label={`${loadedGelStoneBags} de ${totalGelStoneBags} sacs de gel pedra carregats`}
                   >
                     <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalGelStoneBags} <span className="font-semibold">gel pedra</span>
+                    {loadedGelStoneBags}/{totalGelStoneBags} <span className="font-semibold">gel pedra</span>
                   </span>
                 ) : null}
                 {totalGelMojitoBags > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 ring-1 ring-inset ring-teal-200"
-                    title={`${totalGelMojitoBags} sacs de gel mojito`}
-                    aria-label={`${totalGelMojitoBags} sacs de gel mojito`}
+                    title={`${loadedGelMojitoBags} de ${totalGelMojitoBags} sacs de gel mojito carregats`}
+                    aria-label={`${loadedGelMojitoBags} de ${totalGelMojitoBags} sacs de gel mojito carregats`}
                   >
                     <Snowflake className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalGelMojitoBags} <span className="font-semibold">gel mojito</span>
+                    {loadedGelMojitoBags}/{totalGelMojitoBags} <span className="font-semibold">gel mojito</span>
                   </span>
                 ) : null}
                 {totalRacks > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 ring-1 ring-inset ring-slate-300"
-                    title={`${totalRacks} racks en total`}
-                    aria-label={`${totalRacks} racks en total`}
+                    title={`${loadedRacks} de ${totalRacks} racks carregats`}
+                    aria-label={`${loadedRacks} de ${totalRacks} racks carregats`}
                   >
                     <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalRacks} <span className="font-semibold">racks</span>
+                    {loadedRacks}/{totalRacks} <span className="font-semibold">racks</span>
                   </span>
                 ) : null}
                 {totalMachinery > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800 ring-1 ring-inset ring-orange-200"
-                    title={`${totalMachinery} unitats de maquinària`}
-                    aria-label={`${totalMachinery} unitats de maquinària`}
+                    title={`${loadedMachinery} de ${totalMachinery} unitats de maquinària carregades`}
+                    aria-label={`${loadedMachinery} de ${totalMachinery} unitats de maquinària carregades`}
                   >
                     <Cog className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalMachinery} <span className="font-semibold">maquinària</span>
+                    {loadedMachinery}/{totalMachinery} <span className="font-semibold">maquinària</span>
                   </span>
                 ) : null}
                 {totalSmallMachinery > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-lime-50 px-2.5 py-1 text-xs font-bold text-lime-800 ring-1 ring-inset ring-lime-200"
-                    title={`${totalSmallMachinery} unitats de maquinària petita`}
-                    aria-label={`${totalSmallMachinery} unitats de maquinària petita`}
+                    title={`${loadedSmallMachinery} de ${totalSmallMachinery} unitats de maquinària petita carregades`}
+                    aria-label={`${loadedSmallMachinery} de ${totalSmallMachinery} unitats de maquinària petita carregades`}
                   >
                     <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalSmallMachinery} <span className="font-semibold">maq. petita</span>
+                    {loadedSmallMachinery}/{totalSmallMachinery} <span className="font-semibold">maq. petita</span>
                   </span>
                 ) : null}
                 {totalPalletJacks > 0 ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-800 ring-1 ring-inset ring-rose-200"
-                    title={`${totalPalletJacks} transpalets`}
-                    aria-label={`${totalPalletJacks} transpalets`}
+                    title={`${loadedPalletJacks} de ${totalPalletJacks} transpalets carregats`}
+                    aria-label={`${loadedPalletJacks} de ${totalPalletJacks} transpalets carregats`}
                   >
                     <Truck className="h-3.5 w-3.5" aria-hidden="true" />
-                    {totalPalletJacks} <span className="font-semibold">transpalets</span>
+                    {loadedPalletJacks}/{totalPalletJacks} <span className="font-semibold">transpalets</span>
                   </span>
                 ) : null}
                 {totalPendingArticles > 0 ? (

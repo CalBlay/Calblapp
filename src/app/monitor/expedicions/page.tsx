@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import { format } from 'date-fns'
 import { ca } from 'date-fns/locale'
@@ -14,6 +14,7 @@ import {
   Clock3,
   Cog,
   Layers3,
+  LogOut,
   MapPin,
   Package,
   PackageCheck,
@@ -68,6 +69,13 @@ type PreparationMonitorRow = {
   status: ReturnType<typeof computeLineProgress>['status']
   warehouses: ReturnType<typeof computeLineProgress>['warehouseMap']
   pendingCount: number
+  pendingArticles: Array<{
+    key: string
+    name: string
+    quantity: number
+    warehouse: string
+    leftUnprepared: boolean
+  }>
   criticalCount: number
   observations: string[]
 }
@@ -352,9 +360,30 @@ function PreparationCard({ row, expanded }: { row: PreparationMonitorRow; expand
           </div>
 
           {row.pendingCount > 0 ? (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-400 px-3 py-2 text-lg font-black text-amber-950">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              {row.pendingCount} {row.pendingCount === 1 ? 'article pendent' : 'articles pendents'}
+            <div className="mt-3 rounded-xl bg-amber-400 px-3 py-2 text-amber-950">
+              <div className="flex items-center gap-2 text-lg font-black">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                {row.pendingCount} {row.pendingCount === 1 ? 'article pendent' : 'articles pendents'}
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {row.pendingArticles.slice(0, expanded ? 8 : 4).map((article) => (
+                  <span
+                    key={article.key}
+                    className={cn(
+                      'rounded-lg px-2 py-1 text-sm font-bold',
+                      article.leftUnprepared ? 'bg-red-700 text-white' : 'bg-white/75 text-amber-950'
+                    )}
+                  >
+                    {article.quantity} × {article.name} · {article.warehouse}
+                    {article.leftUnprepared ? ' · Sense preparar' : ''}
+                  </span>
+                ))}
+                {row.pendingArticles.length > (expanded ? 8 : 4) ? (
+                  <span className="rounded-lg bg-amber-950/15 px-2 py-1 text-sm font-black">
+                    +{row.pendingArticles.length - (expanded ? 8 : 4)} més
+                  </span>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {expanded && row.observations.length ? (
@@ -594,7 +623,18 @@ function buildPreparationRows(data: MonitorData): PreparationMonitorRow[] {
     .map((row) => {
       const progress = computeLineProgress(row)
       const detail = detailMap.get(row.id)
-      const pendingArticles = detail?.warehouses.flatMap((warehouse) => warehouse.pendingArticles) || []
+      const pendingArticles = detail?.warehouses.flatMap((warehouse) =>
+        warehouse.pendingArticles.map((article) => ({
+          key: `${warehouse.warehouseCode}:${article.articleCode}`,
+          name: article.articleName || article.articleCode,
+          quantity: article.quantity,
+          warehouse:
+            PREPARATION_WAREHOUSE_LABELS[
+              warehouse.warehouseCode as keyof typeof PREPARATION_WAREHOUSE_LABELS
+            ] || warehouse.warehouseCode,
+          leftUnprepared: article.loadingResolution === 'left_unprepared',
+        }))
+      ) || []
       const observations = [
         String(row.PreparacioObservacions || '').trim(),
         ...(detail?.warehouses.map((warehouse) => String(warehouse.preparationNotes || '').trim()) || []),
@@ -611,7 +651,8 @@ function buildPreparationRows(data: MonitorData): PreparationMonitorRow[] {
         status: progress.status,
         warehouses: progress.warehouseMap,
         pendingCount: pendingArticles.length,
-        criticalCount: pendingArticles.filter((article) => article.loadingResolution === 'left_unprepared').length,
+        pendingArticles,
+        criticalCount: pendingArticles.filter((article) => article.leftUnprepared).length,
         observations: [...new Set(observations)],
       }
     })
@@ -764,15 +805,26 @@ export default function ExpeditionsMonitorPage() {
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-3xl font-black capitalize">{format(now, "EEEE d 'de' MMMM", { locale: ca })}</div>
-          <div className="flex items-center justify-end gap-3 text-lg font-bold text-slate-300">
-            <span>{format(now, 'HH:mm')}</span>
-            <span className={cn('inline-flex items-center gap-2', error ? 'text-red-400' : 'text-emerald-400')}>
-              <span className={cn('h-3 w-3 rounded-full', error ? 'bg-red-500' : 'bg-emerald-400')} />
-              {error ? 'Sense actualitzar' : data ? `Actualitzat ${format(new Date(data.updatedAt), 'HH:mm')}` : 'Connectant'}
-            </span>
+        <div className="flex items-center gap-5">
+          <div className="text-right">
+            <div className="text-3xl font-black capitalize">{format(now, "EEEE d 'de' MMMM", { locale: ca })}</div>
+            <div className="flex items-center justify-end gap-3 text-lg font-bold text-slate-300">
+              <span>{format(now, 'HH:mm')}</span>
+              <span className={cn('inline-flex items-center gap-2', error ? 'text-red-400' : 'text-emerald-400')}>
+                <span className={cn('h-3 w-3 rounded-full', error ? 'bg-red-500' : 'bg-emerald-400')} />
+                {error ? 'Sense actualitzar' : data ? `Actualitzat ${format(new Date(data.updatedAt), 'HH:mm')}` : 'Connectant'}
+              </span>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-red-500/15 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400"
+            aria-label="Tancar la sessió i canviar d’usuari"
+            title="Canviar usuari"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </header>
 

@@ -29,7 +29,12 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack(config) {
+  webpack(config, { dev }) {
+    // A Windows, la cache persistent pot quedar bloquejada entre reinicis de
+    // `next dev` i deixar `.next` a mig generar (trace/routes-manifest/runtime).
+    // La desactivem només en desenvolupament; els builds de producció mantenen
+    // el comportament de cache estàndard de Next.
+    if (dev) config.cache = false
     config.resolve.fallback = {
       ...config.resolve.fallback,
       buffer: require.resolve('buffer'),
