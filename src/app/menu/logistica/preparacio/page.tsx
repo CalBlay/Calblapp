@@ -35,8 +35,12 @@ import {
 } from '@/lib/logistics/preparationFilters'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
-import type { AllowedPreparationWarehouse } from '@/components/logistics/PreparationWarehouseToggles'
+import type {
+  AllowedPreparationWarehouse,
+  PreparationWarehouseState,
+} from '@/components/logistics/PreparationWarehouseToggles'
 import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
+import { normalizeRole } from '@/lib/roles'
 import {
   PREPARATION_IMPORT_PERM,
   isPreparationManagerRole,
@@ -134,11 +138,13 @@ export default function LogisticsPage() {
   const { uiActions, canEditPath, ready: permsReady } = useUiPermissions()
   const currentUserId = String(session?.user?.id || '').trim()
   const currentUserName = String(session?.user?.name || '').trim()
-  const role = (session?.user?.role || '').toLowerCase()
+  const role = normalizeRole(session?.user?.role || '')
   const isDecoPreparation = pathname.startsWith('/menu/deco/preparacio')
   const isAdmin = role === 'admin'
   const isDecoRestricted = isDecoPreparation && !isAdmin
   const isWorker = role === 'treballador'
+  const isLogisticsSupervisor = role === 'supervisor_logistica'
+  const isOperationalPreparer = isWorker || isLogisticsSupervisor
   const isManager = isPreparationManagerRole(role)
   const canEditPreparationList = useMemo(() => {
     if (isDecoRestricted) return false
@@ -147,9 +153,9 @@ export default function LogisticsPage() {
   }, [canEditPath, isDecoRestricted, isManager, permsReady])
   const showPreparerView = useMemo(() => {
     if (isDecoPreparation) return true
-    if (!permsReady) return isWorker
+    if (!permsReady) return isOperationalPreparer
     return !canEditPreparationList
-  }, [canEditPreparationList, isDecoPreparation, isWorker, permsReady])
+  }, [canEditPreparationList, isDecoPreparation, isOperationalPreparer, permsReady])
   const canImportServices = useMemo(() => {
     if (isDecoRestricted) return false
     if (!permsReady) return isManager
@@ -157,7 +163,7 @@ export default function LogisticsPage() {
   }, [isDecoRestricted, isManager, permsReady, uiActions])
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
-    const fallback = isWorker || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
+    const fallback = isOperationalPreparer || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
     return parseDateRangeFromSearch(searchParamsSafe, fallback)
   })
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
@@ -166,7 +172,7 @@ export default function LogisticsPage() {
   const latestFilterRef = useRef({
     dateRange: parseDateRangeFromSearch(
       searchParamsSafe,
-      isWorker || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
+      isOperationalPreparer || isDecoRestricted ? buildTodayRange() : buildDefaultWeekRange()
     ),
     mode: parseFilterMode(searchParamsSafe.get('mode')) as PreparationFilterMode,
   })
@@ -505,7 +511,12 @@ export default function LogisticsPage() {
   }, [refresh])
 
   const handleToggleWarehousePrepared = useCallback(
-    async (rowId: string, warehouse: PreparationWarehouseCode, done: boolean) => {
+    async (
+      rowId: string,
+      warehouse: PreparationWarehouseCode,
+      state: PreparationWarehouseState,
+      reason?: string
+    ) => {
       if (!rowId || rowId.startsWith('draft_')) return
 
       setUpdating(true)
@@ -515,7 +526,8 @@ export default function LogisticsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             warehouse,
-            done,
+            state,
+            reason,
             scope: isDecoPreparation ? 'deco' : undefined,
           }),
         })
@@ -867,7 +879,9 @@ export default function LogisticsPage() {
         </div>
       ) : null}
 
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <RoleGuard
+        allowedRoles={['admin', 'direccio', 'cap', 'supervisor_logistica', 'treballador']}
+      >
         <LogisticsGrid
           rows={rows}
           warehouseTasks={warehouseTasks}
@@ -890,6 +904,7 @@ export default function LogisticsPage() {
           locationOptions={locationOptions}
           allowedWarehouses={allowedWarehouses}
           showAllWarehouses={canEditPreparationList}
+          canMarkNotApplicable={isLogisticsSupervisor}
           filterModeDefault={showPreparerView ? 'day' : filterMode}
           initialStart={dateRange?.start}
           initialEnd={dateRange?.end}

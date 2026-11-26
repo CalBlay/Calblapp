@@ -44,6 +44,15 @@ test('logistics inbox managers get tickets-only Manteniment and hide Incidèncie
   ])
 })
 
+test('logistics supervisors only receive the operational logistics screens', () => {
+  const supervisor = { role: 'supervisor_logistica', department: 'logistica' }
+  assert.deepEqual(modulePaths(supervisor), ['/menu/logistica'])
+  assert.deepEqual(submodulePaths(supervisor, '/menu/logistica'), [
+    '/menu/logistica/preparacio',
+    '/menu/logistica/carrega-camions',
+  ])
+})
+
 test('allergens BBDD is limited to admin or Qualitat department', () => {
   assert.ok(
     submodulePaths({ role: 'admin', department: 'serveis' }, '/menu/allergens').includes(

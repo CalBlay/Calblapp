@@ -5,7 +5,13 @@ import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
-const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador'])
+const ALLOWED_ROLES = new Set([
+  'admin',
+  'direccio',
+  'cap',
+  'supervisor_logistica',
+  'treballador',
+])
 
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })

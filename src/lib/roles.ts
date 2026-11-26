@@ -4,6 +4,7 @@ export type Role =
   | 'admin'
   | 'direccio'
   | 'cap'
+  | 'supervisor_logistica'
   | 'treballador'
   | 'comercial'
   | 'observer'
@@ -14,6 +15,7 @@ export const allowedRoles = new Set<Role>([
   'admin',
   'direccio',
   'cap',
+  'supervisor_logistica',
   'treballador',
   'comercial',
   'observer',
@@ -49,6 +51,9 @@ export function normalizeRole(input?: string | null): Role {
     'departament cap': 'cap',
     capdepartament: 'cap',
     cap: 'cap',
+    'supervisor logistica': 'supervisor_logistica',
+    supervisorlogistica: 'supervisor_logistica',
+    supervisor_logistica: 'supervisor_logistica',
     treballador: 'treballador',
     trabajador: 'treballador',
     worker: 'treballador',

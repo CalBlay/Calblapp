@@ -202,7 +202,9 @@ function PrepLineCard({
                   return (
                     <div key={`${row.id}-${code}`}>
                       <span className="font-semibold text-slate-800">{label}:</span>{' '}
-                      {entry.userName || 'Sense registrar'}
+                      {entry.status === 'not_applicable'
+                        ? `No aplica · ${entry.reason || 'Sense motiu'} · ${entry.userName || 'Sense registrar'}`
+                        : entry.userName || 'Sense registrar'}
                     </div>
                   )
                 })}

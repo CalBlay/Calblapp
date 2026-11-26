@@ -74,6 +74,8 @@ const formatRoleLabel = (role?: string, isAdmin?: boolean) => {
       return 'Direcció'
     case 'cap':
       return 'Cap Departament'
+    case 'supervisor_logistica':
+      return 'Supervisor Logística'
     case 'treballador':
       return 'Treballador'
     case 'comercial':
@@ -109,7 +111,14 @@ function UsersPage() {
   const [pendingRequests, setPendingRequests] = React.useState<PendingUserRequest[]>([])
   const [loadingRequests, setLoadingRequests] = React.useState(false)
 
-  const roleOptions = ['Admin', 'Direcció', 'Cap Departament', 'Treballador', 'Observer']
+  const roleOptions = [
+    'Admin',
+    'Direcció',
+    'Cap Departament',
+    'Supervisor Logística',
+    'Treballador',
+    'Observer',
+  ]
 
   const deptOptions = React.useMemo(
     () =>

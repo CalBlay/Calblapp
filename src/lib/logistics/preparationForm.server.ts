@@ -7,6 +7,7 @@ import type {
   PreparationWarehouseForm,
 } from '@/lib/logistics/prepTypes'
 import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
+import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMagatzem'
 import {
   preparationAvailableQuantity,
   preparationIntervalsOverlap,
@@ -296,6 +297,14 @@ export async function savePreparationForm(params: {
   const interval = await resolveEventInterval(source.sourceCollection, source.data)
   const id = formDocId(source.sourceCollection, params.rowId, params.warehouseCode)
   const form = sanitizeForm(params.rawForm, params.rowId, params.warehouseCode)
+  const currentWarehouseState = normalizePreparationWarehouseMap(
+    source.data.PreparacioMagatzems
+  )[params.warehouseCode]
+  if (form.status === 'completed' && currentWarehouseState?.status === 'not_applicable') {
+    throw new Error(
+      'Aquest magatzem està marcat com a No aplica. El supervisor l’ha de retirar abans de completar-lo.'
+    )
+  }
   const desired = reservationItems(form)
   const now = Date.now()
 
@@ -411,6 +420,7 @@ export async function savePreparationForm(params: {
           userId: params.userId,
           userName: params.userName,
           at: new Date(now).toISOString(),
+          status: 'completed',
         },
         updatedAt: new Date(now).toISOString(),
       })

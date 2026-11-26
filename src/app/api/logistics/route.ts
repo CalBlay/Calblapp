@@ -19,7 +19,13 @@ import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAcce
 
 export const runtime = 'nodejs'
 
-const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador'])
+const ALLOWED_ROLES = new Set([
+  'admin',
+  'direccio',
+  'cap',
+  'supervisor_logistica',
+  'treballador',
+])
 
 type RawEvent = {
   code?: string

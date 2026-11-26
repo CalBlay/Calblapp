@@ -11,7 +11,13 @@ import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
-const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador'])
+const ALLOWED_ROLES = new Set([
+  'admin',
+  'direccio',
+  'cap',
+  'supervisor_logistica',
+  'treballador',
+])
 const COLLECTIONS = ['logistics_preparation_services', 'stage_verd'] as const
 
 async function authContext(req: NextRequest) {
@@ -43,13 +49,40 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const body = (await req.json().catch(() => null)) as
-      | { warehouse?: string; done?: boolean; scope?: string }
+      | {
+          warehouse?: string
+          done?: boolean
+          state?: 'pending' | 'prepared' | 'not_applicable'
+          reason?: string
+          scope?: string
+        }
       | null
     const warehouseRaw = String(body?.warehouse || '').trim().toUpperCase()
     if (!isPreparationWarehouseCode(warehouseRaw)) {
       return NextResponse.json({ ok: false, error: 'Magatzem no valid' }, { status: 400 })
     }
-    const done = Boolean(body?.done)
+    const state =
+      body?.state === 'pending' ||
+      body?.state === 'prepared' ||
+      body?.state === 'not_applicable'
+        ? body.state
+        : body?.done
+          ? 'prepared'
+          : 'pending'
+    const reason = String(body?.reason || '').trim().slice(0, 500)
+    const isLogisticsSupervisor = auth.role === 'supervisor_logistica'
+    if (state === 'not_applicable' && !isLogisticsSupervisor) {
+      return NextResponse.json(
+        { ok: false, error: 'Només un supervisor de logística pot marcar No aplica' },
+        { status: 403 }
+      )
+    }
+    if (state === 'not_applicable' && reason.length < 3) {
+      return NextResponse.json(
+        { ok: false, error: 'Cal indicar el motiu de No aplica' },
+        { status: 400 }
+      )
+    }
 
     const scope = body?.scope === 'deco' ? 'deco' : undefined
     const allowedWarehouses = await listPreparationWarehousesForUser(auth.userId, auth.role, {
@@ -79,14 +112,33 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const currentMap = normalizePreparationWarehouseMap(snap.data()?.PreparacioMagatzems)
+    if (
+      currentMap[warehouseRaw]?.status === 'not_applicable' &&
+      state !== 'not_applicable' &&
+      !isLogisticsSupervisor
+    ) {
+      return NextResponse.json(
+        { ok: false, error: 'Només un supervisor de logística pot retirar el No aplica' },
+        { status: 403 }
+      )
+    }
     const nextMap = { ...currentMap }
     const nowIso = new Date().toISOString()
 
-    if (done) {
+    if (state === 'prepared') {
       nextMap[warehouseRaw] = {
         userId: auth.userId,
         userName: auth.userName,
         at: nowIso,
+        status: 'completed',
+      }
+    } else if (state === 'not_applicable') {
+      nextMap[warehouseRaw] = {
+        userId: auth.userId,
+        userName: auth.userName,
+        at: nowIso,
+        status: 'not_applicable',
+        reason,
       }
     } else {
       delete nextMap[warehouseRaw]

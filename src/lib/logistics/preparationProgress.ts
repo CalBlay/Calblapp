@@ -1,6 +1,7 @@
 import type { LogisticsEventPrepRow } from '@/lib/logistics/prepTypes'
 import {
   countCompletedWarehouses,
+  isPreparationWarehouseNotApplicable,
   isPreparationLineComplete,
   normalizePreparationWarehouseMap,
   preparationLinePct,
@@ -153,6 +154,7 @@ export function computeWorkerPreparationSummary(
     warehouseCodes.some((warehouse) => {
       const entry = line.warehouseMap[warehouse]
       if (!entry?.at) return false
+      if (isPreparationWarehouseNotApplicable(entry)) return false
       if (userId && entry.userId === userId) return true
       return Boolean(normalizedUserName) && normalizeComparableText(entry.userName) === normalizedUserName
     })
@@ -165,6 +167,7 @@ export function computeWorkerPreparationSummary(
     const warehouseDoneCount = plannedLines.filter((line) => {
       const entry = line.warehouseMap[warehouse]
       if (!entry?.at) return false
+      if (isPreparationWarehouseNotApplicable(entry)) return false
       if (userId && entry.userId === userId) return true
       return Boolean(normalizedUserName) && normalizeComparableText(entry.userName) === normalizedUserName
     }).length

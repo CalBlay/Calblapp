@@ -5,6 +5,8 @@ export type PreparationWarehouseCompletion = {
   userId: string
   userName: string
   at: string
+  status?: 'completed' | 'not_applicable'
+  reason?: string
 }
 
 export type PreparationWarehouseCompletionMap = Partial<

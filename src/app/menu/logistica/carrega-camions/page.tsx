@@ -540,7 +540,9 @@ export default function LogisticsTruckLoadingPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <RoleGuard
+      allowedRoles={['admin', 'direccio', 'cap', 'supervisor_logistica', 'treballador']}
+    >
       <main className="space-y-5 p-3 sm:p-5 lg:p-6">
         <ModuleHeader
           icon={<PackageCheck className="h-7 w-7 text-emerald-600" />}

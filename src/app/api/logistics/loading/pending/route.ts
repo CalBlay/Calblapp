@@ -6,7 +6,13 @@ import { resolvePreparationMissingArticlesForLoading } from '@/lib/logistics/pre
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_ROLES = ['admin', 'direccio', 'cap', 'treballador'] as const
+const ALLOWED_ROLES = [
+  'admin',
+  'direccio',
+  'cap',
+  'supervisor_logistica',
+  'treballador',
+] as const
 
 export async function PATCH(req: Request) {
   const auth = await requireAuth()

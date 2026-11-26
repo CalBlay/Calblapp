@@ -20,9 +20,26 @@ export function normalizePreparationWarehouseMap(
     const userName = String((entry as PreparationWarehouseCompletion).userName || '').trim()
     const at = String((entry as PreparationWarehouseCompletion).at || '').trim()
     if (!at) continue
-    map[warehouse] = { userId, userName, at }
+    const status =
+      (entry as PreparationWarehouseCompletion).status === 'not_applicable'
+        ? 'not_applicable'
+        : 'completed'
+    const reason = String((entry as PreparationWarehouseCompletion).reason || '').trim()
+    map[warehouse] = {
+      userId,
+      userName,
+      at,
+      status,
+      ...(status === 'not_applicable' && reason ? { reason } : {}),
+    }
   }
   return map
+}
+
+export function isPreparationWarehouseNotApplicable(
+  entry?: PreparationWarehouseCompletion
+): boolean {
+  return entry?.status === 'not_applicable'
 }
 
 export function countCompletedWarehouses(map: PreparationWarehouseCompletionMap): number {

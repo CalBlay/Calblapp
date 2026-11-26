@@ -1,4 +1,10 @@
-export const PREPARATION_WAREHOUSE_CODES = ['BODEGA', 'PARAMENT', 'MATERIAL', 'DECO'] as const
+export const PREPARATION_WAREHOUSE_CODES = [
+  'BODEGA',
+  'PARAMENT',
+  'MATERIAL',
+  'DECO',
+  'MOBILIARI',
+] as const
 
 export type PreparationWarehouseCode = (typeof PREPARATION_WAREHOUSE_CODES)[number]
 
@@ -7,6 +13,7 @@ export const PREPARATION_WAREHOUSE_LABELS: Record<PreparationWarehouseCode, stri
   PARAMENT: 'Parament',
   MATERIAL: 'Material',
   DECO: 'Deco',
+  MOBILIARI: 'Mobiliari',
 }
 
 export function isPreparationWarehouseCode(value: string): value is PreparationWarehouseCode {

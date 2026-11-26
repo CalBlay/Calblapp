@@ -9,6 +9,7 @@ import { ca } from 'date-fns/locale'
 import {
   AlertTriangle,
   Archive,
+  Ban,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -98,6 +99,7 @@ type LoadingMonitorRow = {
 type LoadingSummaryBadge = {
   key: 'carts' | 'pallets' | 'kits' | 'gel-pile' | 'gel-stone' | 'gel-mojito' | 'racks' | 'machinery' | 'small-machinery' | 'pallet-jacks' | 'pending'
   quantity: number
+  loadedQuantity?: number
   label: string
 }
 
@@ -126,19 +128,40 @@ function buildLoadingSummaryBadges(event: LogisticsLoadingEvent): LoadingSummary
     'pallet-jacks': 0,
     pending: 0,
   }
+  const loadedTotals = {
+    carts: 0,
+    pallets: 0,
+    kits: 0,
+    'gel-pile': 0,
+    'gel-stone': 0,
+    'gel-mojito': 0,
+    racks: 0,
+    machinery: 0,
+    'small-machinery': 0,
+    'pallet-jacks': 0,
+  }
+
+  const addQuantity = (
+    key: keyof typeof loadedTotals,
+    quantity: number,
+    isLoaded: boolean
+  ) => {
+    totals[key] += quantity
+    if (isLoaded) loadedTotals[key] += quantity
+  }
 
   for (const line of event.lines) {
     const lineType = line.key.slice(line.key.lastIndexOf(':') + 1)
-    if (lineType === 'carts') totals.carts += line.quantity
-    if (lineType === 'euro-pallets' || lineType === 'american-pallets') totals.pallets += line.quantity
-    if (line.key.startsWith('logistics-pack:') || line.key.includes(':logistics-pack:')) totals.kits += line.quantity
-    if (lineType === 'gel-pile') totals['gel-pile'] += line.quantity
-    if (lineType === 'gel-stone') totals['gel-stone'] += line.quantity
-    if (lineType === 'gel-mojito') totals['gel-mojito'] += line.quantity
-    if (lineType === 'racks') totals.racks += line.quantity
-    if (line.key.startsWith('machinery:') || line.key.includes(':machinery:')) totals.machinery += line.quantity
-    if (line.key.startsWith('small-machinery:') || line.key.includes(':small-machinery:')) totals['small-machinery'] += line.quantity
-    if (line.key.startsWith('pallet-jack:') || line.key.includes(':pallet-jack:')) totals['pallet-jacks'] += line.quantity
+    if (lineType === 'carts') addQuantity('carts', line.quantity, line.loaded)
+    if (lineType === 'euro-pallets' || lineType === 'american-pallets') addQuantity('pallets', line.quantity, line.loaded)
+    if (line.key.startsWith('logistics-pack:') || line.key.includes(':logistics-pack:')) addQuantity('kits', line.quantity, line.loaded)
+    if (lineType === 'gel-pile') addQuantity('gel-pile', line.quantity, line.loaded)
+    if (lineType === 'gel-stone') addQuantity('gel-stone', line.quantity, line.loaded)
+    if (lineType === 'gel-mojito') addQuantity('gel-mojito', line.quantity, line.loaded)
+    if (lineType === 'racks') addQuantity('racks', line.quantity, line.loaded)
+    if (line.key.startsWith('machinery:') || line.key.includes(':machinery:')) addQuantity('machinery', line.quantity, line.loaded)
+    if (line.key.startsWith('small-machinery:') || line.key.includes(':small-machinery:')) addQuantity('small-machinery', line.quantity, line.loaded)
+    if (line.key.startsWith('pallet-jack:') || line.key.includes(':pallet-jack:')) addQuantity('pallet-jacks', line.quantity, line.loaded)
     if (!line.ready && line.pendingResolution !== 'left_unprepared') totals.pending += line.quantity
   }
 
@@ -156,7 +179,12 @@ function buildLoadingSummaryBadges(event: LogisticsLoadingEvent): LoadingSummary
     ['pending', 'pendents'],
   ]
   return definitions.flatMap(([key, label]) => totals[key] > 0
-    ? [{ key, label, quantity: totals[key] }]
+    ? [{
+        key,
+        label,
+        quantity: totals[key],
+        ...(key === 'pending' ? {} : { loadedQuantity: loadedTotals[key] }),
+      }]
     : [])
 }
 
@@ -341,19 +369,33 @@ function PreparationCard({ row, expanded }: { row: PreparationMonitorRow; expand
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-2">
+          <div className="mt-3 grid grid-cols-5 gap-2">
             {PREPARATION_WAREHOUSE_CODES.map((warehouse) => {
-              const done = Boolean(row.warehouses[warehouse]?.at)
+              const entry = row.warehouses[warehouse]
+              const notApplicable = entry?.status === 'not_applicable'
+              const done = Boolean(entry?.at) && !notApplicable
               return (
                 <div
                   key={warehouse}
+                  title={notApplicable ? entry?.reason || 'No aplica' : undefined}
                   className={cn(
                     'flex items-center justify-center gap-2 rounded-xl px-2 py-2 text-base font-bold',
-                    done ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-200'
+                    notApplicable
+                      ? 'bg-sky-600 text-white'
+                      : done
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-700 text-slate-200'
                   )}
                 >
-                  {done ? <CheckCircle2 className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
+                  {notApplicable ? (
+                    <Ban className="h-5 w-5" />
+                  ) : done ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    <Clock3 className="h-5 w-5" />
+                  )}
                   {PREPARATION_WAREHOUSE_LABELS[warehouse]}
+                  {notApplicable ? ' · N/A' : ''}
                 </div>
               )
             })}
@@ -462,7 +504,10 @@ function LoadingCard({ row, expanded }: { row: LoadingMonitorRow; expanded: bool
                   className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-black', BADGE_STYLES[badge.key])}
                 >
                   <LoadingBadgeIcon badgeKey={badge.key} />
-                  {badge.quantity} <span className="font-bold">{badge.label}</span>
+                  {badge.loadedQuantity === undefined
+                    ? badge.quantity
+                    : `${badge.loadedQuantity}/${badge.quantity}`}{' '}
+                  <span className="font-bold">{badge.label}</span>
                 </span>
               ))}
             </div>

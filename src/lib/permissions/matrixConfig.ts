@@ -239,7 +239,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     id: 'logisticsPreparationWarehouses',
     title: 'Logística · Preparació · Magatzems',
     subtitle:
-      'Assigna un o més magatzems (Bodega, Parament, Material) per marcar preparacions com a fetes.',
+      'Assigna un o més magatzems (Bodega, Parament, Material, Deco i Mobiliari) per marcar preparacions com a fetes.',
     visibleWhen: { path: PREPARATION_UI_PATH },
     requireViewOnly: true,
     actions: PREPARATION_WAREHOUSE_PERMISSION_KEYS.map((key) => {

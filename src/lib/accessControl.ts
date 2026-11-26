@@ -370,18 +370,18 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Logística',
     path: '/menu/logistica',
-    roles: ['admin','direccio','cap','treballador','comercial','usuari'],
+    roles: ['admin','direccio','cap','supervisor_logistica','treballador','comercial','usuari'],
     departments: ['logistica', 'empresa'],
     submodules: [
       {
         label: 'Preparació',
         path: '/menu/logistica/preparacio',
-        roles: ['admin','direccio','cap','treballador'],
+        roles: ['admin','direccio','cap','supervisor_logistica','treballador'],
       },
       {
         label: 'Càrrega de camions',
         path: '/menu/logistica/carrega-camions',
-        roles: ['admin','direccio','cap','treballador'],
+        roles: ['admin','direccio','cap','supervisor_logistica','treballador'],
       },
       {
         label: 'Assignacions',

@@ -44,6 +44,7 @@ import {
 } from '@/lib/logistics/preparationWarehouses'
 import PreparationWarehouseToggles, {
   type AllowedPreparationWarehouse,
+  type PreparationWarehouseState,
 } from '@/components/logistics/PreparationWarehouseToggles'
 
 const PreparationFormDialog = dynamic(
@@ -86,7 +87,8 @@ interface LogisticsGridProps {
   onToggleWarehousePrepared?: (
     rowId: string,
     warehouse: PreparationWarehouseCode,
-    done: boolean
+    state: PreparationWarehouseState,
+    reason?: string
   ) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
@@ -97,6 +99,7 @@ interface LogisticsGridProps {
   locationOptions?: string[]
   allowedWarehouses?: AllowedPreparationWarehouse[]
   showAllWarehouses?: boolean
+  canMarkNotApplicable?: boolean
   currentUserId?: string
   currentUserName?: string
 }
@@ -188,6 +191,7 @@ export default function LogisticsGrid({
   initialEnd,
   allowedWarehouses = [],
   showAllWarehouses = false,
+  canMarkNotApplicable = false,
   currentUserId,
   currentUserName,
 }: LogisticsGridProps) {
@@ -235,6 +239,7 @@ export default function LogisticsGrid({
             currentUserName={currentUserName}
             onRefresh={onRefresh}
             onToggleWarehousePrepared={onToggleWarehousePrepared}
+            canMarkNotApplicable={canMarkNotApplicable}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
         ) : (
@@ -363,6 +368,7 @@ function WorkerGroupedView({
   currentUserName,
   onRefresh,
   onToggleWarehousePrepared,
+  canMarkNotApplicable,
   onWarehouseComandaClick,
 }: {
   events: LogisticsEventPrepRow[]
@@ -375,8 +381,10 @@ function WorkerGroupedView({
   onToggleWarehousePrepared?: (
     rowId: string,
     warehouse: PreparationWarehouseCode,
-    done: boolean
+    state: PreparationWarehouseState,
+    reason?: string
   ) => void
+  canMarkNotApplicable: boolean
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
   const hasAssignedWarehouses = allowedWarehouses.length > 0
@@ -529,6 +537,7 @@ function WorkerGroupedView({
                             completionMap={ev.PreparacioMagatzems}
                             allowedWarehouses={allowedWarehouses}
                             onToggle={onToggleWarehousePrepared}
+                            canMarkNotApplicable={canMarkNotApplicable}
                           />
                           <PreparationFormDialog
                             event={ev}
@@ -601,6 +610,7 @@ function WorkerGroupedView({
                                 completionMap={ev.PreparacioMagatzems}
                                 allowedWarehouses={allowedWarehouses}
                                 onToggle={onToggleWarehousePrepared}
+                                canMarkNotApplicable={canMarkNotApplicable}
                               />
                               <div className="mt-2">
                                 <PreparationFormDialog

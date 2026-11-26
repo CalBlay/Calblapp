@@ -55,6 +55,7 @@ export async function listPreparationWarehousesForUser(
   const normalizedRole = normalizeRole(role)
   if (
     normalizedRole === 'admin' ||
+    normalizedRole === 'supervisor_logistica' ||
     (normalizedRole === 'direccio' && options.scope !== 'deco')
   ) {
     return [...PREPARATION_WAREHOUSE_CODES]

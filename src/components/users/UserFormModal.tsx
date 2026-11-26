@@ -120,6 +120,7 @@ const ROLES = [
   'Admin',
   'Direccio',
   'Cap Departament',
+  'Supervisor Logística',
   'Treballador',
   'Usuari',
   'Comercial',
@@ -270,7 +271,8 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const isWorker =
     role?.toLowerCase().trim() === 'treballador' ||
     role?.toLowerCase().trim() === 'cap departament'
-  const requiresCorporateEmail = isAdmin || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+  const requiresCorporateEmail =
+    isAdmin || ['admin', 'direccio', 'cap', 'supervisor_logistica'].includes(normalizeRole(role))
   const canBeTransportLead =
     normalizeRole(role) === 'cap' &&
     department
@@ -729,7 +731,14 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
               <select
                 className="mt-1 w-full rounded-md border p-2 text-sm"
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                onChange={(e) => {
+                  const nextRole = e.target.value
+                  setRole(nextRole)
+                  if (normalizeRole(nextRole) === 'supervisor_logistica') {
+                    setDepartment('Logistica')
+                    setIsAdmin(false)
+                  }
+                }}
               >
                 {ROLES.map((item) => (
                   <option key={item} value={item}>

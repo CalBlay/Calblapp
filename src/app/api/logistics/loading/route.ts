@@ -9,7 +9,13 @@ import { isExpeditionsMonitorUser } from '@/lib/logistics/expeditionsMonitorAcce
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_ROLES = ['admin', 'direccio', 'cap', 'treballador'] as const
+const ALLOWED_ROLES = [
+  'admin',
+  'direccio',
+  'cap',
+  'supervisor_logistica',
+  'treballador',
+] as const
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 export async function GET(req: Request) {

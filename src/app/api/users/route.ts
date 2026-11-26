@@ -30,6 +30,8 @@ const canonicalRoleLabel = (role?: string, isAdmin?: boolean) => {
       return 'Direccio'
     case 'cap':
       return 'Cap Departament'
+    case 'supervisor_logistica':
+      return 'Supervisor Logística'
     case 'treballador':
       return 'Treballador'
     case 'comercial':
@@ -58,7 +60,8 @@ const canonicalDepartmentLabel = (department?: string) => {
 const isTreballador = (role?: string) => normLower(role) === 'treballador'
 const isCapDepartament = (role?: string) => normalizeRole(role) === 'cap'
 const requiresCorporateEmail = (role?: string, isAdmin?: boolean) =>
-  Boolean(isAdmin) || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+  Boolean(isAdmin) ||
+  ['admin', 'direccio', 'cap', 'supervisor_logistica'].includes(normalizeRole(role))
 
 // ──────────────────────────────────────────────────────────────
 // Tipus

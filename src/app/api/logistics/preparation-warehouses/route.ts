@@ -10,7 +10,13 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  const denied = requireRoles(auth, ['admin', 'direccio', 'cap', 'treballador'])
+  const denied = requireRoles(auth, [
+    'admin',
+    'direccio',
+    'cap',
+    'supervisor_logistica',
+    'treballador',
+  ])
   if (denied) return denied.res
 
   try {

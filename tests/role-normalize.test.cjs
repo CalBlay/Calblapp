@@ -10,6 +10,8 @@ test('normalizeRole maps accented titles and common aliases', () => {
   assert.equal(normalizeRole('Cap Departament'), 'cap')
   assert.equal(normalizeRole('capdepartament'), 'cap')
   assert.equal(normalizeRole('Departament de cap'), 'cap')
+  assert.equal(normalizeRole('Supervisor Logística'), 'supervisor_logistica')
+  assert.equal(normalizeRole('supervisor_logistica'), 'supervisor_logistica')
   assert.equal(normalizeRole('trabajador'), 'treballador')
   assert.equal(normalizeRole('worker'), 'treballador')
   assert.equal(normalizeRole('empleat'), 'treballador')
