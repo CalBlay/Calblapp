@@ -81,7 +81,11 @@ function LoginInner() {
             : 'No s’ha pogut iniciar sessió. Comproveu usuari i contrasenya o torneu a provar.'
       }
 
-      console.error('[AUTH] signIn failed', JSON.stringify(res))
+      if (isCreds) {
+        console.warn('[AUTH] Credencials rebutjades', JSON.stringify(res))
+      } else {
+        console.error('[AUTH] signIn failed', JSON.stringify(res))
+      }
       setLoading(false)
       setError(friendly)
       return

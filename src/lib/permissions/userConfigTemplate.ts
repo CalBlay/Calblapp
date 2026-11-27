@@ -84,3 +84,24 @@ export function cloneAssignmentOverrides(
 ): AssignmentOverride[] {
   return overrides.map((o) => ({ ...o }))
 }
+
+export function parsePermissionCopySelection(
+  sourceUserId: unknown,
+  targetUserIds: unknown,
+  maxTargets = 500
+): { sourceUserId: string; targetUserIds: string[] } | null {
+  const sourceId = String(sourceUserId || '').trim()
+  if (!sourceId || !Array.isArray(targetUserIds)) return null
+
+  const targets = [
+    ...new Set(
+      targetUserIds
+        .map(String)
+        .map((id) => id.trim())
+        .filter((id) => id && id !== sourceId)
+    ),
+  ]
+  if (targets.length === 0 || targets.length > maxTargets) return null
+
+  return { sourceUserId: sourceId, targetUserIds: targets }
+}

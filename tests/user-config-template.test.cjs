@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   extractUserConfigTemplate,
   cloneAssignmentOverrides,
+  parsePermissionCopySelection,
 } = require('../src/lib/permissions/userConfigTemplate')
 
 test('extractUserConfigTemplate defaults profile flags used when copying Settings templates', () => {
@@ -129,4 +130,14 @@ test('cloneAssignmentOverrides copies entries so later matrix edits do not mutat
   assert.equal(original.length, 1)
   assert.equal(original[0].effect, 'allow')
   assert.equal(original[0].note, 'src')
+})
+
+test('permission copy selection deduplicates targets and never copies onto the source', () => {
+  assert.deepEqual(parsePermissionCopySelection(' source ', ['a', 'source', ' a ', '', 'b']), {
+    sourceUserId: 'source',
+    targetUserIds: ['a', 'b'],
+  })
+  assert.equal(parsePermissionCopySelection('source', ['source']), null)
+  assert.equal(parsePermissionCopySelection('', ['a']), null)
+  assert.equal(parsePermissionCopySelection('source', ['a', 'b'], 1), null)
 })

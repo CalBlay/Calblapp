@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { Shield, Users } from 'lucide-react'
+import { Copy, Shield, Users } from 'lucide-react'
 import {
   DEPARTMENTS,
   getUserDepartmentSelectOptions,
@@ -78,6 +78,27 @@ function formatDepartmentLabel(value?: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ')
+}
+
+function formatRoleLabel(value?: string) {
+  switch (normalizeRole(value)) {
+    case 'admin':
+      return 'Admin'
+    case 'direccio':
+      return 'Direcció'
+    case 'cap':
+      return 'Cap departament'
+    case 'supervisor_logistica':
+      return 'Supervisor logística'
+    case 'usuari':
+      return 'Usuari'
+    case 'comercial':
+      return 'Comercial'
+    case 'observer':
+      return 'Observer'
+    default:
+      return 'Treballador'
+  }
 }
 
 function matchesDepartmentFilter(user: UserRow, departmentFilter: string) {
@@ -183,6 +204,14 @@ export default function AdminPermisosPage() {
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const [savingByUser, setSavingByUser] = useState<Record<string, boolean>>({})
   const [rowMessageByUser, setRowMessageByUser] = useState<Record<string, string>>({})
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copySourceUserId, setCopySourceUserId] = useState('')
+  const [copyTargetIds, setCopyTargetIds] = useState<string[]>([])
+  const [copyTargetSearch, setCopyTargetSearch] = useState('')
+  const [copyTargetDepartment, setCopyTargetDepartment] = useState('__all__')
+  const [copyTargetRole, setCopyTargetRole] = useState('__all__')
+  const [copySaving, setCopySaving] = useState(false)
+  const [copyMessage, setCopyMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -284,6 +313,37 @@ export default function AdminPermisosPage() {
       ),
     [users]
   )
+  const copyRoleOptions = useMemo(() => {
+    const byRole = new Map<Role, string>()
+    for (const user of users) {
+      const normalized = normalizeRole(user.role)
+      if (!byRole.has(normalized)) byRole.set(normalized, formatRoleLabel(user.role))
+    }
+    return [...byRole.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ca'))
+  }, [users])
+  const copySourceUser = useMemo(
+    () => users.find((user) => user.id === copySourceUserId) ?? null,
+    [copySourceUserId, users]
+  )
+  const copyTargetUsers = useMemo(() => {
+    if (!copySourceUserId) return []
+    return users.filter((user) => {
+      if (user.id === copySourceUserId) return false
+      if (
+        copyTargetDepartment !== '__all__' &&
+        !matchesDepartmentFilter(user, copyTargetDepartment)
+      ) {
+        return false
+      }
+      if (copyTargetRole !== '__all__' && normalizeRole(user.role) !== copyTargetRole) {
+        return false
+      }
+      return matchesUserSearch(user, copyTargetSearch)
+    })
+  }, [copySourceUserId, copyTargetDepartment, copyTargetRole, copyTargetSearch, users])
+  const copyTargetIdSet = useMemo(() => new Set(copyTargetIds), [copyTargetIds])
+  const allCopyTargetsSelected =
+    copyTargetUsers.length > 0 && copyTargetUsers.every((user) => copyTargetIdSet.has(user.id))
 
   const filteredUsers = useMemo(
     () =>
@@ -357,6 +417,82 @@ export default function AdminPermisosPage() {
   const clearFilters = () => {
     setSearchQuery('')
     setDepartmentFilter('__all__')
+  }
+
+  const selectCopySource = (sourceUserId: string) => {
+    setCopySourceUserId(sourceUserId)
+    setCopyTargetIds([])
+    setCopyTargetSearch('')
+    setCopyMessage(null)
+
+    const source = users.find((user) => user.id === sourceUserId)
+    if (!source) {
+      setCopyTargetDepartment('__all__')
+      setCopyTargetRole('__all__')
+      return
+    }
+
+    const sourceDepartment = formatDepartmentLabel(source.department)
+    setCopyTargetDepartment(sourceDepartment === '-' ? '__all__' : sourceDepartment)
+    setCopyTargetRole(normalizeRole(source.role))
+  }
+
+  const toggleCopyTarget = (userId: string, selected: boolean) => {
+    setCopyTargetIds((current) => {
+      const next = new Set(current)
+      if (selected) next.add(userId)
+      else next.delete(userId)
+      return [...next]
+    })
+  }
+
+  const toggleAllCopyTargets = (selected: boolean) => {
+    setCopyTargetIds((current) => {
+      const next = new Set(current)
+      for (const user of copyTargetUsers) {
+        if (selected) next.add(user.id)
+        else next.delete(user.id)
+      }
+      return [...next]
+    })
+  }
+
+  const copyPermissionsToTargets = async () => {
+    if (!copySourceUser || copyTargetIds.length === 0) return
+    const sourceName = copySourceUser.name || copySourceUser.email || copySourceUser.id
+    if (
+      !window.confirm(
+        `Vols copiar tots els permisos de ${sourceName} a ${copyTargetIds.length} treballadors? Els permisos actuals dels destinataris se substituiran.`
+      )
+    ) {
+      return
+    }
+
+    setCopySaving(true)
+    setCopyMessage(null)
+    try {
+      const res = await fetch('/api/admin/permissions/copy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceUserId: copySourceUser.id,
+          targetUserIds: copyTargetIds,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(typeof json?.error === 'string' ? json.error : 'No s’han pogut copiar')
+      }
+      setCopyMessage(
+        `Permisos de ${json.sourceName || sourceName} copiats a ${json.updated ?? copyTargetIds.length} treballadors.`
+      )
+      setCopyTargetIds([])
+      await Promise.all([mutate(), mutateModuleAudit()])
+    } catch (copyError) {
+      setCopyMessage(copyError instanceof Error ? copyError.message : 'Error copiant permisos')
+    } finally {
+      setCopySaving(false)
+    }
   }
 
   const bootstrapDefaults = async () => {
@@ -490,6 +626,15 @@ export default function AdminPermisosPage() {
         mainHref="/menu/settings"
         actions={
           <>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={() => setCopyOpen((open) => !open)}
+            >
+              <Copy className="h-4 w-4" aria-hidden />
+              Copiar permisos
+            </Button>
             <Button onClick={bootstrapDefaults} disabled={bootLoading}>
               {bootLoading ? 'Inicialitzant...' : 'Inicialitzar per defecte'}
             </Button>
@@ -510,6 +655,153 @@ export default function AdminPermisosPage() {
       <p className="text-sm text-muted-foreground">
         Generacio de configuracio per defecte basada en `MODULES` + rols/departaments actuals.
       </p>
+
+      {copyOpen ? (
+        <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-semibold text-indigo-950">
+              <Copy className="h-4 w-4" aria-hidden />
+              Copiar els permisos d’un treballador a altres
+            </h2>
+            <p className="mt-1 text-sm text-indigo-800">
+              Tria l’origen, marca els destinataris i copia. El rol i el departament no canvien.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="copy-source-user">1. Treballador origen</Label>
+            <select
+              id="copy-source-user"
+              value={copySourceUserId}
+              onChange={(event) => selectCopySource(event.target.value)}
+              className={selectClassName}
+              disabled={isLoading || copySaving}
+            >
+              <option value="">Selecciona qui té els permisos correctes</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name || user.email || user.id} — {formatRoleLabel(user.role)} ·{' '}
+                  {formatDepartmentLabel(user.department)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {copySourceUser ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor="copy-target-search">2. Filtra els destinataris</Label>
+                  <Input
+                    id="copy-target-search"
+                    value={copyTargetSearch}
+                    onChange={(event) => setCopyTargetSearch(event.target.value)}
+                    placeholder="Nom o correu..."
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="copy-target-department">Departament</Label>
+                  <select
+                    id="copy-target-department"
+                    value={copyTargetDepartment}
+                    onChange={(event) => setCopyTargetDepartment(event.target.value)}
+                    className={selectClassName}
+                  >
+                    <option value="__all__">Tots els departaments</option>
+                    {departmentOptions.map((department) => (
+                      <option key={department} value={department}>
+                        {department}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="copy-target-role">Rol</Label>
+                  <select
+                    id="copy-target-role"
+                    value={copyTargetRole}
+                    onChange={(event) => setCopyTargetRole(event.target.value)}
+                    className={selectClassName}
+                  >
+                    <option value="__all__">Tots els rols</option>
+                    {copyRoleOptions.map(([roleId, roleLabel]) => (
+                      <option key={roleId} value={roleId}>
+                        {roleLabel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-indigo-200 bg-background">
+                <div className="flex flex-col gap-2 border-b border-border bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={allCopyTargetsSelected}
+                      onChange={(event) => toggleAllCopyTargets(event.target.checked)}
+                      disabled={copyTargetUsers.length === 0 || copySaving}
+                      className="h-4 w-4"
+                    />
+                    Marca els {copyTargetUsers.length} resultats filtrats
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {copyTargetIds.length} destinataris seleccionats
+                  </span>
+                </div>
+                <div className="max-h-72 divide-y overflow-y-auto [content-visibility:auto]">
+                  {copyTargetUsers.map((user) => (
+                    <label
+                      key={user.id}
+                      className="grid cursor-pointer grid-cols-[auto_1fr] items-center gap-3 px-3 py-2 text-sm hover:bg-muted/30"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={copyTargetIdSet.has(user.id)}
+                        onChange={(event) => toggleCopyTarget(user.id, event.target.checked)}
+                        disabled={copySaving}
+                        className="h-4 w-4"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {user.name || user.email || user.id}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {formatRoleLabel(user.role)} · {formatDepartmentLabel(user.department)}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                  {copyTargetUsers.length === 0 ? (
+                    <p className="px-3 py-6 text-sm text-muted-foreground">
+                      No hi ha destinataris amb aquests filtres.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-indigo-900">
+                  {copyMessage ||
+                    'La còpia substituirà els permisos configurats dels treballadors marcats.'}
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => void copyPermissionsToTargets()}
+                  disabled={copySaving || copyTargetIds.length === 0}
+                  className="shrink-0 gap-2"
+                >
+                  <Copy className="h-4 w-4" aria-hidden />
+                  {copySaving
+                    ? 'Copiant...'
+                    : `3. Copiar a ${copyTargetIds.length} treballadors`}
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="space-y-3 rounded-xl border border-border bg-background p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
