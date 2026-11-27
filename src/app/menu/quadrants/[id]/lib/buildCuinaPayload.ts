@@ -106,7 +106,9 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
     const selectedRespId = group.wantsResponsible
       ? group.responsibleId || manualResponsibleId || ''
       : ''
-    const selected = availableResponsables.find((r) => r.id === selectedRespId)
+    const selected =
+      availableResponsables.find((r) => r.id === selectedRespId) ||
+      availableConductors.find((r) => r.id === selectedRespId)
     const primaryAssignment = driverAssignments[0] || null
     const selectedDriverId = resolveGroupDriverId(group, manualResponsibleId)
     const selectedDriver =
@@ -154,7 +156,12 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
       needsDriver: Number(group.drivers || 0) > 0,
       wantsResponsible: group.wantsResponsible,
       responsibleId: selectedRespId && selectedRespId !== '__auto__' ? selectedRespId : null,
-      responsibleName: group.wantsResponsible ? selected?.name || null : null,
+      responsibleName:
+        group.wantsResponsible
+          ? selected?.name ||
+            (selectedRespId === manualResponsibleId ? manualResponsibleName : null) ||
+            null
+          : null,
       driverName:
         selectedDriver?.name ||
         (singleGroup && responsibleActsAsDriver ? manualResponsibleName || null : null),

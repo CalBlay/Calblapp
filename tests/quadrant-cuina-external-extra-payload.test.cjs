@@ -93,3 +93,67 @@ test('cuina save payload preserves generic external-extra identity end to end', 
     0
   )
 })
+
+test('cuina payload keeps the responsible name when the responsible is selected from drivers', () => {
+  const { payload } = buildCuinaPayload({
+    basePayload: {
+      manualResponsibleId: 'toni-1',
+      manualResponsibleName: 'Toni Perez',
+    },
+    mode: 'manual',
+    cuinaGroups: [
+      {
+        id: 'group-1',
+        meetingPoint: 'Sant Pere',
+        serviceDate: '2026-11-25',
+        startTime: '12:00',
+        arrivalTime: '08:45',
+        endTime: '23:59',
+        workers: 3,
+        drivers: 1,
+        needsDriver: true,
+        wantsResponsible: true,
+        responsibleId: 'toni-1',
+        driverMode: '__auto__',
+        vehicleType: '',
+        roleLines: [
+          {
+            slotId: 'driver-1',
+            role: 'conductor',
+            personId: 'toni-1',
+            personName: 'Toni Perez',
+          },
+        ],
+      },
+    ],
+    cuinaTotals: { workers: 2, drivers: 1, responsables: 1, headcount: 3 },
+    cuinaVehiclesPayload: [],
+    cuinaEtt: {
+      open: false,
+      data: {
+        serviceDate: '',
+        meetingPoint: '',
+        startTime: '',
+        endTime: '',
+        workers: '0',
+        ettProviderId: '',
+        ettProviderName: '',
+        ettResponsibleName: '',
+        ettEmail: '',
+      },
+    },
+    isManualResponsibleConductor: true,
+    manualResponsibleId: 'toni-1',
+    manualResponsibleName: 'Toni Perez',
+    meetingPoint: 'Sant Pere',
+    startDate: '2026-11-25',
+    endDate: '2026-11-25',
+    startTime: '12:00',
+    endTime: '23:59',
+    availableResponsables: [],
+    availableConductors: [{ id: 'toni-1', name: 'Toni Perez' }],
+  })
+
+  assert.equal(payload.groups[0].responsibleId, 'toni-1')
+  assert.equal(payload.groups[0].responsibleName, 'Toni Perez')
+})

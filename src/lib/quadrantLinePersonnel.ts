@@ -84,6 +84,20 @@ function identity(row: UnknownRow) {
   return name ? `name:${name}` : ''
 }
 
+function representedRoleKey(identityKey: string, role: QuadrantPersonnelRole) {
+  return identityKey ? `${identityKey}|role:${role}` : ''
+}
+
+function roleRepresentedByLine(
+  baseRole: QuadrantPersonnelRole,
+  lineRole: QuadrantPersonnelRole
+) {
+  const isResponsibleDriverPair =
+    (baseRole === 'responsable' && lineRole === 'conductor') ||
+    (baseRole === 'conductor' && lineRole === 'responsable')
+  return isResponsibleDriverPair ? lineRole : baseRole
+}
+
 function personName(row: UnknownRow) {
   return text(row.name || row.personName || row.nom || row.displayName)
 }
@@ -120,10 +134,12 @@ function basePeople(doc: UnknownRow) {
       .forEach((row) => push(row, 'treballador'))
   }
 
-  if (!out.some((row) => row.role === 'responsable') && text(doc.responsableName)) {
+  const fallbackResponsibleName = text(doc.responsableName || doc.manualResponsibleName)
+  const fallbackResponsibleId = text(doc.responsableId || doc.manualResponsibleId)
+  if (!out.some((row) => row.role === 'responsable') && fallbackResponsibleName) {
     out.push({
-      id: text(doc.responsableId),
-      name: text(doc.responsableName),
+      id: fallbackResponsibleId,
+      name: fallbackResponsibleName,
       role: 'responsable',
     })
   }
@@ -281,7 +297,11 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
       if (!person) continue
       result.push(person)
       const baseKey = base ? identity(base) : ''
-      if (baseKey) represented.add(baseKey)
+      const representedKey = representedRoleKey(
+        baseKey,
+        base ? roleRepresentedByLine(base.role, person.role) : person.role
+      )
+      if (representedKey) represented.add(representedKey)
     }
 
     const pushLegacyGroupPerson = (
@@ -306,7 +326,11 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
       if (!person) return
       result.push(person)
       const baseKey = base ? identity(base) : ''
-      if (baseKey) represented.add(baseKey)
+      const representedKey = representedRoleKey(
+        baseKey,
+        base ? roleRepresentedByLine(base.role, person.role) : person.role
+      )
+      if (representedKey) represented.add(representedKey)
     }
 
     pushLegacyGroupPerson('responsable', group.responsibleId, group.responsibleName)
@@ -314,7 +338,7 @@ export function collectQuadrantLinePersonnel(input: unknown): QuadrantScheduledP
   }
 
   for (const base of people) {
-    if (represented.has(identity(base))) continue
+    if (represented.has(representedRoleKey(identity(base), base.role))) continue
     const fallbackGroup = findPersonGroup(base, groups)
     // Els responsables i conductors antics es vinculen a un únic grup perquè
     // no es repliquin a totes les convocatòries del servei.

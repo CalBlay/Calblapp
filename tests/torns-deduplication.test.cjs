@@ -64,6 +64,25 @@ test('equivalent shift documents merge different workers without duplicating the
   )
 })
 
+test('responsible role wins on the user card when the same person is also the driver', () => {
+  const result = dedupeTorns([
+    {
+      ...base,
+      __rawWorkers: [
+        { ...worker, plate: '1234 ABC' },
+        {
+          ...worker,
+          role: 'responsable',
+        },
+      ],
+    },
+  ])
+
+  assert.equal(result[0].__rawWorkers.length, 1)
+  assert.equal(result[0].__rawWorkers[0].role, 'responsable')
+  assert.equal(result[0].__rawWorkers[0].plate, '1234 ABC')
+})
+
 test('different phases or schedules remain separate shifts', () => {
   const result = dedupeTorns([
     base,

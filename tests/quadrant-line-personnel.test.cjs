@@ -203,6 +203,37 @@ test('top-level driver is linked only to the service shift matching their schedu
   )
 })
 
+test('manual responsible is preserved when the same person also has the driver line', () => {
+  const rows = collectQuadrantLinePersonnel({
+    startDate: '2026-11-25',
+    startTime: '12:00',
+    endTime: '23:59',
+    manualResponsibleId: 'toni-1',
+    manualResponsibleName: 'Toni Perez',
+    groups: [
+      {
+        id: 'group-1',
+        wantsResponsible: true,
+        roleLines: [
+          {
+            role: 'conductor',
+            personId: 'toni-1',
+            personName: 'Toni Perez',
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    rows.map((row) => ({ name: row.name, role: row.role, groupId: row.groupId })),
+    [
+      { name: 'Toni Perez', role: 'conductor', groupId: 'group-1' },
+      { name: 'Toni Perez', role: 'responsable', groupId: 'group-1' },
+    ]
+  )
+})
+
 test('logistics manual worker lines keep their own schedule when saved', () => {
   const [worker] = attachManualWorkerLineSchedules(
     [{ name: 'Anna' }],
