@@ -4,7 +4,8 @@ import { FileText, Search, BarChart3 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import ModuleHub, { type ModuleHubCard } from '@/components/layout/ModuleHub'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import { getVisibleModules } from '@/lib/accessControl'
+import { getVisibleModules, MODULES } from '@/lib/accessControl'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 const AUDIT_CARD_MAP = {
   plantilles: {
@@ -30,13 +31,17 @@ const AUDIT_CARD_MAP = {
 export default function AuditoriaHubPage() {
   const { data: session } = useSession()
   const user = session?.user
+  const { map: uiMap, data: uiPermData } = useUiPermissions()
 
-  const auditoriaModule = getVisibleModules({
+  const baseAuditoriaModule = getVisibleModules({
     role: user?.role,
     department: user?.department,
   }).find((m) => m.path === '/menu/auditoria')
 
-  const submodules = auditoriaModule?.submodules ?? []
+  const catalogAuditoriaModule = MODULES.find((m) => m.path === '/menu/auditoria')
+  const submodules = uiPermData
+    ? (catalogAuditoriaModule?.submodules || []).filter((sub) => uiMap[sub.path] === true)
+    : baseAuditoriaModule?.submodules ?? []
   const cards: ModuleHubCard[] = submodules.flatMap((sub) => {
     const key = sub.path.split('/').pop() || ''
     const item = AUDIT_CARD_MAP[key as keyof typeof AUDIT_CARD_MAP]
