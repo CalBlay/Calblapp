@@ -29,13 +29,13 @@ const CODE_LABELS: Record<CalendarCodeStatus, string> = {
 
 type Props = {
   ln: CalendarLN[]
-  stage: string
+  stage: CalendarStage[]
   commercial: string[]
   location: string[]
   codeStatus: string
   showCodeStatus?: boolean
   onRemoveLn: (value: CalendarLN) => void
-  onClearStage: () => void
+  onRemoveStage: (value: CalendarStage) => void
   onRemoveCommercial: (value: string) => void
   onRemoveLocation: (value: string) => void
   onClearCodeStatus: () => void
@@ -50,14 +50,14 @@ export default function CalendarActiveFilters({
   codeStatus,
   showCodeStatus,
   onRemoveLn,
-  onClearStage,
+  onRemoveStage,
   onRemoveCommercial,
   onRemoveLocation,
   onClearCodeStatus,
   onClearAll,
 }: Props) {
   const hasLn = ln.length > 0
-  const hasStage = stage !== 'all'
+  const hasStage = stage.length > 0
   const hasCommercial = commercial.length > 0
   const hasLocation = location.length > 0
   const hasCode = showCodeStatus && codeStatus !== 'all'
@@ -73,12 +73,13 @@ export default function CalendarActiveFilters({
           onRemove={() => onRemoveLn(value)}
         />
       ))}
-      {hasStage && (
+      {stage.map((value) => (
         <FilterChip
-          label={STAGE_LABELS[stage as CalendarStage] || stage}
-          onRemove={onClearStage}
+          key={`stage-${value}`}
+          label={STAGE_LABELS[value] || value}
+          onRemove={() => onRemoveStage(value)}
         />
-      )}
+      ))}
       {commercial.map((name) => (
         <FilterChip
           key={`com-${name}`}

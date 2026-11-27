@@ -26,7 +26,7 @@ export type CalendarLN =
 
 export interface CalendarFilterChange {
   ln?: CalendarLN[]
-  stage?: CalendarStage
+  stage?: CalendarStage[]
   commercial?: string[]
   location?: string[]
   codeStatus?: CalendarCodeStatus
@@ -34,7 +34,7 @@ export interface CalendarFilterChange {
 
 export interface CalendarFiltersProps {
   ln?: CalendarLN[] | CalendarLN | string
-  stage?: CalendarStage | string
+  stage?: CalendarStage[] | CalendarStage | string
   commercial?: string[] | string
   location?: string[] | string
   codeStatus?: CalendarCodeStatus | string
@@ -115,7 +115,9 @@ export default function CalendarFilters({
   const [lnValues, setLnValues] = useState<CalendarLN[]>(() =>
     toArray(lnProp) as CalendarLN[]
   )
-  const [stage, setStage] = useState<CalendarStage>(() => coerceAll(String(stageProp || 'all')) as CalendarStage)
+  const [stageValues, setStageValues] = useState<CalendarStage[]>(() =>
+    toArray(stageProp) as CalendarStage[]
+  )
   const [commercialValues, setCommercialValues] = useState<string[]>(() =>
     toArray(commercialProp)
   )
@@ -134,7 +136,7 @@ export default function CalendarFilters({
   const lastEmittedFilters = useRef(
     JSON.stringify({
       ln: lnValues,
-      stage,
+      stage: stageValues,
       commercial: commercialValues,
       location: locationValues,
       codeStatus,
@@ -143,7 +145,7 @@ export default function CalendarFilters({
 
   // Si la pagina canvia valors (ex: reset), sincronitza aqui
   useEffect(() => setLnValues(toArray(lnProp) as CalendarLN[]), [lnProp])
-  useEffect(() => setStage(coerceAll(String(stageProp || 'all')) as CalendarStage), [stageProp])
+  useEffect(() => setStageValues(toArray(stageProp) as CalendarStage[]), [stageProp])
   useEffect(() => setCommercialValues(toArray(commercialProp)), [commercialProp])
   useEffect(() => setLocationValues(toArray(locationProp)), [locationProp])
   useEffect(
@@ -165,11 +167,12 @@ export default function CalendarFilters({
     () => new Set(locationValues),
     [locationValues]
   )
+  const selectedStages = useMemo(() => new Set(stageValues), [stageValues])
 
   useEffect(() => {
     const nextFilters = {
       ln: lnValues,
-      stage,
+      stage: stageValues,
       commercial: commercialValues,
       location: locationValues,
       codeStatus,
@@ -184,11 +187,11 @@ export default function CalendarFilters({
 
     return () => window.clearTimeout(timeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lnValues, stage, commercialValues, locationValues, codeStatus])
+  }, [lnValues, stageValues, commercialValues, locationValues, codeStatus])
 
   const resetAll = () => {
     setLnValues([])
-    setStage('all')
+    setStageValues([])
     setCommercialValues([])
     setLocationValues([])
     setCodeStatus('all')
@@ -196,6 +199,7 @@ export default function CalendarFilters({
   }
 
   const lnOptions = LN_OPTIONS.filter((o) => o.value !== 'all')
+  const stageOptions = STAGE_OPTIONS.filter((o) => o.value !== 'all')
 
   const toggleLn = (value: CalendarLN) => {
     if (value === 'all') {
@@ -216,6 +220,16 @@ export default function CalendarFilters({
       prev.includes(value)
         ? prev.filter((v) => v !== value)
         : [...prev, value]
+    )
+  }
+
+  const toggleStage = (value: CalendarStage) => {
+    if (value === 'all') {
+      setStageValues([])
+      return
+    }
+    setStageValues((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
     )
   }
 
@@ -261,18 +275,26 @@ export default function CalendarFilters({
       {/* Stage */}
       <div>
         <label className="text-[11px] text-gray-500">Estat</label>
-        <Select value={stage} onValueChange={(v) => setStage(v as CalendarStage)}>
-          <SelectTrigger className="w-full h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STAGE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="mt-1 max-h-40 space-y-2 overflow-y-auto rounded-md border bg-white p-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={stageValues.length === 0}
+              onChange={() => toggleStage('all')}
+            />
+            Tots
+          </label>
+          {stageOptions.map((option) => (
+            <label key={option.value} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedStages.has(option.value)}
+                onChange={() => toggleStage(option.value)}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* Codi */}

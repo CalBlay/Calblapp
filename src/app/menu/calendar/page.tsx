@@ -28,7 +28,10 @@ import CalendarActiveFilters from '@/components/calendar/CalendarActiveFilters'
 import CalendarModal from '@/components/calendar/CalendarModal'
 import Legend from '@/components/calendar/CalendarLegend'
 import { CalendarOportunitatsSapControls } from '@/components/calendar/CalendarOportunitatsSapControls'
-import CalendarFilters, { CalendarLN } from '@/components/calendar/CalendarFilters'
+import CalendarFilters, {
+  type CalendarLN,
+  type CalendarStage,
+} from '@/components/calendar/CalendarFilters'
 import { useSession } from 'next-auth/react'
 import FilterButton from '@/components/ui/filter-button'
 import FloatingAddButton from '@/components/ui/floating-add-button'
@@ -42,6 +45,7 @@ import {
   filterCalendarDealsByLocations,
 } from '@/lib/calendar/calendarLocationFilter'
 import { calendarPeriodForYear } from '@/lib/calendar/calendarYearNavigation'
+import { dealsForDay } from '@/lib/calendarDealDates'
 import {
   CALENDAR_SEARCH_MIN_LENGTH,
   filterCalendarDealsBySearch,
@@ -69,7 +73,7 @@ type ContentLayout = 'grid' | 'list'
 type CalendarViewState = {
   mode: ViewMode
   ln: CalendarLN[]
-  stage: string
+  stage: CalendarStage[]
   commercial: string[]
   location: string[]
   codeStatus: string
@@ -80,7 +84,7 @@ type CalendarViewState = {
 
 type CalendarFilterChange = {
   ln?: CalendarLN[]
-  stage?: string
+  stage?: CalendarStage[]
   commercial?: string[]
   location?: string[]
   codeStatus?: string
@@ -104,10 +108,15 @@ const escapeHtml = (value: string) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-const toArray = (value: unknown) => {
+const toArray = <T extends string>(value: unknown): T[] => {
   if (Array.isArray(value)) {
     return value.filter(
-      (v): v is CalendarLN => typeof v === 'string' && Boolean(v.trim())
+      (v): v is T =>
+        typeof v === 'string' &&
+        Boolean(v.trim()) &&
+        v.toLowerCase() !== 'all' &&
+        !v.toLowerCase().startsWith('tots') &&
+        !v.toLowerCase().startsWith('totes')
     )
   }
   if (typeof value === 'string') {
@@ -121,9 +130,9 @@ const toArray = (value: unknown) => {
     ) {
       return []
     }
-    return [trimmed as CalendarLN]
+    return [trimmed as T]
   }
-  return [] as CalendarLN[]
+  return []
 }
 
 const resolveInitialContentLayout = (): ContentLayout => {
@@ -173,7 +182,7 @@ const makeInitialState = (): CalendarViewState => {
   const base: CalendarViewState = {
     mode,
     ln: [],
-    stage: 'all',
+    stage: [],
     commercial: [],
     location: [],
     codeStatus: 'all',
@@ -190,8 +199,8 @@ const makeInitialState = (): CalendarViewState => {
     const saved = JSON.parse(raw)
     return {
       ...base,
-      ln: toArray(saved?.ln),
-      stage: saved?.stage || 'all',
+      ln: toArray<CalendarLN>(saved?.ln),
+      stage: toArray<CalendarStage>(saved?.stage),
     }
   } catch {
     return base
@@ -218,7 +227,7 @@ export default function CalendarPage() {
 
       const changed =
         !arraysEqual(prev.ln, nextLn) ||
-        prev.stage !== nextStage ||
+        !arraysEqual(prev.stage, nextStage) ||
         !arraysEqual(prev.commercial, nextCommercial) ||
         !arraysEqual(prev.location, nextLocation) ||
         prev.codeStatus !== nextCodeStatus
@@ -460,7 +469,7 @@ export default function CalendarPage() {
           setState((prev) => ({
             ...prev,
             ln: [],
-            stage: 'all',
+            stage: [],
             commercial: [],
             location: [],
             codeStatus: 'all',
@@ -611,7 +620,7 @@ export default function CalendarPage() {
       rangeMonths: months,
       start: next.start,
       end: next.end,
-      stage: prev.stage === 'all' ? 'confirmat' : prev.stage,
+      stage: prev.stage.length === 0 ? ['confirmat'] : prev.stage,
     }))
   }
 
@@ -636,7 +645,7 @@ export default function CalendarPage() {
       rangeMonths: months,
       start: next.start,
       end: next.end,
-      stage: prev.stage === 'all' ? 'confirmat' : prev.stage,
+      stage: prev.stage.length === 0 ? ['confirmat'] : prev.stage,
     }))
   }
 
@@ -714,8 +723,94 @@ export default function CalendarPage() {
     XLSX.writeFile(wb, `calendari-${fileMode}.xlsx`)
   }
 
+  const buildPdfMonthViewHtml = () => {
+    const monthStart = startOfMonth(parseISO(start))
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const gridEnd = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 1 })
+    const days: Date[] = []
+
+    for (let day = gridStart; day <= gridEnd; day = addDays(day, 1)) {
+      days.push(day)
+    }
+
+    const weeks: Date[][] = []
+    for (let index = 0; index < days.length; index += 7) {
+      weeks.push(days.slice(index, index + 7))
+    }
+
+    const maxEventsPerDay = 7
+    const rowHeightMm = weeks.length >= 6 ? 24 : 29
+    const weekdayHeader = ['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg']
+      .map((day) => `<th>${day}</th>`)
+      .join('')
+    const rows = weeks
+      .map((week) => {
+        const cells = week
+          .map((day) => {
+            const iso = toIso(day)
+            const dayDeals = dealsForDay(visibleDeals, iso)
+            const visibleDayDeals = dayDeals.slice(0, maxEventsPerDay)
+            const remaining = dayDeals.length - visibleDayDeals.length
+            const isOutsideMonth = day.getMonth() !== monthStart.getMonth()
+            const events = visibleDayDeals
+              .map(
+                (deal) =>
+                  `<div class="event${deal.cancelled ? ' cancelled' : ''}">${escapeHtml(deal.NomEvent || '(Sense títol)')}</div>`
+              )
+              .join('')
+
+            return `<td class="${isOutsideMonth ? 'outside' : ''}">
+              <div class="day-number">${day.getDate()}</div>
+              ${events}
+              ${remaining > 0 ? `<div class="more">+${remaining} més</div>` : ''}
+            </td>`
+          })
+          .join('')
+        return `<tr>${cells}</tr>`
+      })
+      .join('')
+
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Calendari comercial · ${escapeHtml(monthLabel)}</title>
+    <style>
+      @page { size: A4 landscape; margin: 7mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111827; font-family: Arial, sans-serif; }
+      .calblay-print-brand { margin-bottom: 5px !important; padding-bottom: 5px !important; }
+      .calblay-print-brand__logo { width: 105px !important; height: 34px !important; }
+      h1 { font-size: 14px; margin: 0; }
+      .period { color: #475569; font-size: 9px; margin: 2px 0 5px; text-transform: capitalize; }
+      table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+      th { background: #f1f5f9; border: 1px solid #64748b; font-size: 7px; height: 5mm; padding: 1mm; }
+      tbody tr { height: ${rowHeightMm}mm; }
+      td { border: 1px solid #64748b; height: ${rowHeightMm}mm; overflow: hidden; padding: 1mm; vertical-align: top; width: 14.285%; }
+      td.outside { background: #f8fafc; color: #94a3b8; }
+      .day-number { font-size: 7px; font-weight: 700; line-height: 1; margin-bottom: 1mm; }
+      .event { border: 1px solid #cbd5e1; border-radius: 2px; font-size: 5.8px; line-height: 1.15; margin-bottom: 0.5mm; overflow: hidden; padding: 0.5mm 0.7mm; text-overflow: ellipsis; white-space: nowrap; }
+      .event.cancelled { text-decoration: line-through; }
+      .more { color: #475569; font-size: 6px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <h1>Calendari comercial</h1>
+    <div class="period">${escapeHtml(monthLabel)}</div>
+    <table>
+      <thead><tr>${weekdayHeader}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </body>
+</html>`
+  }
+
   const handleExportPdfView = () => {
     if (!visibleDeals.length) return
+    if (mode === 'month') {
+      printBrandedHtmlInNewWindow(buildPdfMonthViewHtml())
+      return
+    }
     window.print()
   }
 
@@ -819,7 +914,12 @@ export default function CalendarPage() {
                 ln: prev.ln.filter((item) => item !== value),
               }))
             }
-            onClearStage={() => setState((prev) => ({ ...prev, stage: 'all' }))}
+            onRemoveStage={(value) =>
+              setState((prev) => ({
+                ...prev,
+                stage: prev.stage.filter((item) => item !== value),
+              }))
+            }
             onRemoveCommercial={(value) =>
               setState((prev) => ({
                 ...prev,
@@ -839,7 +939,7 @@ export default function CalendarPage() {
               setState((prev) => ({
                 ...prev,
                 ln: [],
-                stage: 'all',
+                stage: [],
                 commercial: [],
                 location: [],
                 codeStatus: 'all',
@@ -951,6 +1051,7 @@ export default function CalendarPage() {
 
       {/* MODE */}
       <style>{`
+        ${mode === 'month' ? '@page { size: landscape; margin: 10mm; }' : ''}
         @media print {
           body * { visibility: hidden; }
           #calendar-print-root, #calendar-print-root * { visibility: visible; }
@@ -960,6 +1061,56 @@ export default function CalendarPage() {
             top: 0;
             width: 100%;
             overflow: visible;
+          }
+          #calendar-print-root::before {
+            width: 110px;
+            height: 34px;
+            margin-bottom: 6px;
+          }
+          #calendar-print-root .calendar-print-heading {
+            margin-bottom: 4px;
+          }
+          #calendar-print-root .calendar-print-heading h1 {
+            font-size: 15px;
+            line-height: 1.2;
+          }
+          #calendar-print-root .calendar-print-heading p {
+            font-size: 10px;
+            line-height: 1.2;
+          }
+          #calendar-print-root.calendar-print-month {
+            box-sizing: border-box;
+            max-width: none !important;
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          #calendar-print-root.calendar-print-month aside {
+            display: none !important;
+          }
+          #calendar-print-root.calendar-print-month .calendar-month-view {
+            box-sizing: border-box;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          #calendar-print-root.calendar-print-month .calendar-print-content,
+          #calendar-print-root.calendar-print-month .calendar-print-main,
+          #calendar-print-root.calendar-print-month .calendar-print-scroll {
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+          #calendar-print-root.calendar-print-month .calendar-print-content {
+            display: block !important;
+          }
+          #calendar-print-root.calendar-print-month .calendar-print-main,
+          #calendar-print-root.calendar-print-month .calendar-print-scroll {
+            display: block !important;
+            flex: none !important;
+            width: 100% !important;
           }
           #calendar-print-root .overflow-x-auto,
           #calendar-print-root .overflow-hidden,
@@ -1053,17 +1204,20 @@ export default function CalendarPage() {
       {error && <p className="shrink-0 text-sm text-red-600">{error}</p>}
       {loading && <p className="shrink-0 text-sm text-gray-500">Carregant dades...</p>}
 
-      <div id="calendar-print-root" className="flex min-h-0 flex-1 flex-col print:block">
-        <div className="hidden print:block">
+      <div
+        id="calendar-print-root"
+        className={`flex min-h-0 flex-1 flex-col print:block ${mode === 'month' ? 'calendar-print-month' : ''}`}
+      >
+        <div className="calendar-print-heading hidden print:block">
           <h1 className="text-xl font-semibold">Calendari comercial</h1>
           <p className="text-sm text-gray-600">
             {mode === 'month' ? monthLabel : mode === 'week' ? weekLabel : rangeLabel}
           </p>
         </div>
 
-        <div className="flex min-h-0 flex-1 gap-0 lg:gap-3">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-visible rounded-xl border bg-white shadow-sm lg:overflow-hidden print:overflow-visible">
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-visible lg:overflow-y-auto print:overflow-visible">
+        <div className="calendar-print-content flex min-h-0 flex-1 gap-0 lg:gap-3">
+          <div className="calendar-print-main flex min-h-0 min-w-0 flex-1 flex-col overflow-visible rounded-xl border bg-white shadow-sm lg:overflow-hidden print:overflow-visible">
+            <div className="calendar-print-scroll min-h-0 flex-1 overflow-x-auto overflow-y-visible lg:overflow-y-auto print:overflow-visible">
               {contentLayout === 'list' && mode !== 'range' ? (
                 <CalendarPeriodList
                   deals={visibleDeals}

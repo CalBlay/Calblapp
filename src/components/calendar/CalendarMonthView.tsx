@@ -19,6 +19,8 @@ import {
 import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 import { calendarStageDotClass } from '@/lib/calendar/calendarStage'
 
+const PRINT_EVENTS_PER_DAY = 4
+
 const codeBadgeFor = (ev: Deal) => {
   const status = ev.codeStatus
   if (!status) return null
@@ -207,7 +209,118 @@ export default function CalendarMonthView({
   }
 
   return (
-    <div className="flex h-auto w-full flex-col">
+    <>
+      <style>{`
+        @media print {
+          .calendar-month-print-only {
+            display: block !important;
+            width: 100%;
+          }
+          .calendar-month-print-header,
+          .calendar-month-print-week {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+          }
+          .calendar-month-print-header {
+            border-left: 1px solid #64748b;
+            border-top: 1px solid #64748b;
+          }
+          .calendar-month-print-header > div {
+            border-bottom: 1px solid #64748b;
+            border-right: 1px solid #64748b;
+            font-size: 7px;
+            font-weight: 700;
+            padding: 3px;
+            text-align: center;
+          }
+          .calendar-month-print-week {
+            break-inside: avoid;
+            min-height: 76px;
+          }
+          .calendar-month-print-day {
+            border-bottom: 1px solid #64748b;
+            border-right: 1px solid #64748b;
+            min-width: 0;
+            overflow: hidden;
+            padding: 2px 3px;
+          }
+          .calendar-month-print-week .calendar-month-print-day:first-child {
+            border-left: 1px solid #64748b;
+          }
+          .calendar-month-print-day-number {
+            color: #334155;
+            font-size: 7px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 2px;
+          }
+          .calendar-month-print-day.is-other .calendar-month-print-day-number {
+            color: #94a3b8;
+          }
+          .calendar-month-print-event-row {
+            border: 1px solid #cbd5e1;
+            border-radius: 2px;
+            font-size: 5.5px;
+            line-height: 1.05;
+            margin-bottom: 1px;
+            overflow: hidden;
+            padding: 1px 2px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .calendar-month-print-event-row.is-cancelled {
+            text-decoration: line-through;
+          }
+          .calendar-month-print-more-count {
+            color: #475569;
+            font-size: 5.5px;
+            font-weight: 700;
+            line-height: 1;
+          }
+        }
+      `}</style>
+      <div className="calendar-month-print-only hidden" aria-hidden="true">
+        <div className="calendar-month-print-header">
+          {['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'].map((day) => (
+            <div key={day}>{day}</div>
+          ))}
+        </div>
+        {weeks.map((week, weekIndex) => (
+          <div key={`print-week-${weekIndex}`} className="calendar-month-print-week">
+            {week.map((cell) => {
+              const dayEvents = dealsForDay(deals, cell.iso)
+              const visibleEvents = dayEvents.slice(0, PRINT_EVENTS_PER_DAY)
+              const remainingEvents = dayEvents.length - visibleEvents.length
+
+              return (
+                <div
+                  key={`print-day-${cell.iso}`}
+                  className={`calendar-month-print-day ${cell.isOther ? 'is-other' : ''}`}
+                >
+                  <div className="calendar-month-print-day-number">
+                    {cell.date.getDate()}
+                  </div>
+                  {visibleEvents.map((event, eventIndex) => (
+                    <div
+                      key={`${cell.iso}-${event.id}-${eventIndex}`}
+                      className={`calendar-month-print-event-row ${event.cancelled ? 'is-cancelled' : ''}`}
+                    >
+                      {event.NomEvent}
+                    </div>
+                  ))}
+                  {remainingEvents > 0 ? (
+                    <div className="calendar-month-print-more-count">
+                      +{remainingEvents} més
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div className="calendar-month-view flex h-auto min-w-0 w-full flex-col print:hidden">
       <div className="sticky top-0 z-10 border-b bg-white py-3 text-center text-lg font-semibold shadow-sm sm:hidden">
         {monthLabel}
       </div>
@@ -329,12 +442,12 @@ export default function CalendarMonthView({
           const laneCount = laneEnds.length
           const visibleLaneCount = Math.min(visibleLanes, laneCount)
           const minHeight = Math.max(130, visibleLaneCount * 32 + 72)
-          const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
+          const visibleSpans = spans.filter((span) => span.lane < visibleLaneCount)
 
           return (
             <div
               key={wIdx}
-              className="relative grid grid-cols-7 border-b bg-gray-50"
+              className="calendar-month-week relative grid grid-cols-7 border-b bg-gray-50"
               style={{ minHeight }}
             >
               {week.map((c) => {
@@ -373,7 +486,7 @@ export default function CalendarMonthView({
               })}
 
               <div
-                className="pointer-events-none absolute inset-0 grid grid-cols-7 gap-2 px-2 pb-2 pt-6"
+                className="calendar-month-events-grid pointer-events-none absolute inset-0 grid grid-cols-7 gap-2 px-2 pb-2 pt-6"
                 style={{ gridAutoRows: 'minmax(24px, auto)' }}
               >
                 {visibleSpans.map((span, idx) => {
@@ -442,7 +555,7 @@ export default function CalendarMonthView({
                         gridColumn: `${dayIdx + 1} / ${dayIdx + 2}`,
                         gridRowStart: visibleLaneCount + 1,
                       }}
-                      className="pointer-events-auto flex items-center"
+                      className="pointer-events-auto flex items-center print:hidden"
                     >
                       <MoreEventsPopup
                         events={hidden.map((h) => h.ev)}
@@ -453,6 +566,7 @@ export default function CalendarMonthView({
                     </div>
                   )
                 })}
+
               </div>
             </div>
           )
@@ -470,7 +584,8 @@ export default function CalendarMonthView({
           }}
         />
       )}
-    </div>
+      </div>
+    </>
   )
 }
 

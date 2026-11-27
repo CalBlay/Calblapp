@@ -183,12 +183,12 @@ export default function CalendarWeekView({
   const laneCount = maxLane + 1
   const laneLimit = layout === 'mobile' ? VISIBLE_LANES_MOBILE : dynamicLanes
   const visibleLaneCount = Math.min(laneLimit, laneCount)
-  const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 
   const baseHeight = layout === 'mobile' ? 200 : layout === 'tablet' ? 230 : 260
   const rowHeight = layout === 'mobile' ? 36 : layout === 'tablet' ? 42 : 48
   const paddingExtra = layout === 'mobile' ? 60 : layout === 'tablet' ? 90 : 120
   const minHeight = Math.max(baseHeight, visibleLaneCount * rowHeight + paddingExtra)
+  const printMinHeight = Math.max(180, laneCount * 34 + 42)
 
   // amplada minima per columna nomes per scroll/UX; el grid intern fa minmax(0,1fr)
   const minColWidth = layout === 'mobile' ? 120 : layout === 'tablet' ? 150 : 170
@@ -204,14 +204,59 @@ export default function CalendarWeekView({
 
   return (
     <div className="w-full overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch]">
+      <style>{`
+        @media print {
+          .calendar-week-print-width {
+            max-width: none !important;
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          .calendar-week-print-height {
+            min-height: var(--calendar-week-print-height) !important;
+          }
+          .calendar-week-print-grid {
+            gap: 3px 4px !important;
+            grid-auto-rows: 31px !important;
+            padding: 8px 4px 4px !important;
+          }
+          .calendar-week-print-event {
+            min-height: 31px;
+            overflow: hidden !important;
+            padding: 2px 3px !important;
+          }
+          .calendar-week-print-title {
+            display: -webkit-box !important;
+            overflow: hidden !important;
+            white-space: normal !important;
+            word-break: break-word;
+            -webkit-box-orient: vertical !important;
+            -webkit-line-clamp: 3 !important;
+            font-size: 7px !important;
+            line-height: 1.1 !important;
+          }
+          .calendar-week-print-event > span:first-child {
+            height: 5px !important;
+            width: 5px !important;
+          }
+          .calendar-week-print-badge {
+            margin-left: 0 !important;
+            padding: 0 3px !important;
+            font-size: 7px !important;
+          }
+        }
+      `}</style>
       {layout === 'mobile' && (
-        <p className="mb-2 px-1 text-[11px] text-slate-500">
+        <p className="mb-2 px-1 text-[11px] text-slate-500 print:hidden">
           Llisca horizontalment per veure tots els dies.
         </p>
       )}
       <div
-        className="relative min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-        style={{ minHeight, minWidth: gridMinWidth }}
+        className="calendar-week-print-height calendar-week-print-width relative min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+        style={{
+          minHeight,
+          minWidth: gridMinWidth,
+          '--calendar-week-print-height': `${printMinHeight}px`,
+        } as React.CSSProperties}
       >
         {/* Header */}
         <div
@@ -255,7 +300,7 @@ export default function CalendarWeekView({
               <div
                 key={c.iso}
                 title={manualSpaceReasons[c.iso] || undefined}
-                className={`relative border-r ${
+                className={`calendar-week-print-height relative border-r ${
                   isSpaceHighlighted ? 'bg-red-50/80' : 'bg-white'
                 }`}
                 style={{ minHeight }}
@@ -265,7 +310,7 @@ export default function CalendarWeekView({
 
           {/* Layer d'events: IMPORTANT overflow-hidden per evitar "bleed" en Android horitzontal */}
           <div
-            className={`pointer-events-none absolute inset-0 isolate grid overflow-hidden ${
+            className={`calendar-week-print-grid pointer-events-none absolute inset-0 isolate grid overflow-hidden ${
               layout === 'mobile' ? 'gap-1.5 px-1.5 pb-2 pt-4' : 'gap-2 px-2 pb-2 pt-6'
             }`}
             style={{
@@ -273,9 +318,10 @@ export default function CalendarWeekView({
               gridAutoRows: layout === 'mobile' ? 'minmax(32px, auto)' : 'minmax(38px, auto)',
             }}
           >
-            {visibleSpans.map((span, idx) => {
+            {spans.map((span, idx) => {
               const isSingleDay = span.startIdx === span.endIdx
               const badge = showCodeStatus ? codeBadgeFor(span.ev) : null
+              const hiddenOnScreen = span.lane >= visibleLaneCount
 
               return (
                 <CalendarModal
@@ -287,7 +333,7 @@ export default function CalendarWeekView({
                     <div
                       onClick={(e) => e.stopPropagation()}
                       className={`
-                        pointer-events-auto min-w-0 overflow-hidden bg-clip-padding
+                        calendar-week-print-event pointer-events-auto min-w-0 overflow-hidden bg-clip-padding ${hiddenOnScreen ? 'hidden print:flex' : ''}
                         whitespace-normal
                         ${isSingleDay ? 'px-2 py-[2px]' : 'px-2 py-[4px]'}
                         rounded-md
@@ -304,17 +350,17 @@ export default function CalendarWeekView({
                       }}
                     >
                       <span className={`h-2 w-2 shrink-0 rounded-full ${span.ev.cancelled ? 'bg-red-700' : span.ev.StageDot || calendarStageDotClass(span.ev.collection)}`} />
-                      <span className="min-w-0 flex-1 text-left leading-tight line-clamp-2">
+                      <span className="calendar-week-print-title min-w-0 flex-1 text-left leading-tight line-clamp-2">
                         {span.ev.NomEvent}
                       </span>
                       {span.ev.cancelled && (
-                        <span className="shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        <span className="calendar-week-print-badge shrink-0 rounded bg-red-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
                           CANCEL·LAT
                         </span>
                       )}
                       {badge && (
                         <span
-                          className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
+                          className={`calendar-week-print-badge ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                         >
                           {badge.label}
                         </span>
@@ -341,7 +387,7 @@ export default function CalendarWeekView({
                     gridColumn: `${dayIdx + 1} / ${dayIdx + 2}`,
                     gridRowStart: visibleLaneCount + 1,
                   }}
-                  className="flex items-center pointer-events-auto"
+                  className="flex items-center pointer-events-auto print:hidden"
                 >
                   <MoreEventsPopup
                     date={d}

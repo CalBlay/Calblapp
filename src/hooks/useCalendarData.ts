@@ -64,7 +64,7 @@ export interface Deal {
 
 export function useCalendarData(filters?: {
   ln?: string | string[]
-  stage?: string
+  stage?: string | string[]
   commercial?: string | string[]
   location?: string | string[]
   start?: string
@@ -341,8 +341,11 @@ export function useCalendarData(filters?: {
       }
 
       /* ---------- STAGE ---------- */
-      if (!isAll(filters?.stage)) {
-        data = data.filter((deal) => matchesCalendarStageFilter(deal, filters?.stage))
+      const stageValues = toArrayFilter(filters?.stage)
+      if (stageValues.length) {
+        data = data.filter((deal) =>
+          stageValues.some((stage) => matchesCalendarStageFilter(deal, stage))
+        )
       }
 
       /* ---------- COMERCIAL ---------- */
