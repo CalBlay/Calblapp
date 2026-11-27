@@ -653,6 +653,45 @@ function LoadingPanel({
   )
 }
 
+function ViewModeToggle({
+  value,
+  onChange,
+}: {
+  value: MonitorView
+  onChange: (view: MonitorView) => void
+}) {
+  const options: Array<{ value: MonitorView; label: string }> = [
+    { value: 'preparacions', label: 'Preparacions' },
+    { value: 'doble', label: 'Doble' },
+    { value: 'carrega', label: 'Càrrega' },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label="Vista del monitor"
+      className="grid grid-cols-3 rounded-xl border border-slate-600 bg-slate-950/70 p-1 shadow-inner"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'min-w-32 rounded-lg px-4 py-2 text-sm font-black uppercase tracking-wide transition-colors',
+            value === option.value
+              ? 'bg-emerald-500 text-slate-950 shadow-md'
+              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="flex h-full min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 text-center text-xl text-slate-400">
@@ -783,6 +822,11 @@ export default function ExpeditionsMonitorPage() {
   const { data: session, status } = useSession()
   const rawView = searchParams?.get('vista')
   const view: MonitorView = rawView === 'preparacions' || rawView === 'carrega' ? rawView : 'doble'
+  const changeView = (nextView: MonitorView) => {
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    params.set('vista', nextView)
+    router.replace(`/monitor/expedicions?${params.toString()}`, { scroll: false })
+  }
   const [now, setNow] = useState(() => new Date())
   const today = format(now, 'yyyy-MM-dd')
   const [selectedDays, setSelectedDays] = useState(() => ({
@@ -850,6 +894,7 @@ export default function ExpeditionsMonitorPage() {
             </p>
           </div>
         </div>
+        <ViewModeToggle value={view} onChange={changeView} />
         <div className="flex items-center gap-5">
           <div className="text-right">
             <div className="text-3xl font-black capitalize">{format(now, "EEEE d 'de' MMMM", { locale: ca })}</div>
